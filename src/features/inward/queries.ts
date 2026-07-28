@@ -97,8 +97,8 @@ export async function getInward(id: string): Promise<InwardDetail | null> {
   const { data, error } = await supabase
     .from("inwards")
     .select(
-      `id, doc_no, status, vendor_invoice_no, created_at, submitted_at,
-       approved_at, rejected_reason,
+      `id, doc_no, status, vendor_id, vendor_invoice_no, vendor_invoice_date,
+       created_at, submitted_at, approved_at, rejected_reason,
        vendors(name), locations(code),
        inward_lines(id, qty, qty_short, line_no,
                     items(barcode, name, categories(name),
@@ -144,7 +144,9 @@ export async function getInward(id: string): Promise<InwardDetail | null> {
     status: data.status,
     vendorName: vendor?.name ?? "Unknown vendor",
     locationCode: location?.code ?? "—",
+    vendorId: data.vendor_id,
     vendorInvoiceNo: data.vendor_invoice_no,
+    vendorInvoiceDate: data.vendor_invoice_date,
     createdAt: data.created_at,
     submittedAt: data.submitted_at,
     approvedAt: data.approved_at,

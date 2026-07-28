@@ -28,6 +28,14 @@ export interface PricingLine {
   sizeId: string | null;
   ratePaise: Paise | null;
   gstRate: number;
+  /** Computed by compute_inward_costs, so the owner sees the tax and the
+   *  freight share BEFORE approving rather than discovering it after. */
+  taxablePaise: Paise;
+  cgstPaise: Paise;
+  sgstPaise: Paise;
+  igstPaise: Paise;
+  allocatedAddlPaise: Paise;
+  landedUnitCostPaise: Paise;
   mrpPaise: Paise | null;
   sellingPricePaise: Paise | null;
 }
@@ -39,8 +47,45 @@ export interface AdditionalCost {
   basis: "value" | "quantity";
 }
 
+export interface InwardTaxSummary {
+  taxTreatment: string;
+  isInterstate: boolean;
+  itcEligible: boolean;
+  taxablePaise: Paise;
+  taxPaise: Paise;
+  totalPaise: Paise;
+}
+
+export async function getTaxSummary(
+  inwardId: string,
+): Promise<InwardTaxSummary | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("inward_header_costs")
+    .select(
+      `tax_treatment, is_interstate, itc_eligible,
+       invoice_taxable_paise, invoice_tax_paise, invoice_total_paise`,
+    )
+    .eq("inward_id", inwardId)
+    .maybeSingle();
+
+  if (error || !data) return null;
+  return {
+    taxTreatment: data.tax_treatment,
+    isInterstate: data.is_interstate,
+    itcEligible: data.itc_eligible,
+    taxablePaise: data.invoice_taxable_paise,
+    taxPaise: data.invoice_tax_paise,
+    totalPaise: data.invoice_total_paise,
+  };
+}
+
 export async function getPricingLines(inwardId: string): Promise<PricingLine[]> {
   const supabase = await createClient();
+
+  // Recompute before reading so tax and the freight share on screen
+  // always match what approval would produce. Idempotent and owner-only.
+  await supabase.rpc("compute_inward_costs", { p_inward: inwardId });
 
   const { data, error } = await supabase
     .from("inward_lines")
@@ -50,7 +95,9 @@ export async function getPricingLines(inwardId: string): Promise<PricingLine[]> 
              colour_id, plating_id, stone_id, size_id,
              categories(id, name, markup_multiplier),
              item_photos(storage_path, is_primary, sort_order)),
-       inward_line_costs(rate_paise, gst_rate)`,
+       inward_line_costs(rate_paise, gst_rate, taxable_paise,
+                         cgst_paise, sgst_paise, igst_paise,
+                         allocated_addl_paise, landed_unit_cost_paise)`,
     )
     .eq("inward_id", inwardId)
     .order("line_no", { nullsFirst: false });
@@ -84,6 +131,12 @@ export async function getPricingLines(inwardId: string): Promise<PricingLine[]> 
       sizeId: item?.size_id ?? null,
       ratePaise: cost?.rate_paise ?? null,
       gstRate: Number(cost?.gst_rate ?? 3),
+      taxablePaise: cost?.taxable_paise ?? 0,
+      cgstPaise: cost?.cgst_paise ?? 0,
+      sgstPaise: cost?.sgst_paise ?? 0,
+      igstPaise: cost?.igst_paise ?? 0,
+      allocatedAddlPaise: cost?.allocated_addl_paise ?? 0,
+      landedUnitCostPaise: cost?.landed_unit_cost_paise ?? 0,
       mrpPaise: item?.mrp_paise ?? null,
       sellingPricePaise: item?.selling_price_paise ?? null,
     };

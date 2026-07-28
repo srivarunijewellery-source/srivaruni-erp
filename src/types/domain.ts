@@ -110,7 +110,9 @@ export interface InwardDetail {
   status: InwardStatus;
   vendorName: string;
   locationCode: string;
+  vendorId: string;
   vendorInvoiceNo: string | null;
+  vendorInvoiceDate: string | null;
   createdAt: string;
   submittedAt: string | null;
   approvedAt: string | null;

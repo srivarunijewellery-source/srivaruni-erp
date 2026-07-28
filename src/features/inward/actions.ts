@@ -314,3 +314,54 @@ export async function getInvoiceUrl(storagePath: string): Promise<Result<string>
   if (error || !data) return err("Could not open that file.");
   return ok(data.signedUrl);
 }
+
+const headerSchema = z.object({
+  inwardId:          z.string().uuid(),
+  vendorId:          z.string().uuid("Choose a vendor."),
+  vendorInvoiceNo:   z.string().trim().max(60).optional().or(z.literal("")),
+  vendorInvoiceDate: z.string().optional().or(z.literal("")),
+});
+
+/**
+ * Vendor and bill details, editable at ANY document state.
+ *
+ * Deliberately not gated on draft: a bill number gets mistyped, or the
+ * wrong vendor gets picked, and that is discovered weeks later. Locking
+ * it after approval would force a reversal of good stock movements to
+ * fix a typo.
+ *
+ * Changing the VENDOR after approval also changes the tax treatment, so
+ * the caller re-runs compute_inward_costs afterwards.
+ */
+export async function updateInwardHeader(formData: FormData): Promise<Result> {
+  const parsed = headerSchema.safeParse({
+    inwardId:          formData.get("inwardId"),
+    vendorId:          formData.get("vendorId"),
+    vendorInvoiceNo:   formData.get("vendorInvoiceNo") ?? "",
+    vendorInvoiceDate: formData.get("vendorInvoiceDate") ?? "",
+  });
+  if (!parsed.success) {
+    return err(parsed.error.issues[0]?.message ?? "Check the bill details.");
+  }
+  const v = parsed.data;
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("inwards")
+    .update({
+      vendor_id: v.vendorId,
+      vendor_invoice_no: v.vendorInvoiceNo || null,
+      vendor_invoice_date: v.vendorInvoiceDate || null,
+    })
+    .eq("id", v.inwardId);
+
+  if (error) return err(toMessage(error));
+
+  // Vendor drives price mode and state, so the tax figures are stale now.
+  // Ignore the failure: staff cannot compute costs, and for them there is
+  // nothing to refresh.
+  await supabase.rpc("compute_inward_costs", { p_inward: v.inwardId });
+
+  revalidatePath(ROUTES.inwardDetail(v.inwardId));
+  return ok(undefined);
+}

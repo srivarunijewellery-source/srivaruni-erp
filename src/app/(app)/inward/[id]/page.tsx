@@ -4,14 +4,19 @@ import {
   getInward,
   listItemFormOptions,
   listInwardAttachments,
+  listVendors,
 } from "@/features/inward/queries";
-import { getPricingLines, listAdditionalCosts } from "@/features/inward/pricing";
+import {
+  getPricingLines,
+  listAdditionalCosts,
+  getTaxSummary,
+} from "@/features/inward/pricing";
 import { can } from "@/config/roles";
 import { INWARD_STATUS } from "@/config/status";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Badge } from "@/components/ui/Badge";
 import { Barcode } from "@/components/ui/Barcode";
-import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { Card, CardBody } from "@/components/ui/Card";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PhotoThumb } from "@/components/ui/PhotoThumb";
@@ -20,9 +25,9 @@ import { AddItemDialog } from "@/features/inward/AddItemDialog";
 import { LineActions } from "@/features/inward/LineActions";
 import { LineQtyEditor } from "@/features/inward/LineQtyEditor";
 import { InvoiceUpload } from "@/features/inward/InvoiceUpload";
+import { BillDetails } from "@/features/inward/BillDetails";
 import { PricingPanel } from "@/features/inward/PricingPanel";
 import { itemPhotoUrl } from "@/lib/storage";
-import { formatDateTime } from "@/lib/format";
 import { formatPaise } from "@/lib/money";
 import type { InwardLine } from "@/types/domain";
 
@@ -44,12 +49,16 @@ export default async function InwardDetailPage({
   const showPricing =
     isOwner && (inward.status === "submitted" || inward.status === "approved");
 
-  const [attachments, formOptions, pricingLines, additionalCosts] = await Promise.all([
+  const [attachments, vendors, formOptions, pricingLines, additionalCosts] =
+    await Promise.all([
     listInwardAttachments(id),
+    listVendors(),
     isDraft || showPricing ? listItemFormOptions() : Promise.resolve(null),
     showPricing ? getPricingLines(id) : Promise.resolve([]),
     showPricing ? listAdditionalCosts(id) : Promise.resolve([]),
   ]);
+
+  const taxSummary = showPricing ? await getTaxSummary(id) : null;
 
   const totalQty = inward.lines.reduce((s, l) => s + l.qty, 0);
   const totalShort = inward.lines.reduce((s, l) => s + l.qtyShort, 0);
@@ -125,22 +134,18 @@ export default async function InwardDetailPage({
       {/* Bill, document facts and the workflow action sit at the top so
           the line table below gets the full page width. */}
       <div className="mb-5 grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader>
-            <h2 className="font-medium">Document</h2>
-          </CardHeader>
-          <CardBody className="space-y-2 text-sm">
-            <Row label="Vendor bill no." value={inward.vendorInvoiceNo ?? "—"} />
-            <Row label="Created" value={formatDateTime(inward.createdAt)} />
-            <Row label="Submitted" value={formatDateTime(inward.submittedAt)} />
-            <Row label="Approved" value={formatDateTime(inward.approvedAt)} />
-            {inward.rejectedReason && (
-              <p className="rounded-control bg-status-danger-bg p-2 text-status-danger-fg">
-                Sent back: {inward.rejectedReason}
-              </p>
-            )}
-          </CardBody>
-        </Card>
+        <BillDetails
+          inwardId={inward.id}
+          vendorId={inward.vendorId}
+          vendorName={inward.vendorName}
+          invoiceNo={inward.vendorInvoiceNo}
+          invoiceDate={inward.vendorInvoiceDate}
+          createdAt={inward.createdAt}
+          submittedAt={inward.submittedAt}
+          approvedAt={inward.approvedAt}
+          rejectedReason={inward.rejectedReason}
+          vendors={vendors}
+        />
 
         <InvoiceUpload
           inwardId={inward.id}
@@ -186,6 +191,7 @@ export default async function InwardDetailPage({
             lines={pricingLines}
             additionalCosts={additionalCosts}
             options={formOptions}
+            tax={taxSummary}
           />
         ) : (
           <DataTable columns={columns} rows={inward.lines} getKey={(l) => l.id} />
@@ -215,15 +221,6 @@ export default async function InwardDetailPage({
         )}
       </div>
     </>
-  );
-}
-
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex justify-between gap-3">
-      <span className="text-text-muted">{label}</span>
-      <span className="text-right">{value}</span>
-    </div>
   );
 }
 

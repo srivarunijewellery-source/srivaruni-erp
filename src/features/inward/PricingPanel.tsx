@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { itemPhotoUrl } from "@/lib/storage";
 import { formatPaise, parseRupeesToPaise, suggestMrpPaise } from "@/lib/money";
 import { cn } from "@/lib/cn";
-import type { PricingLine, AdditionalCost } from "./pricing";
+import type { PricingLine, AdditionalCost, InwardTaxSummary } from "./pricing";
 import type { AttributeOption, ItemFormOptions } from "@/types/domain";
 
 const ATTRS = [
@@ -32,11 +32,13 @@ export function PricingPanel({
   lines,
   additionalCosts,
   options,
+  tax,
 }: {
   inwardId: string;
   lines: PricingLine[];
   additionalCosts: AdditionalCost[];
   options: ItemFormOptions;
+  tax: InwardTaxSummary | null;
 }) {
   const totalQty = lines.reduce((s, l) => s + l.qty, 0);
   const priced = lines.filter((l) => l.ratePaise !== null && l.mrpPaise !== null).length;
@@ -55,8 +57,33 @@ export function PricingPanel({
             </p>
           </div>
         </CardHeader>
-        <CardBody>
+        <CardBody className="space-y-4">
           <AdditionalCosts inwardId={inwardId} existing={additionalCosts} />
+
+          {tax && (
+            <div className="border-t border-border pt-3">
+              <div className="mb-2 flex flex-wrap items-center gap-2 text-2xs">
+                <span className="rounded-full bg-status-neutral-bg px-2 py-0.5 text-status-neutral-fg">
+                  {tax.taxTreatment}
+                </span>
+                <span className="rounded-full bg-status-neutral-bg px-2 py-0.5 text-status-neutral-fg">
+                  {tax.isInterstate ? "Interstate · IGST" : "Intrastate · CGST + SGST"}
+                </span>
+                <span className="rounded-full bg-status-neutral-bg px-2 py-0.5 text-status-neutral-fg">
+                  {tax.itcEligible ? "Input credit recoverable" : "Tax loaded into cost"}
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <Fact label="Taxable value" value={formatPaise(tax.taxablePaise)} />
+                <Fact label="Tax" value={formatPaise(tax.taxPaise)} />
+                <Fact label="Invoice total" value={formatPaise(tax.totalPaise)} emphasis />
+              </div>
+              <p className="mt-2 text-2xs text-text-muted">
+                Recalculated live from the vendor&apos;s tax setup. Extra charges below
+                are already spread across the lines, exact to the paisa.
+              </p>
+            </div>
+          )}
         </CardBody>
       </Card>
 
@@ -225,10 +252,30 @@ function PricingRow({
             </div>
 
             {line.ratePaise !== null && (
-              <p className="text-2xs text-text-subtle">
-                Rate on file: {formatPaise(line.ratePaise)} per piece · line total{" "}
-                {formatPaise(line.ratePaise * line.qty)}. Freight is prorated at approval.
-              </p>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1 rounded-control bg-surface-sunken px-3 py-2 text-2xs sm:grid-cols-4">
+                <Fact label="Taxable" value={formatPaise(line.taxablePaise)} />
+                <Fact
+                  label={line.igstPaise > 0 ? "IGST" : "CGST + SGST"}
+                  value={formatPaise(
+                    line.igstPaise > 0
+                      ? line.igstPaise
+                      : line.cgstPaise + line.sgstPaise,
+                  )}
+                />
+                <Fact
+                  label="Freight share"
+                  value={
+                    line.allocatedAddlPaise > 0
+                      ? formatPaise(line.allocatedAddlPaise)
+                      : "—"
+                  }
+                />
+                <Fact
+                  label="Landed / piece"
+                  value={formatPaise(line.landedUnitCostPaise)}
+                  emphasis
+                />
+              </div>
             )}
             {error && <p className="text-sm text-status-danger-fg">{error}</p>}
           </div>
@@ -316,6 +363,29 @@ function AdditionalCosts({
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function Fact({
+  label,
+  value,
+  emphasis,
+}: {
+  label: string;
+  value: string;
+  emphasis?: boolean;
+}) {
+  return (
+    <div>
+      <span className="block uppercase tracking-wide text-text-subtle">{label}</span>
+      <span
+        className={
+          emphasis ? "tnum block font-semibold text-text" : "tnum block text-text-muted"
+        }
+      >
+        {value}
+      </span>
     </div>
   );
 }
