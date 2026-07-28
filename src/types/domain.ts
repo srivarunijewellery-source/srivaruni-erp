@@ -100,6 +100,8 @@ export interface InwardLine {
   category: string;
   qty: number;
   qtyShort: number;
+  /** Primary photo. The owner prices from these, so the document shows them. */
+  photoPath: string | null;
 }
 
 export interface InwardDetail {

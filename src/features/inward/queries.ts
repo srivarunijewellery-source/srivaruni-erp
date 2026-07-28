@@ -101,7 +101,8 @@ export async function getInward(id: string): Promise<InwardDetail | null> {
        approved_at, rejected_reason,
        vendors(name), locations(code),
        inward_lines(id, qty, qty_short, line_no,
-                    items(barcode, name, categories(name)))`,
+                    items(barcode, name, categories(name),
+                          item_photos(storage_path, is_primary, sort_order)))`,
     )
     .eq("id", id)
     .maybeSingle();
@@ -119,6 +120,13 @@ export async function getInward(id: string): Promise<InwardDetail | null> {
     .map((l) => {
       const item = Array.isArray(l.items) ? l.items[0] : l.items;
       const category = item && (Array.isArray(item.categories) ? item.categories[0] : item.categories);
+      const photos = (item?.item_photos ?? []) as Array<{
+        storage_path: string; is_primary: boolean; sort_order: number;
+      }>;
+      const primary =
+        photos.find((p) => p.is_primary) ??
+        [...photos].sort((a, b) => a.sort_order - b.sort_order)[0];
+
       return {
         id: l.id,
         barcode: item?.barcode ?? "—",
@@ -126,6 +134,7 @@ export async function getInward(id: string): Promise<InwardDetail | null> {
         category: category?.name ?? "—",
         qty: l.qty,
         qtyShort: l.qty_short,
+        photoPath: primary?.storage_path ?? null,
       };
     });
 
@@ -144,14 +153,19 @@ export async function getInward(id: string): Promise<InwardDetail | null> {
   };
 }
 
+interface RawItem {
+  barcode: string;
+  name: string;
+  categories: { name: string } | { name: string }[] | null;
+  item_photos?: Array<{ storage_path: string; is_primary: boolean; sort_order: number }>;
+}
+
 interface RawLine {
   id: string;
   qty: number;
   qty_short: number;
   line_no: number | null;
-  items: { barcode: string; name: string; categories: { name: string } | { name: string }[] | null }
-       | Array<{ barcode: string; name: string; categories: { name: string } | { name: string }[] | null }>
-       | null;
+  items: RawItem | RawItem[] | null;
 }
 
 /** Controlled attribute lists for the add-item form. Staff pick from
@@ -228,5 +242,28 @@ export async function listItemTypes(): Promise<ItemTypeOption[]> {
   if (error) throw error;
   return (data ?? []).map((t) => ({
     id: t.id, categoryId: t.category_id, name: t.name,
+  }));
+}
+
+export interface InwardAttachment {
+  id: string;
+  storagePath: string;
+  createdAt: string;
+}
+
+export async function listInwardAttachments(
+  inwardId: string,
+): Promise<InwardAttachment[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("inward_attachments")
+    .select("id, storage_path, created_at")
+    .eq("inward_id", inwardId)
+    .eq("kind", "invoice")
+    .order("created_at");
+
+  if (error) throw error;
+  return (data ?? []).map((a) => ({
+    id: a.id, storagePath: a.storage_path, createdAt: a.created_at,
   }));
 }

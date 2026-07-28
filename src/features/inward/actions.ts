@@ -243,3 +243,74 @@ export async function removeInwardLine(formData: FormData): Promise<Result> {
   revalidatePath(ROUTES.inwardDetail(inwardId));
   return ok(undefined);
 }
+
+const qtySchema = z.object({
+  lineId:   z.string().uuid(),
+  inwardId: z.string().uuid(),
+  qty:      z.coerce.number().int().positive("Quantity must be at least 1."),
+});
+
+/** Inline quantity edit on the document itself, not just at add time.
+ *  RLS restricts this to draft documents at the user's own location. */
+export async function updateInwardLineQty(formData: FormData): Promise<Result> {
+  const parsed = qtySchema.safeParse({
+    lineId:   formData.get("lineId"),
+    inwardId: formData.get("inwardId"),
+    qty:      formData.get("qty"),
+  });
+  if (!parsed.success) return err(parsed.error.issues[0]?.message ?? "Check the quantity.");
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("inward_lines")
+    .update({ qty: parsed.data.qty })
+    .eq("id", parsed.data.lineId);
+
+  if (error) return err(toMessage(error));
+
+  revalidatePath(ROUTES.inwardDetail(parsed.data.inwardId));
+  return ok(undefined);
+}
+
+const invoiceSchema = z.object({
+  inwardId:    z.string().uuid(),
+  storagePath: z.string().min(1),
+});
+
+/** Records an uploaded vendor bill. The file itself goes straight from
+ *  the browser to the private inward-invoices bucket; this only stores
+ *  the reference. Without at least one of these, submit_inward refuses. */
+export async function attachInvoice(formData: FormData): Promise<Result> {
+  const parsed = invoiceSchema.safeParse({
+    inwardId:    formData.get("inwardId"),
+    storagePath: formData.get("storagePath"),
+  });
+  if (!parsed.success) return err("Could not record that file.");
+
+  const supabase = await createClient();
+  const { data: staffRows } = await supabase.rpc("get_current_staff");
+  const staff = Array.isArray(staffRows) ? staffRows[0] : staffRows;
+
+  const { error } = await supabase.from("inward_attachments").insert({
+    inward_id: parsed.data.inwardId,
+    storage_path: parsed.data.storagePath,
+    kind: "invoice",
+    uploaded_by: staff?.staff_id ?? null,
+  });
+
+  if (error) return err(toMessage(error));
+
+  revalidatePath(ROUTES.inwardDetail(parsed.data.inwardId));
+  return ok(undefined);
+}
+
+/** Owner-only: mints a short-lived link to a private invoice scan. */
+export async function getInvoiceUrl(storagePath: string): Promise<Result<string>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.storage
+    .from("inward-invoices")
+    .createSignedUrl(storagePath, 300);
+
+  if (error || !data) return err("Could not open that file.");
+  return ok(data.signedUrl);
+}

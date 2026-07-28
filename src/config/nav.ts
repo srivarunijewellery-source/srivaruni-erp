@@ -10,6 +10,7 @@ export const ROUTES = {
   transfers: "/transfers",
   transferDetail: (id: string) => `/transfers/${id}`,
   stock: "/stock",
+  products: "/products",
 } as const;
 
 export interface NavItem {
@@ -24,4 +25,5 @@ export const NAV: readonly NavItem[] = [
   { href: ROUTES.inward,    label: "Inward" },
   { href: ROUTES.transfers, label: "Transfers" },
   { href: ROUTES.stock,     label: "Stock" },
+  { href: ROUTES.products,  label: "Products" },
 ] as const;
