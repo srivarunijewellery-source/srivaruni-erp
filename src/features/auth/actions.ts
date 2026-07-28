@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { ROUTES } from "@/config/nav";
-import { err, ok, type Result } from "@/lib/result";
+import { err, type Result } from "@/lib/result";
 
 const credentials = z.object({
   email: z.string().email("Enter a valid email address."),

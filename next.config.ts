@@ -11,10 +11,10 @@ const nextConfig: NextConfig = {
       ? [{ protocol: "https", hostname: supabaseHost, pathname: "/storage/v1/object/**" }]
       : [],
   },
-  // typedRoutes is off while the route map is still growing: the
-  // ROUTES helpers return string, which the experimental checker rejects
-  // even for routes that exist. Turn it on once the surface settles.
-  experimental: { typedRoutes: false },
+  // Off while the route map is still growing: the ROUTES helpers return
+  // string, which the checker rejects even for routes that exist.
+  // Turn it on once the surface settles.
+  typedRoutes: false,
 };
 
 export default nextConfig;

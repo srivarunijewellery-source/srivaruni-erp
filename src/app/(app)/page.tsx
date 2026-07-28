@@ -8,7 +8,6 @@ import { INWARD_STATUS, TRANSFER_STATUS } from "@/config/status";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { formatDate, pluralise } from "@/lib/format";
 
 export default async function DashboardPage() {
