@@ -119,3 +119,127 @@ export async function createInward(formData: FormData): Promise<Result<string>> 
   revalidatePath(ROUTES.inward);
   return ok(data.id);
 }
+
+const addItemSchema = z.object({
+  inwardId:   z.string().uuid(),
+  categoryId: z.string().uuid("Choose a category."),
+  name:       z.string().trim().min(1, "Give the item a name.").max(120),
+  qty:        z.coerce.number().int().positive("Quantity must be at least 1."),
+  itemTypeId: z.string().uuid().optional().or(z.literal("")),
+  colourId:   z.string().uuid().optional().or(z.literal("")),
+  platingId:  z.string().uuid().optional().or(z.literal("")),
+  stoneId:    z.string().uuid().optional().or(z.literal("")),
+  sizeId:     z.string().uuid().optional().or(z.literal("")),
+  photoPaths: z.array(z.string()).default([]),
+});
+
+const orNull = (v: string | undefined) => (v && v.length > 0 ? v : null);
+
+/**
+ * Creates a NEW item and attaches it to the inward as a line.
+ *
+ * Always a new SKU. There is deliberately no "find existing item" step:
+ * a design received again is a different lot with a different barcode,
+ * because two pieces that look identical are not. The database enforces
+ * the same rule via one_inward_per_item.
+ *
+ * No cost fields anywhere in here. Staff never see or enter rates.
+ */
+export async function addInwardItem(formData: FormData): Promise<Result<string>> {
+  const parsed = addItemSchema.safeParse({
+    inwardId:   formData.get("inwardId"),
+    categoryId: formData.get("categoryId"),
+    name:       formData.get("name"),
+    qty:        formData.get("qty"),
+    itemTypeId: formData.get("itemTypeId") ?? "",
+    colourId:   formData.get("colourId") ?? "",
+    platingId:  formData.get("platingId") ?? "",
+    stoneId:    formData.get("stoneId") ?? "",
+    sizeId:     formData.get("sizeId") ?? "",
+    photoPaths: formData.getAll("photoPaths").map(String).filter(Boolean),
+  });
+
+  if (!parsed.success) {
+    return err(parsed.error.issues[0]?.message ?? "Check the form.");
+  }
+  const v = parsed.data;
+
+  const supabase = await createClient();
+
+  const { data: staffRows } = await supabase.rpc("get_current_staff");
+  const staff = Array.isArray(staffRows) ? staffRows[0] : staffRows;
+  if (!staff) return err("No staff record is linked to this login.");
+
+  // Barcode comes from the column default (next_barcode), continuing the
+  // live Vasy SV##### series. Never assigned client-side.
+  const { data: item, error: itemError } = await supabase
+    .from("items")
+    .insert({
+      name: v.name,
+      category_id: v.categoryId,
+      item_type_id: orNull(v.itemTypeId),
+      colour_id: orNull(v.colourId),
+      plating_id: orNull(v.platingId),
+      stone_id: orNull(v.stoneId),
+      size_id: orNull(v.sizeId),
+      created_by: staff.staff_id,
+    })
+    .select("id, barcode")
+    .single();
+
+  if (itemError) return err(toMessage(itemError));
+
+  const { data: lastLine } = await supabase
+    .from("inward_lines")
+    .select("line_no")
+    .eq("inward_id", v.inwardId)
+    .order("line_no", { ascending: false, nullsFirst: false })
+    .limit(1)
+    .maybeSingle();
+
+  const { error: lineError } = await supabase.from("inward_lines").insert({
+    inward_id: v.inwardId,
+    item_id: item.id,
+    qty: v.qty,
+    line_no: (lastLine?.line_no ?? 0) + 1,
+    created_by: staff.staff_id,
+  });
+
+  if (lineError) {
+    // The item exists but is orphaned. Remove it so a retry is clean: an
+    // unattached pending_pricing item can never be sold, but it would
+    // clutter the catalog permanently.
+    await supabase.from("items").delete().eq("id", item.id);
+    return err(toMessage(lineError));
+  }
+
+  // First photo becomes primary; a partial unique index enforces that
+  // only one per item can hold that flag.
+  if (v.photoPaths.length > 0) {
+    await supabase.from("item_photos").insert(
+      v.photoPaths.map((path, i) => ({
+        item_id: item.id,
+        storage_path: path,
+        is_primary: i === 0,
+        sort_order: i,
+        uploaded_by: staff.staff_id,
+      })),
+    );
+  }
+
+  revalidatePath(ROUTES.inwardDetail(v.inwardId));
+  return ok(item.barcode);
+}
+
+export async function removeInwardLine(formData: FormData): Promise<Result> {
+  const lineId = String(formData.get("lineId") ?? "");
+  const inwardId = String(formData.get("inwardId") ?? "");
+  if (!lineId || !inwardId) return err("Missing line reference.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("inward_lines").delete().eq("id", lineId);
+  if (error) return err(toMessage(error));
+
+  revalidatePath(ROUTES.inwardDetail(inwardId));
+  return ok(undefined);
+}

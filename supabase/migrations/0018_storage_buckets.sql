@@ -1,0 +1,4 @@
+-- Buckets for item photos and vendor invoice scans. Private, not public:
+-- item photos are commercial assets and invoice scans are the only place
+-- purchase rates appear before approval. Reads use signed URLs.
+-- Applied to the live project as storage_buckets.

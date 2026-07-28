@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { requireUser } from "@/features/auth/session";
-import { getInward } from "@/features/inward/queries";
+import { getInward, listItemFormOptions } from "@/features/inward/queries";
 import { can } from "@/config/roles";
 import { INWARD_STATUS } from "@/config/status";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -9,6 +9,9 @@ import { Barcode } from "@/components/ui/Barcode";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { InwardWorkflow } from "@/features/inward/InwardWorkflow";
+import { AddItemDialog } from "@/features/inward/AddItemDialog";
+import { LineActions } from "@/features/inward/LineActions";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { formatDateTime, pluralise } from "@/lib/format";
 import type { InwardLine } from "@/types/domain";
 
@@ -21,6 +24,10 @@ export default async function InwardDetailPage({
   const user = await requireUser();
   const inward = await getInward(id);
   if (!inward) notFound();
+
+  const isDraft = inward.status === "draft";
+  // Only fetched when they can actually be used.
+  const formOptions = isDraft ? await listItemFormOptions() : null;
 
   const columns: ReadonlyArray<Column<InwardLine>> = [
     { key: "tag", header: "Tag", render: (l) => <Barcode code={l.barcode} /> },
@@ -38,6 +45,15 @@ export default async function InwardDetailPage({
           "—"
         ),
     },
+    ...(isDraft
+      ? [{
+          key: "actions",
+          header: "",
+          render: (l: InwardLine) => (
+            <LineActions lineId={l.id} inwardId={inward.id} />
+          ),
+        }]
+      : []),
   ];
 
   const totalQty = inward.lines.reduce((s, l) => s + l.qty, 0);
@@ -55,8 +71,28 @@ export default async function InwardDetailPage({
       />
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <DataTable columns={columns} rows={inward.lines} getKey={(l) => l.id} />
+        <div className="lg:col-span-2 space-y-3">
+          {isDraft && formOptions && (
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm text-text-muted">
+                Add each design as you unpack it.
+              </p>
+              <AddItemDialog inwardId={inward.id} options={formOptions} />
+            </div>
+          )}
+
+          {inward.lines.length === 0 ? (
+            <EmptyState
+              title="Nothing added yet"
+              hint={
+                isDraft
+                  ? "Open the carton and add each design. A tag number is issued automatically for every item you save."
+                  : "This document has no lines."
+              }
+            />
+          ) : (
+            <DataTable columns={columns} rows={inward.lines} getKey={(l) => l.id} />
+          )}
         </div>
 
         <div className="space-y-4">

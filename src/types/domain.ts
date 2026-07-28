@@ -115,3 +115,24 @@ export interface InwardDetail {
   rejectedReason: string | null;
   lines: InwardLine[];
 }
+
+export interface AttributeOption {
+  id: string;
+  value: string;
+}
+
+export interface ItemTypeOption {
+  id: string;
+  categoryId: string;
+  name: string;
+}
+
+/** Everything the add-item form needs, fetched once on the server. */
+export interface ItemFormOptions {
+  categories: Category[];
+  itemTypes: ItemTypeOption[];
+  colours: AttributeOption[];
+  platings: AttributeOption[];
+  stones: AttributeOption[];
+  sizes: AttributeOption[];
+}

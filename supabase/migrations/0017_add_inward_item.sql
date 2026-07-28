@@ -1,0 +1,7 @@
+-- Adding an item to an inward creates TWO rows: the item (which burns a
+-- barcode from the sequence) and the inward line. Two client calls means
+-- a failure between them leaves an orphan SKU holding a barcode that was
+-- never received. One transaction, or neither.
+-- Staff never pass cost here. There is no rate parameter, by design.
+-- See project migration history; applied to the live project as
+-- add_inward_item_rpc.

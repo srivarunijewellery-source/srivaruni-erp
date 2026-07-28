@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import type {
   InwardSummary, InwardDetail, VendorOption, Category, StoreLocation,
+  ItemFormOptions,
 } from "@/types/domain";
 
 /**
@@ -151,4 +152,81 @@ interface RawLine {
   items: { barcode: string; name: string; categories: { name: string } | { name: string }[] | null }
        | Array<{ barcode: string; name: string; categories: { name: string } | { name: string }[] | null }>
        | null;
+}
+
+/** Controlled attribute lists for the add-item form. Staff pick from
+ *  these; they cannot introduce new values, which is what stops the
+ *  catalog decaying into free text the way the Vasy one did. */
+export async function listItemFormOptions(): Promise<ItemFormOptions> {
+  const supabase = await createClient();
+
+  const [cats, types, attrs] = await Promise.all([
+    supabase.from("categories").select("id, name, markup_multiplier")
+      .eq("active", true).order("sort_order"),
+    supabase.from("item_types").select("id, category_id, name")
+      .eq("active", true).order("sort_order"),
+    supabase.from("attribute_options").select("id, attr_key, value")
+      .eq("active", true).order("sort_order"),
+  ]);
+
+  if (cats.error) throw cats.error;
+  if (types.error) throw types.error;
+  if (attrs.error) throw attrs.error;
+
+  const byKey = (key: string) =>
+    (attrs.data ?? []).filter((a) => a.attr_key === key)
+      .map((a) => ({ id: a.id, value: a.value }));
+
+  return {
+    categories: (cats.data ?? []).map((c) => ({
+      id: c.id, name: c.name, markupMultiplier: Number(c.markup_multiplier),
+    })),
+    itemTypes: (types.data ?? []).map((t) => ({
+      id: t.id, categoryId: t.category_id, name: t.name,
+    })),
+    colours: byKey("colour"),
+    platings: byKey("plating"),
+    stones: byKey("stone"),
+    sizes: byKey("size"),
+  };
+}
+
+export interface AttributeOption {
+  id: string;
+  attrKey: "colour" | "plating" | "stone" | "size";
+  value: string;
+}
+
+export async function listAttributeOptions(): Promise<AttributeOption[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("attribute_options")
+    .select("id, attr_key, value")
+    .eq("active", true)
+    .order("sort_order");
+
+  if (error) throw error;
+  return (data ?? []).map((a) => ({
+    id: a.id, attrKey: a.attr_key, value: a.value,
+  }));
+}
+
+export interface ItemTypeOption {
+  id: string;
+  categoryId: string;
+  name: string;
+}
+
+export async function listItemTypes(): Promise<ItemTypeOption[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("item_types")
+    .select("id, category_id, name")
+    .eq("active", true)
+    .order("sort_order");
+
+  if (error) throw error;
+  return (data ?? []).map((t) => ({
+    id: t.id, categoryId: t.category_id, name: t.name,
+  }));
 }
