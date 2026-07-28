@@ -1,0 +1,34 @@
+/**
+ * Application constants. Anything a reviewer might call a "magic value"
+ * lives here with a name and a reason.
+ */
+export const APP = {
+  name: "Sri Varuni",
+  shortName: "SV",
+  /** Base currency. All money in the database is BIGINT paise. */
+  currency: "INR",
+  locale: "en-IN",
+  /** Store timezone. The owner works from US Pacific; the shops do not,
+   *  and a document stamped in Pacific time is a support ticket. */
+  timeZone: "Asia/Kolkata",
+} as const;
+
+export const PAGINATION = {
+  defaultPageSize: 50,
+  maxPageSize: 200,
+} as const;
+
+export const INWARD = {
+  /** An inward cannot be submitted without a photo of the vendor bill,
+   *  because staff never enter rates and the photo is the only cost source. */
+  requiresInvoicePhoto: true,
+  /** Client-side compression target before upload. Phone photos are 4-6MB;
+   *  this keeps an inward usable on shop-floor mobile data. */
+  photoMaxEdgePx: 1600,
+  photoQuality: 0.82,
+} as const;
+
+export const STORAGE_BUCKETS = {
+  itemPhotos: "item-photos",
+  inwardInvoices: "inward-invoices",
+} as const;

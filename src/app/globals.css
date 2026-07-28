@@ -1,0 +1,115 @@
+@import "tailwindcss";
+
+/* ====================================================================
+   DESIGN TOKENS — the single source of truth for colour, type, space.
+
+   Nothing in this codebase should contain a raw hex value, px radius or
+   font stack. If you need a new colour, add a token here and give it a
+   semantic name describing its JOB ("--color-status-transit-fg"), not
+   its appearance ("--color-purple-600"). Appearance changes; jobs don't.
+
+   Palette rationale: oxblood is the one brand accent, taken from the
+   burgundy velvet the products are photographed on. It appears only on
+   primary actions and active navigation. Everything else is a warm
+   neutral ramp or a workflow status colour, because in an operations
+   tool the states ARE the palette.
+   ==================================================================== */
+
+@theme {
+  /* --- brand ------------------------------------------------------ */
+  --color-brand:            #6b1d2b;
+  --color-brand-hover:      #571620;
+  --color-brand-subtle:     #f7ecee;
+  --color-brand-fg:         #ffffff;
+
+  /* --- warm neutral ramp ------------------------------------------ */
+  --color-neutral-0:        #ffffff;
+  --color-neutral-25:       #fbfaf9;
+  --color-neutral-50:       #f5f3f2;
+  --color-neutral-100:      #ebe8e6;
+  --color-neutral-200:      #ddd8d5;
+  --color-neutral-300:      #c3bcb8;
+  --color-neutral-400:      #9a918c;
+  --color-neutral-500:      #756c67;
+  --color-neutral-600:      #574f4b;
+  --color-neutral-700:      #3d3734;
+  --color-neutral-800:      #292421;
+  --color-neutral-900:      #191512;
+
+  /* --- semantic surfaces ------------------------------------------ */
+  --color-bg:               var(--color-neutral-50);
+  --color-surface:          var(--color-neutral-0);
+  --color-surface-sunken:   var(--color-neutral-25);
+  --color-border:           var(--color-neutral-200);
+  --color-border-strong:    var(--color-neutral-300);
+
+  /* --- semantic text ---------------------------------------------- */
+  --color-text:             var(--color-neutral-900);
+  --color-text-muted:       var(--color-neutral-500);
+  --color-text-subtle:      var(--color-neutral-400);
+  --color-text-inverse:     var(--color-neutral-0);
+
+  /* --- workflow status -------------------------------------------- */
+  /* Names track the document lifecycle, not the hue, so a status can be
+     recoloured without touching a single component.                   */
+  --color-status-pending-bg:    #fdf4e3;
+  --color-status-pending-fg:    #7a5312;
+  --color-status-approved-bg:   #e8f0fb;
+  --color-status-approved-fg:   #1c4a86;
+  --color-status-transit-bg:    #efeafb;
+  --color-status-transit-fg:    #4b2f8f;
+  --color-status-done-bg:       #e6f4ec;
+  --color-status-done-fg:       #1d6340;
+  --color-status-danger-bg:     #fceceb;
+  --color-status-danger-fg:     #99231c;
+  --color-status-neutral-bg:    #ebe8e6;
+  --color-status-neutral-fg:    #574f4b;
+
+  /* --- type ------------------------------------------------------- */
+  /* Two roles only. Sans carries the interface; mono carries anything
+     a human reads character-by-character or compares in a column:
+     barcodes, money, quantities, document numbers.                    */
+  --font-sans: var(--font-instrument-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, "SFMono-Regular", monospace;
+
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
+
+  /* --- radius ------------------------------------------------------ */
+  --radius-control: 0.375rem;
+  --radius-card:    0.625rem;
+
+  /* --- elevation --------------------------------------------------- */
+  --shadow-card:   0 1px 2px 0 rgb(25 21 18 / 0.05);
+  --shadow-raised: 0 4px 12px -2px rgb(25 21 18 / 0.10);
+}
+
+@layer base {
+  html { -webkit-text-size-adjust: 100%; }
+
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Tabular figures wherever numbers are compared down a column.
+     Without this, money and quantity columns visibly wobble. */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
