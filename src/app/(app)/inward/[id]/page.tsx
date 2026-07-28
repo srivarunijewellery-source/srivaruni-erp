@@ -5,6 +5,7 @@ import {
   listItemFormOptions,
   listInwardAttachments,
 } from "@/features/inward/queries";
+import { getPricingLines, listAdditionalCosts } from "@/features/inward/pricing";
 import { can } from "@/config/roles";
 import { INWARD_STATUS } from "@/config/status";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -12,17 +13,17 @@ import { Badge } from "@/components/ui/Badge";
 import { Barcode } from "@/components/ui/Barcode";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { DataTable, type Column } from "@/components/ui/DataTable";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { PhotoThumb } from "@/components/ui/PhotoThumb";
 import { InwardWorkflow } from "@/features/inward/InwardWorkflow";
 import { AddItemDialog } from "@/features/inward/AddItemDialog";
 import { LineActions } from "@/features/inward/LineActions";
 import { LineQtyEditor } from "@/features/inward/LineQtyEditor";
 import { InvoiceUpload } from "@/features/inward/InvoiceUpload";
-import { PhotoThumb } from "@/components/ui/PhotoThumb";
 import { PricingPanel } from "@/features/inward/PricingPanel";
-import { getPricingLines, listAdditionalCosts } from "@/features/inward/pricing";
 import { itemPhotoUrl } from "@/lib/storage";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { formatDateTime } from "@/lib/format";
+import { formatPaise } from "@/lib/money";
 import type { InwardLine } from "@/types/domain";
 
 export default async function InwardDetailPage({
@@ -33,29 +34,41 @@ export default async function InwardDetailPage({
   const { id } = await params;
   const user = await requireUser();
   const inward = await getInward(id);
-  const attachments = inward ? await listInwardAttachments(id) : [];
-
-  // The pricing gate: only the owner, only once staff have submitted.
-  const showPricing =
-    inward !== null && inward.status === "submitted" && can(user.role, "inward.approve");
-
-  const [pricingLines, additionalCosts] = showPricing
-    ? await Promise.all([getPricingLines(id), listAdditionalCosts(id)])
-    : [[], []];
   if (!inward) notFound();
 
+  const isOwner = can(user.role, "inward.approve");
   const isDraft = inward.status === "draft";
-  // Only fetched when they can actually be used.
-  const needsOptions = isDraft || showPricing;
-  const formOptions = needsOptions ? await listItemFormOptions() : null;
+
+  // Pricing stays available AFTER approval too, so the owner can correct
+  // a rate later. Approval is a gate, not a lock.
+  const showPricing =
+    isOwner && (inward.status === "submitted" || inward.status === "approved");
+
+  const [attachments, formOptions, pricingLines, additionalCosts] = await Promise.all([
+    listInwardAttachments(id),
+    isDraft || showPricing ? listItemFormOptions() : Promise.resolve(null),
+    showPricing ? getPricingLines(id) : Promise.resolve([]),
+    showPricing ? listAdditionalCosts(id) : Promise.resolve([]),
+  ]);
+
+  const totalQty = inward.lines.reduce((s, l) => s + l.qty, 0);
+  const totalShort = inward.lines.reduce((s, l) => s + l.qtyShort, 0);
+  const withPhotos = inward.lines.filter((l) => l.photoPath).length;
+
+  // Purchase value is owner-only: pricingLines is empty for staff because
+  // inward_line_costs returns no rows to them under RLS.
+  const purchaseValue = pricingLines.reduce(
+    (s, l) => s + (l.ratePaise ?? 0) * l.qty,
+    0,
+  );
+  const additionalTotal = additionalCosts.reduce((s, c) => s + c.amountPaise, 0);
+  const pricedLines = pricingLines.filter((l) => l.ratePaise !== null).length;
 
   const columns: ReadonlyArray<Column<InwardLine>> = [
     {
       key: "photo",
       header: "",
-      render: (l) => (
-        <PhotoThumb src={itemPhotoUrl(l.photoPath)} alt={l.name} size={56} />
-      ),
+      render: (l) => <PhotoThumb src={itemPhotoUrl(l.photoPath)} alt={l.name} size={56} />,
     },
     { key: "tag", header: "Tag", render: (l) => <Barcode code={l.barcode} /> },
     { key: "name", header: "Item", render: (l) => l.name },
@@ -69,7 +82,7 @@ export default async function InwardDetailPage({
           lineId={l.id}
           inwardId={inward.id}
           qty={l.qty}
-          editable={inward.status === "draft"}
+          editable={isDraft}
         />
       ),
     },
@@ -85,19 +98,17 @@ export default async function InwardDetailPage({
         ),
     },
     ...(isDraft
-      ? [{
-          key: "actions",
-          header: "",
-          render: (l: InwardLine) => (
-            <LineActions lineId={l.id} inwardId={inward.id} />
-          ),
-        }]
+      ? [
+          {
+            key: "actions",
+            header: "",
+            render: (l: InwardLine) => (
+              <LineActions lineId={l.id} inwardId={inward.id} />
+            ),
+          },
+        ]
       : []),
   ];
-
-  const totalQty = inward.lines.reduce((s, l) => s + l.qty, 0);
-  const totalShort = inward.lines.reduce((s, l) => s + l.qtyShort, 0);
-  const withPhotos = inward.lines.filter((l) => l.photoPath).length;
 
   return (
     <>
@@ -111,76 +122,97 @@ export default async function InwardDetailPage({
         }
       />
 
-      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Tally label="Lines" value={inward.lines.length} />
-        <Tally label="Pieces received" value={totalQty} emphasis />
-        <Tally label="Short" value={totalShort} />
-        <Tally label="Photos" value={withPhotos} />
+      {/* Bill, document facts and the workflow action sit at the top so
+          the line table below gets the full page width. */}
+      <div className="mb-5 grid gap-4 md:grid-cols-3">
+        <Card>
+          <CardHeader>
+            <h2 className="font-medium">Document</h2>
+          </CardHeader>
+          <CardBody className="space-y-2 text-sm">
+            <Row label="Vendor bill no." value={inward.vendorInvoiceNo ?? "—"} />
+            <Row label="Created" value={formatDateTime(inward.createdAt)} />
+            <Row label="Submitted" value={formatDateTime(inward.submittedAt)} />
+            <Row label="Approved" value={formatDateTime(inward.approvedAt)} />
+            {inward.rejectedReason && (
+              <p className="rounded-control bg-status-danger-bg p-2 text-status-danger-fg">
+                Sent back: {inward.rejectedReason}
+              </p>
+            )}
+          </CardBody>
+        </Card>
+
+        <InvoiceUpload
+          inwardId={inward.id}
+          attachments={attachments}
+          canUpload={isDraft}
+          canView={isOwner}
+        />
+
+        <InwardWorkflow
+          inwardId={inward.id}
+          status={inward.status}
+          canApprove={isOwner}
+        />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2 space-y-3">
-          {isDraft && formOptions && (
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-sm text-text-muted">
-                Add each design as you unpack it.
-              </p>
-              <AddItemDialog inwardId={inward.id} options={formOptions} />
-            </div>
-          )}
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Tally label="Lines" value={String(inward.lines.length)} />
+        <Tally label="Pieces received" value={String(totalQty)} emphasis />
+        <Tally label="Short" value={String(totalShort)} />
+        <Tally label="With photos" value={`${withPhotos} / ${inward.lines.length}`} />
+      </div>
 
-          {inward.lines.length === 0 ? (
-            <EmptyState
-              title="Nothing added yet"
-              hint={
-                isDraft
-                  ? "Open the carton and add each design. A tag number is issued automatically for every item you save."
-                  : "This document has no lines."
-              }
-            />
-          ) : showPricing && formOptions ? (
-            <PricingPanel
-              inwardId={inward.id}
-              lines={pricingLines}
-              additionalCosts={additionalCosts}
-              options={formOptions}
-            />
-          ) : (
-            <DataTable columns={columns} rows={inward.lines} getKey={(l) => l.id} />
-          )}
-        </div>
+      <div className="space-y-3">
+        {isDraft && formOptions && (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-text-muted">Add each design as you unpack it.</p>
+            <AddItemDialog inwardId={inward.id} options={formOptions} />
+          </div>
+        )}
 
-        <div className="space-y-4">
+        {inward.lines.length === 0 ? (
+          <EmptyState
+            title="Nothing added yet"
+            hint={
+              isDraft
+                ? "Open the carton and add each design. A tag number is issued automatically for every item you save."
+                : "This document has no lines."
+            }
+          />
+        ) : showPricing && formOptions ? (
+          <PricingPanel
+            inwardId={inward.id}
+            lines={pricingLines}
+            additionalCosts={additionalCosts}
+            options={formOptions}
+          />
+        ) : (
+          <DataTable columns={columns} rows={inward.lines} getKey={(l) => l.id} />
+        )}
+
+        {/* Owner-only money footer. Staff see the quantity totals above
+            but never a value, because no cost rows reach their session. */}
+        {isOwner && pricingLines.length > 0 && (
           <Card>
-            <CardHeader>
-              <h2 className="font-medium">Document</h2>
-            </CardHeader>
-            <CardBody className="space-y-2 text-sm">
-              <Row label="Vendor bill" value={inward.vendorInvoiceNo ?? "—"} />
-              <Row label="Created" value={formatDateTime(inward.createdAt)} />
-              <Row label="Submitted" value={formatDateTime(inward.submittedAt)} />
-              <Row label="Approved" value={formatDateTime(inward.approvedAt)} />
-              {inward.rejectedReason && (
-                <p className="rounded-control bg-status-danger-bg p-2 text-status-danger-fg">
-                  Sent back: {inward.rejectedReason}
-                </p>
-              )}
+            <CardBody>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <Foot label="Lines priced" value={`${pricedLines} / ${pricingLines.length}`} />
+                <Foot label="Pieces" value={String(totalQty)} />
+                <Foot label="Purchase value" value={formatPaise(purchaseValue)} />
+                <Foot
+                  label="Freight and packing"
+                  value={additionalTotal > 0 ? formatPaise(additionalTotal) : "—"}
+                />
+              </div>
+              <p className="mt-3 border-t border-border pt-3 text-2xs text-text-muted">
+                Purchase value is rate x quantity as entered. The taxable amount, GST
+                split and prorated landed cost are computed at approval from the
+                vendor&apos;s tax setup.
+              </p>
             </CardBody>
           </Card>
-
-          <InvoiceUpload
-            inwardId={inward.id}
-            attachments={attachments}
-            canUpload={inward.status === "draft"}
-            canView={can(user.role, "inward.viewCost")}
-          />
-
-          <InwardWorkflow
-            inwardId={inward.id}
-            status={inward.status}
-            canApprove={can(user.role, "inward.approve")}
-          />
-        </div>
+        )}
       </div>
     </>
   );
@@ -201,7 +233,7 @@ function Tally({
   emphasis,
 }: {
   label: string;
-  value: number;
+  value: string;
   emphasis?: boolean;
 }) {
   return (
@@ -216,6 +248,15 @@ function Tally({
       >
         {value}
       </p>
+    </div>
+  );
+}
+
+function Foot({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-2xs uppercase tracking-wide text-text-subtle">{label}</p>
+      <p className="tnum mt-0.5 text-lg font-medium">{value}</p>
     </div>
   );
 }

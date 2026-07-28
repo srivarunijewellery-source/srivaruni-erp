@@ -11,6 +11,7 @@ export const ROUTES = {
   transferDetail: (id: string) => `/transfers/${id}`,
   stock: "/stock",
   products: "/products",
+  vendors: "/vendors",
 } as const;
 
 export interface NavItem {
@@ -26,4 +27,5 @@ export const NAV: readonly NavItem[] = [
   { href: ROUTES.transfers, label: "Transfers" },
   { href: ROUTES.stock,     label: "Stock" },
   { href: ROUTES.products,  label: "Products" },
+  { href: ROUTES.vendors,   label: "Vendors", requires: "vendor.view" },
 ] as const;
