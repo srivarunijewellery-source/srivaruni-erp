@@ -3,46 +3,93 @@ import { createClient } from "@/lib/supabase/server";
 import type { CurrentUser } from "@/types/domain";
 
 /**
- * The signed-in staff member, resolved once per request.
+ * Why this returns a tagged result rather than `CurrentUser | null`:
  *
- * React's cache() dedupes this across every server component in a render,
- * so the layout, the page and any nested component share one round trip
- * rather than three. Latency to Mumbai is the budget we are protecting.
+ * There are two completely different reasons resolution can fail, and
+ * the first version of this file collapsed both into `null`. The caller
+ * then reported "signed in, but no staff record" for BOTH — including
+ * when the real problem was that no session reached the server at all.
+ * That single wrong message sent an entire debugging session after a
+ * database fault that did not exist. Distinguish the cases.
  */
-export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
+export type SessionResult =
+  | { status: "ok"; user: CurrentUser }
+  | { status: "no-session" }
+  | { status: "no-staff-record"; authUserId: string; email: string | null }
+  | { status: "error"; message: string };
+
+export const resolveSession = cache(async (): Promise<SessionResult> => {
   const supabase = await createClient();
 
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
+  const { data: userData, error: authError } = await supabase.auth.getUser();
 
-  const { data, error } = await supabase
-    .from("staff")
-    .select("id, name, role, home_location_id, locations(id, code)")
-    .eq("auth_user_id", user.id)
-    .maybeSingle();
+  if (authError) {
+    return { status: "error", message: `Auth check failed: ${authError.message}` };
+  }
+  if (!userData.user) {
+    return { status: "no-session" };
+  }
 
-  if (error || !data) return null;
+  // One RPC instead of a PostgREST embed across two RLS-protected
+  // tables. Fewer moving parts, and a real error instead of an
+  // ambiguous empty result.
+  const { data, error } = await supabase.rpc("get_current_staff");
 
-  const location = Array.isArray(data.locations) ? data.locations[0] : data.locations;
+  if (error) {
+    return { status: "error", message: `Staff lookup failed: ${error.message}` };
+  }
+
+  const row = Array.isArray(data) ? data[0] : data;
+
+  if (!row) {
+    return {
+      status: "no-staff-record",
+      authUserId: userData.user.id,
+      email: userData.user.email ?? null,
+    };
+  }
 
   return {
-    staffId: data.id,
-    authUserId: user.id,
-    name: data.name,
-    role: data.role,
-    locationId: data.home_location_id,
-    locationCode: location?.code ?? null,
+    status: "ok",
+    user: {
+      staffId: row.staff_id,
+      authUserId: row.auth_user_id,
+      name: row.name,
+      role: row.role,
+      locationId: row.location_id,
+      locationCode: row.location_code,
+    },
   };
 });
 
-/** For server components that cannot render without a user. Middleware
- *  already redirects, so reaching this means something is inconsistent. */
+/** Convenience for components that just want the user or nothing. */
+export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
+  const result = await resolveSession();
+  return result.status === "ok" ? result.user : null;
+});
+
+/**
+ * For server components that cannot render without a user.
+ *
+ * Each branch says what actually happened. Next.js strips these messages
+ * in production builds, so the app shell also renders them directly
+ * rather than relying on the error boundary alone.
+ */
 export async function requireUser(): Promise<CurrentUser> {
-  const user = await getCurrentUser();
-  if (!user) {
-    throw new Error(
-      "Signed in, but no staff record is linked to this login. Ask the owner to add you.",
-    );
+  const result = await resolveSession();
+
+  switch (result.status) {
+    case "ok":
+      return result.user;
+    case "no-session":
+      throw new Error(
+        "Your session has expired or did not reach the server. Sign in again.",
+      );
+    case "no-staff-record":
+      throw new Error(
+        `Signed in as ${result.email ?? result.authUserId}, but no staff record is linked to this login. Ask the owner to add you.`,
+      );
+    case "error":
+      throw new Error(result.message);
   }
-  return user;
 }
