@@ -12,6 +12,9 @@ export const ROUTES = {
   stock: "/stock",
   products: "/products",
   vendors: "/vendors",
+  vendorDetail: (id: string) => `/vendors/${id}`,
+  productDetail: (id: string) => `/products/${id}`,
+  payments: "/payments",
 } as const;
 
 export interface NavItem {
@@ -28,4 +31,5 @@ export const NAV: readonly NavItem[] = [
   { href: ROUTES.stock,     label: "Stock" },
   { href: ROUTES.products,  label: "Products" },
   { href: ROUTES.vendors,   label: "Vendors", requires: "vendor.view" },
+  { href: ROUTES.payments,  label: "Payments", requires: "inward.viewCost" },
 ] as const;

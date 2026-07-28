@@ -22,6 +22,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { PhotoThumb } from "@/components/ui/PhotoThumb";
 import { InwardWorkflow } from "@/features/inward/InwardWorkflow";
 import { AddItemDialog } from "@/features/inward/AddItemDialog";
+import { AttachExistingDialog } from "@/features/inward/AttachExistingDialog";
 import { LineActions } from "@/features/inward/LineActions";
 import { LineQtyEditor } from "@/features/inward/LineQtyEditor";
 import { InvoiceUpload } from "@/features/inward/InvoiceUpload";
@@ -49,16 +50,18 @@ export default async function InwardDetailPage({
   const showPricing =
     isOwner && (inward.status === "submitted" || inward.status === "approved");
 
-  const [attachments, vendors, formOptions, pricingLines, additionalCosts] =
+  // Every one of these is a separate round trip to Mumbai, so they run
+  // in parallel. Adding a sequential await here is the single easiest
+  // way to make this page feel slow again.
+  const [attachments, vendors, formOptions, pricingLines, additionalCosts, taxSummary] =
     await Promise.all([
     listInwardAttachments(id),
     listVendors(),
     isDraft || showPricing ? listItemFormOptions() : Promise.resolve(null),
     showPricing ? getPricingLines(id) : Promise.resolve([]),
     showPricing ? listAdditionalCosts(id) : Promise.resolve([]),
+    showPricing ? getTaxSummary(id) : Promise.resolve(null),
   ]);
-
-  const taxSummary = showPricing ? await getTaxSummary(id) : null;
 
   const totalQty = inward.lines.reduce((s, l) => s + l.qty, 0);
   const totalShort = inward.lines.reduce((s, l) => s + l.qtyShort, 0);
@@ -172,7 +175,10 @@ export default async function InwardDetailPage({
         {isDraft && formOptions && (
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-text-muted">Add each design as you unpack it.</p>
-            <AddItemDialog inwardId={inward.id} options={formOptions} />
+            <div className="flex flex-wrap items-center gap-2">
+              <AttachExistingDialog inwardId={inward.id} />
+              <AddItemDialog inwardId={inward.id} options={formOptions} />
+            </div>
           </div>
         )}
 

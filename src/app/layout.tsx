@@ -18,6 +18,16 @@ const mono = IBM_Plex_Mono({
   display: "swap",
 });
 
+/**
+ * Run server components in Mumbai, next to the database.
+ *
+ * Vercel defaults to iad1 (Washington DC). With Supabase in ap-south-1
+ * that put roughly 220ms of Atlantic-and-Indian-Ocean latency on EVERY
+ * query, and a page that makes six sequential round trips wore more
+ * than a second of pure network before rendering a thing.
+ */
+export const preferredRegion = "bom1";
+
 export const metadata: Metadata = {
   title: { default: APP.name, template: `%s · ${APP.name}` },
   description: "Stock and inward control for Sri Varuni.",

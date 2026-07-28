@@ -269,3 +269,30 @@ export async function listInwardAttachments(
     id: a.id, storagePath: a.storage_path, createdAt: a.created_at,
   }));
 }
+
+export interface AttachableItem {
+  id: string;
+  barcode: string;
+  name: string;
+  categoryName: string;
+}
+
+/** Catalog entries with no inward line against them. */
+export async function searchAttachableItems(term: string): Promise<AttachableItem[]> {
+  const supabase = await createClient();
+
+  let q = supabase
+    .from("attachable_items")
+    .select("id, barcode, name, category_name")
+    .order("created_at", { ascending: false })
+    .limit(25);
+
+  const t = term.trim();
+  if (t) q = q.or(`barcode.ilike.%${t}%,name.ilike.%${t}%`);
+
+  const { data, error } = await q;
+  if (error) return [];
+  return (data ?? []).map((r) => ({
+    id: r.id, barcode: r.barcode, name: r.name, categoryName: r.category_name,
+  }));
+}

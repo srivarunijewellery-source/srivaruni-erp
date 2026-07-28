@@ -83,10 +83,6 @@ export async function getTaxSummary(
 export async function getPricingLines(inwardId: string): Promise<PricingLine[]> {
   const supabase = await createClient();
 
-  // Recompute before reading so tax and the freight share on screen
-  // always match what approval would produce. Idempotent and owner-only.
-  await supabase.rpc("compute_inward_costs", { p_inward: inwardId });
-
   const { data, error } = await supabase
     .from("inward_lines")
     .select(

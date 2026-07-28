@@ -33,7 +33,7 @@ export function DataTable<T>({
                 key={c.key}
                 scope="col"
                 className={cn(
-                  "px-3 py-2 text-left text-2xs font-semibold uppercase tracking-wide text-text-muted",
+                  "px-2 py-1.5 text-left text-2xs font-semibold uppercase tracking-wide text-text-muted",
                   c.numeric && "text-right",
                   c.className,
                 )}
@@ -50,7 +50,7 @@ export function DataTable<T>({
                 <td
                   key={c.key}
                   className={cn(
-                    "px-3 py-2.5 align-middle",
+                    "px-2 py-1.5 align-middle",
                     c.numeric && "tnum text-right",
                     c.className,
                   )}

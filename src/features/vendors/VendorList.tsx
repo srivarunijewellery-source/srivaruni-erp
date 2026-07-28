@@ -4,6 +4,8 @@ import { useState } from "react";
 import { VendorForm } from "./VendorForm";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import Link from "next/link";
+import { ROUTES } from "@/config/nav";
 import type { VendorDetail } from "./queries";
 
 const MODE_LABEL = {
@@ -39,7 +41,7 @@ export function VendorList({ vendors }: { vendors: VendorDetail[] }) {
               {["Vendor", "Place", "GSTIN", "Pricing", "Tax", "Terms", ""].map((h) => (
                 <th
                   key={h}
-                  className="px-3 py-2 text-left text-2xs font-semibold uppercase tracking-wide text-text-muted"
+                  className="px-2 py-1.5 text-left text-2xs font-semibold uppercase tracking-wide text-text-muted"
                 >
                   {h}
                 </th>
@@ -50,12 +52,16 @@ export function VendorList({ vendors }: { vendors: VendorDetail[] }) {
             {vendors.map((v) => (
               <>
                 <tr key={v.id} className="border-b border-border last:border-0">
-                  <td className="px-3 py-2.5 font-medium">{v.name}</td>
-                  <td className="px-3 py-2.5 text-text-muted">
+                  <td className="px-2 py-1.5 font-medium">
+                    <Link href={ROUTES.vendorDetail(v.id)} className="hover:text-brand">
+                      {v.name}
+                    </Link>
+                  </td>
+                  <td className="px-2 py-1.5 text-text-muted">
                     {v.placeOfBusiness ?? v.city ?? "—"}
                   </td>
-                  <td className="px-3 py-2.5 font-mono text-2xs">{v.gstin ?? "—"}</td>
-                  <td className="px-3 py-2.5">
+                  <td className="px-2 py-1.5 font-mono text-2xs">{v.gstin ?? "—"}</td>
+                  <td className="px-2 py-1.5">
                     <Badge tone={MODE_TONE[v.priceMode]}>{MODE_LABEL[v.priceMode]}</Badge>
                   </td>
                   <td className="tnum px-3 py-2.5">
@@ -64,14 +70,13 @@ export function VendorList({ vendors }: { vendors: VendorDetail[] }) {
                   <td className="tnum px-3 py-2.5">
                     {v.paymentTermsDays === 0 ? "Cash" : `${v.paymentTermsDays}d`}
                   </td>
-                  <td className="px-3 py-2.5 text-right">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setEditing(editing === v.id ? null : v.id)}
+                  <td className="px-2 py-1.5 text-right">
+                    <Link
+                      href={ROUTES.vendorDetail(v.id)}
+                      className="text-sm text-brand hover:underline"
                     >
-                      {editing === v.id ? "Close" : "Edit"}
-                    </Button>
+                      Open
+                    </Link>
                   </td>
                 </tr>
                 {editing === v.id && (

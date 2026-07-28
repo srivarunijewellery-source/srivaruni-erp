@@ -365,3 +365,62 @@ export async function updateInwardHeader(formData: FormData): Promise<Result> {
   revalidatePath(ROUTES.inwardDetail(v.inwardId));
   return ok(undefined);
 }
+
+const attachSchema = z.object({
+  inwardId: z.string().uuid(),
+  itemId: z.string().uuid(),
+  qty: z.coerce.number().int().positive("Quantity must be at least 1."),
+});
+
+/**
+ * Attaches an EXISTING catalog entry to an inward.
+ *
+ * Covers two real cases: an item created ahead of the goods arriving,
+ * and one whose line was removed from a document and needs adding back.
+ * one_inward_per_item still blocks anything genuinely received before,
+ * so this cannot be used to re-inward live stock.
+ */
+export async function attachExistingItem(formData: FormData): Promise<Result<string>> {
+  const parsed = attachSchema.safeParse({
+    inwardId: formData.get("inwardId"),
+    itemId: formData.get("itemId"),
+    qty: formData.get("qty"),
+  });
+  if (!parsed.success) {
+    return err(parsed.error.issues[0]?.message ?? "Check the quantity.");
+  }
+  const v = parsed.data;
+
+  const supabase = await createClient();
+  const { data: staffRows } = await supabase.rpc("get_current_staff");
+  const staff = Array.isArray(staffRows) ? staffRows[0] : staffRows;
+  if (!staff) return err("No staff record is linked to this login.");
+
+  const { data: lastLine } = await supabase
+    .from("inward_lines")
+    .select("line_no")
+    .eq("inward_id", v.inwardId)
+    .order("line_no", { ascending: false, nullsFirst: false })
+    .limit(1)
+    .maybeSingle();
+
+  const { error } = await supabase.from("inward_lines").insert({
+    inward_id: v.inwardId,
+    item_id: v.itemId,
+    qty: v.qty,
+    line_no: (lastLine?.line_no ?? 0) + 1,
+    created_by: staff.staff_id,
+  });
+
+  if (error) {
+    const msg = toMessage(error);
+    return err(
+      msg.includes("one_inward_per_item")
+        ? "That item has already been received on another document."
+        : msg,
+    );
+  }
+
+  revalidatePath(ROUTES.inwardDetail(v.inwardId));
+  return ok(v.itemId);
+}

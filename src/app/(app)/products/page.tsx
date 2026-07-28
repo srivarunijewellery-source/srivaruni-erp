@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import { requireUser } from "@/features/auth/session";
 import { listProducts } from "@/features/products/queries";
-import { listCategories, listItemFormOptions } from "@/features/inward/queries";
 import { can } from "@/config/roles";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Field";
 import { ProductsTable } from "@/features/products/ProductsTable";
+import { NewProductDialog } from "@/features/products/NewProductDialog";
+import { listCategories, listItemFormOptions } from "@/features/inward/queries";
 
 export const metadata: Metadata = { title: "Products" };
 
@@ -31,11 +32,18 @@ export default async function ProductsPage({
   return (
     <>
       <PageHeader
+        action={
+          <NewProductDialog
+            categories={categories}
+            options={options}
+            canSetPricing={canEditPricing}
+          />
+        }
         title="Products"
         description={
           canEditPricing
-            ? "Every SKU ever received. Names, categories and prices are editable inline."
-            : "Every SKU ever received. Names and categories are editable inline."
+            ? "Every SKU ever received. Open one to edit its details."
+            : "Every SKU ever received. Open one to see its details."
         }
       />
 
@@ -59,12 +67,7 @@ export default async function ProductsPage({
           }
         />
       ) : (
-        <ProductsTable
-          rows={rows}
-          categories={categories}
-          options={options}
-          canEditPricing={canEditPricing}
-        />
+        <ProductsTable rows={rows} showPricing={canEditPricing} />
       )}
     </>
   );

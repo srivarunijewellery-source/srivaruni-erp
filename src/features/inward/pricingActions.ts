@@ -118,6 +118,8 @@ export async function savePricingLine(formData: FormData): Promise<Result> {
     }
   }
 
+  await supabase.rpc("compute_inward_costs", { p_inward: v.inwardId });
+
   revalidatePath(ROUTES.inwardDetail(v.inwardId));
   return ok(undefined);
 }
@@ -159,6 +161,8 @@ export async function saveAdditionalCost(formData: FormData): Promise<Result> {
     });
     if (error) return err(toMessage(error));
   }
+
+  await supabase.rpc("compute_inward_costs", { p_inward: parsed.data.inwardId });
 
   revalidatePath(ROUTES.inwardDetail(parsed.data.inwardId));
   return ok(undefined);
