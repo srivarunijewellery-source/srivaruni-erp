@@ -85,6 +85,17 @@ export function NewProductDialog({
             <Input id="name" name="name" required autoFocus />
           </div>
 
+          <div>
+            <Label htmlFor="description">Description</Label>
+            <textarea
+              id="description"
+              name="description"
+              rows={2}
+              placeholder="Optional detail the name cannot hold"
+              className="w-full rounded-control border border-border bg-surface px-3 py-2 text-sm placeholder:text-text-subtle focus:border-brand focus:outline-none"
+            />
+          </div>
+
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <Label htmlFor="categoryId">Category</Label>

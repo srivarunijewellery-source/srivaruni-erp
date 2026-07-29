@@ -57,17 +57,12 @@ export function PricingPanel({
           <span className="text-text-muted">
             <span className="tnum">{totalQty}</span> pieces
           </span>
-          {tax && (
-            <>
-              <Tag muted>{tax.isInterstate ? "IGST" : "CGST + SGST"}</Tag>
-              <Tag muted>
-                {tax.itcEligible ? "Credit recoverable" : "Tax in cost"}
-              </Tag>
-            </>
-          )}
+
         </div>
         <AdditionalCosts inwardId={inwardId} existing={additionalCosts} />
       </div>
+
+      {tax && <TaxBanner tax={tax} />}
 
       {error && (
         <p className="rounded-control bg-status-danger-bg px-3 py-2 text-sm text-status-danger-fg">
@@ -434,5 +429,60 @@ function Th({
     >
       {children}
     </th>
+  );
+}
+
+/**
+ * States, in words, exactly what the rate column means.
+ *
+ * The three price modes produce very different arithmetic from the same
+ * typed number, and a pair of abbreviations was not enough to tell them
+ * apart. The rule being applied is now written out.
+ */
+function TaxBanner({ tax }: { tax: InwardTaxSummary }) {
+  const rule =
+    tax.priceMode === "no_gst"
+      ? {
+          headline: `${tax.vendorName} does not charge GST`,
+          detail:
+            "The rate you type is the whole cost. No tax is added and none is backed out.",
+          tone: "bg-status-neutral-bg text-status-neutral-fg",
+        }
+      : tax.priceMode === "gst_inclusive"
+        ? {
+            headline: `Rate already includes ${tax.gstRate}% GST`,
+            detail:
+              "Tax is backed out of the number you type, so the invoice total does not change.",
+            tone: "bg-status-transit-bg text-status-transit-fg",
+          }
+        : {
+            headline: `${tax.gstRate}% GST is added on top of the rate`,
+            detail:
+              "The number you type is before tax. GST is added, so the invoice total is higher.",
+            tone: "bg-status-approved-bg text-status-approved-fg",
+          };
+
+  return (
+    <div className={`rounded-card px-3 py-2 ${rule.tone}`}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-sm font-medium">{rule.headline}</p>
+          <p className="text-2xs opacity-80">{rule.detail}</p>
+        </div>
+        <div className="text-right text-2xs">
+          {tax.priceMode !== "no_gst" && (
+            <p>
+              {tax.isInterstate ? "IGST" : "CGST + SGST"}
+              {tax.stateName ? ` · vendor in ${tax.stateName}` : ""}
+            </p>
+          )}
+          <p className="opacity-80">
+            {tax.itcEligible
+              ? "Credit recoverable, tax excluded from landed cost"
+              : "Tax loaded into landed cost"}
+          </p>
+        </div>
+      </div>
+    </div>
   );
 }

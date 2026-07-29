@@ -28,10 +28,18 @@ const vendorSchema = z
     defaultGstRate: z.coerce.number().min(0).max(100),
     paymentTermsDays: z.coerce.number().int().min(0).max(365).default(0),
   })
-  .refine((v) => v.gstStatus !== "registered" || (v.gstin ?? "").length === 15, {
-    message: "A registered vendor needs a 15-character GSTIN.",
-    path: ["gstin"],
-  })
+  .refine(
+    (v) =>
+      v.gstStatus !== "registered" ||
+      /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(v.gstin ?? ""),
+    {
+      // Length alone was not enough: "123456789012345" passed, and its
+      // leading 12 silently made a Hyderabad vendor interstate.
+      message:
+        "That is not a valid GSTIN. Format is 2-digit state, 10-character PAN, entity digit, Z, checksum.",
+      path: ["gstin"],
+    },
+  )
   .refine((v) => v.gstStatus !== "unregistered" || !v.gstin, {
     message: "An unregistered vendor cannot have a GSTIN.",
     path: ["gstin"],

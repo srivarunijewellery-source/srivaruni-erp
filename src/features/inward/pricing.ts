@@ -52,6 +52,10 @@ export interface AdditionalCost {
 }
 
 export interface InwardTaxSummary {
+  priceMode: "gst_exclusive" | "gst_inclusive" | "no_gst";
+  gstRate: number;
+  vendorName: string;
+  stateName: string | null;
   taxTreatment: string;
   isInterstate: boolean;
   itcEligible: boolean;
@@ -68,13 +72,34 @@ export async function getTaxSummary(
     .from("inward_header_costs")
     .select(
       `tax_treatment, is_interstate, itc_eligible,
-       invoice_taxable_paise, invoice_tax_paise, invoice_total_paise`,
+       invoice_taxable_paise, invoice_tax_paise, invoice_total_paise,
+       inwards(vendors(name, price_mode, default_gst_rate, state_code))`,
     )
     .eq("inward_id", inwardId)
     .maybeSingle();
 
   if (error || !data) return null;
+
+  const inw = pick(data.inwards as never);
+  const vendor = pick((inw as { vendors?: unknown } | undefined)?.vendors as never) as
+    | { name: string; price_mode: string; default_gst_rate: string; state_code: string | null }
+    | undefined;
+
+  let stateName: string | null = null;
+  if (vendor?.state_code) {
+    const { data: st } = await supabase
+      .from("gst_states")
+      .select("name")
+      .eq("code", vendor.state_code)
+      .maybeSingle();
+    stateName = st?.name ?? null;
+  }
+
   return {
+    priceMode: (vendor?.price_mode ?? "no_gst") as InwardTaxSummary["priceMode"],
+    gstRate: Number(vendor?.default_gst_rate ?? 0),
+    vendorName: vendor?.name ?? "—",
+    stateName,
     taxTreatment: data.tax_treatment,
     isInterstate: data.is_interstate,
     itcEligible: data.itc_eligible,

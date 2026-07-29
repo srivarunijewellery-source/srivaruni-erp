@@ -26,7 +26,9 @@ export function ProductDetailCard({
     <DetailShell
       title="Item details"
       view={
-        <div className="space-y-0">
+        <div className="space-y-4">
+          <PriceTiles product={product} showCost={canEditPricing} />
+          <div className="space-y-0">
           <Fact label="Name" value={product.name} />
           <Fact
             label="Tag"
@@ -61,11 +63,17 @@ export function ProductDetailCard({
             label="Tax rate"
             value={product.gstRate === null ? "—" : `${product.gstRate}%`}
           />
-          {canEditPricing && (
-            <Fact label="Purchase cost" value={formatPaise(product.landedCostPaise)} />
-          )}
-          <Fact label="MRP" value={formatPaise(product.mrpPaise)} />
-          <Fact label="Selling price" value={formatPaise(product.sellingPricePaise)} />
+          <Fact
+            label="Description"
+            value={
+              product.description ? (
+                <span className="whitespace-pre-wrap">{product.description}</span>
+              ) : (
+                <span className="text-text-subtle">—</span>
+              )
+            }
+          />
+          </div>
         </div>
       }
       edit={(done) => (
@@ -118,6 +126,7 @@ function EditForm({
       const core = new FormData();
       core.set("itemId", product.id);
       core.set("name", String(fd.get("name") ?? ""));
+      core.set("description", String(fd.get("description") ?? ""));
       core.set("categoryId", String(fd.get("categoryId") ?? ""));
 
       if (canEditPricing) {
@@ -143,6 +152,18 @@ function EditForm({
       <div>
         <Label htmlFor="name">Name</Label>
         <Input id="name" name="name" defaultValue={product.name} required />
+      </div>
+
+      <div>
+        <Label htmlFor="description">Description</Label>
+        <textarea
+          id="description"
+          name="description"
+          rows={3}
+          defaultValue={product.description ?? ""}
+          placeholder="Stone count, weight, chain length, vendor design reference…"
+          className="w-full rounded-control border border-border bg-surface px-3 py-2 text-sm placeholder:text-text-subtle focus:border-brand focus:outline-none"
+        />
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
@@ -235,6 +256,67 @@ function Attr({
           <option key={o.id} value={o.id}>{o.value}</option>
         ))}
       </Select>
+    </div>
+  );
+}
+
+/**
+ * Pricing as tiles rather than another label/value row.
+ *
+ * Cost, MRP, selling and margin are compared against each other, not
+ * read in sequence, so they belong side by side. Margin is derived, not
+ * stored, and turns red when selling sits below landed cost.
+ */
+function PriceTiles({
+  product,
+  showCost,
+}: {
+  product: ProductDetail;
+  showCost: boolean;
+}) {
+  const sell = product.sellingPricePaise ?? 0;
+  const cost = product.landedCostPaise ?? 0;
+  const margin = sell > 0 && cost > 0 ? ((sell - cost) / sell) * 100 : null;
+
+  return (
+    <div className={`grid gap-2 ${showCost ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-2"}`}>
+      {showCost && (
+        <Tile label="Purchase cost" value={formatPaise(product.landedCostPaise)} muted />
+      )}
+      <Tile label="MRP" value={formatPaise(product.mrpPaise)} muted />
+      <Tile label="Selling" value={formatPaise(product.sellingPricePaise)} />
+      {showCost && (
+        <Tile
+          label="Margin"
+          value={margin === null ? "—" : `${margin.toFixed(1)}%`}
+          danger={margin !== null && margin < 0}
+        />
+      )}
+    </div>
+  );
+}
+
+function Tile({
+  label,
+  value,
+  muted,
+  danger,
+}: {
+  label: string;
+  value: string;
+  muted?: boolean;
+  danger?: boolean;
+}) {
+  return (
+    <div className="rounded-card border border-border bg-surface-sunken px-3 py-2">
+      <p className="text-2xs uppercase tracking-wide text-text-subtle">{label}</p>
+      <p
+        className={`tnum mt-0.5 text-base font-semibold ${
+          danger ? "text-status-danger-fg" : muted ? "text-text-muted" : "text-text"
+        }`}
+      >
+        {value}
+      </p>
     </div>
   );
 }

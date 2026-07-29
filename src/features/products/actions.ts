@@ -19,6 +19,7 @@ import { err, ok, toMessage, type Result } from "@/lib/result";
 const updateSchema = z.object({
   itemId: z.string().uuid(),
   name: z.string().trim().min(1, "Name cannot be empty.").max(120).optional(),
+  description: z.string().trim().max(1000).optional(),
   categoryId: z.string().uuid().optional(),
   mrpPaise: z.coerce.number().int().nonnegative().nullable().optional(),
   sellingPricePaise: z.coerce.number().int().nonnegative().nullable().optional(),
@@ -28,6 +29,7 @@ export async function updateProduct(formData: FormData): Promise<Result> {
   const raw = {
     itemId: formData.get("itemId"),
     name: formData.get("name") ?? undefined,
+    description: formData.get("description") ?? undefined,
     categoryId: formData.get("categoryId") || undefined,
     mrpPaise: formData.get("mrpPaise") === null ? undefined : formData.get("mrpPaise"),
     sellingPricePaise:
@@ -45,6 +47,7 @@ export async function updateProduct(formData: FormData): Promise<Result> {
 
   const patch: Record<string, unknown> = {};
   if (fields.name !== undefined) patch.name = fields.name;
+  if (fields.description !== undefined) patch.description = fields.description || null;
   if (fields.categoryId !== undefined) patch.category_id = fields.categoryId;
   if (fields.mrpPaise !== undefined) patch.mrp_paise = fields.mrpPaise;
   if (fields.sellingPricePaise !== undefined) {
@@ -64,6 +67,7 @@ export async function updateProduct(formData: FormData): Promise<Result> {
 
 const createSchema = z.object({
   name: z.string().trim().min(1, "Give the item a name.").max(120),
+  description: z.string().trim().max(1000).optional(),
   categoryId: z.string().uuid("Choose a category."),
   itemTypeId: z.string().uuid().optional().or(z.literal("")),
   colourId: z.string().uuid().optional().or(z.literal("")),
@@ -89,6 +93,7 @@ const blank = (v: FormDataEntryValue | null) => {
 export async function createProduct(formData: FormData): Promise<Result<string>> {
   const parsed = createSchema.safeParse({
     name: formData.get("name"),
+    description: formData.get("description") ?? undefined,
     categoryId: formData.get("categoryId"),
     itemTypeId: formData.get("itemTypeId") ?? "",
     colourId: formData.get("colourId") ?? "",
@@ -112,6 +117,7 @@ export async function createProduct(formData: FormData): Promise<Result<string>>
     .from("items")
     .insert({
       name: v.name,
+      description: v.description || null,
       category_id: v.categoryId,
       item_type_id: blank(formData.get("itemTypeId")),
       colour_id: blank(formData.get("colourId")),

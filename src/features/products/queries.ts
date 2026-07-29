@@ -103,6 +103,7 @@ export async function listProducts(query: string): Promise<ProductRow[]> {
 }
 
 export interface ProductDetail extends ProductRow {
+  description: string | null;
   itemTypeId: string | null;
   itemTypeName: string | null;
   colourName: string | null;
@@ -121,7 +122,7 @@ export async function getProduct(id: string): Promise<ProductDetail | null> {
   const { data, error } = await supabase
     .from("items")
     .select(
-      `id, barcode, name, status, category_id, item_type_id, created_at,
+      `id, barcode, name, description, status, category_id, item_type_id, created_at,
        mrp_paise, selling_price_paise, hsn, gst_rate,
        colour_id, plating_id, stone_id, size_id,
        categories(name), item_types(name),
@@ -164,6 +165,7 @@ export async function getProduct(id: string): Promise<ProductDetail | null> {
     id: data.id,
     barcode: data.barcode,
     name: data.name,
+    description: data.description,
     categoryId: data.category_id,
     categoryName: one(data.categories)?.name ?? "—",
     itemTypeId: data.item_type_id,

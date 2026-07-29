@@ -7,6 +7,71 @@ import { Button } from "@/components/ui/Button";
 import { Input, Label, Select, FieldError } from "@/components/ui/Field";
 import type { VendorDetail } from "./queries";
 
+/** GST state codes. The first two digits of a GSTIN decide IGST versus
+ *  CGST/SGST, so showing the state name makes a wrong one obvious. */
+const STATES: Record<string, string> = {
+  "01": "Jammu & Kashmir", "02": "Himachal Pradesh", "03": "Punjab",
+  "04": "Chandigarh", "05": "Uttarakhand", "06": "Haryana", "07": "Delhi",
+  "08": "Rajasthan", "09": "Uttar Pradesh", "10": "Bihar", "11": "Sikkim",
+  "12": "Arunachal Pradesh", "13": "Nagaland", "14": "Manipur",
+  "15": "Mizoram", "16": "Tripura", "17": "Meghalaya", "18": "Assam",
+  "19": "West Bengal", "20": "Jharkhand", "21": "Odisha",
+  "22": "Chhattisgarh", "23": "Madhya Pradesh", "24": "Gujarat",
+  "26": "Dadra & Nagar Haveli and Daman & Diu", "27": "Maharashtra",
+  "29": "Karnataka", "30": "Goa", "31": "Lakshadweep", "32": "Kerala",
+  "33": "Tamil Nadu", "34": "Puducherry", "35": "Andaman & Nicobar",
+  "36": "Telangana", "37": "Andhra Pradesh", "38": "Ladakh",
+  "97": "Other Territory",
+};
+
+const GSTIN_RE = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
+
+function StateHint({ gstin, disabled }: { gstin: string; disabled: boolean }) {
+  if (disabled) {
+    return (
+      <p className="mt-1 text-2xs text-text-muted">
+        Unregistered vendors have no GSTIN and no state.
+      </p>
+    );
+  }
+  if (gstin.length < 2) {
+    return (
+      <p className="mt-1 text-2xs text-text-muted">
+        The first two digits set the state, which decides IGST versus CGST/SGST.
+      </p>
+    );
+  }
+
+  const code = gstin.slice(0, 2);
+  const state = STATES[code];
+  const valid = GSTIN_RE.test(gstin);
+
+  if (!state) {
+    return (
+      <p className="mt-1 text-2xs text-status-danger-fg">
+        {code} is not a valid GST state code.
+      </p>
+    );
+  }
+
+  return (
+    <p className="mt-1 text-2xs">
+      <span className={state === "Telangana" ? "text-status-done-fg" : "text-status-approved-fg"}>
+        {code} · {state}
+      </span>
+      <span className="text-text-muted">
+        {" "}
+        {state === "Telangana" ? "· CGST + SGST" : "· interstate, IGST"}
+      </span>
+      {gstin.length === 15 && !valid && (
+        <span className="block text-status-danger-fg">
+          Does not match the GSTIN format.
+        </span>
+      )}
+    </p>
+  );
+}
+
 const PRICE_MODES = [
   {
     value: "no_gst",
@@ -35,6 +100,7 @@ export function VendorForm({
   const [error, setError] = useState<string | null>(null);
   const [gstStatus, setGstStatus] = useState(vendor?.gstStatus ?? "unregistered");
   const [priceMode, setPriceMode] = useState(vendor?.priceMode ?? "no_gst");
+  const [gstin, setGstin] = useState(vendor?.gstin ?? "");
   const [pending, start] = useTransition();
 
   const unregistered = gstStatus === "unregistered";
@@ -92,15 +158,14 @@ export function VendorForm({
               <Input
                 id="gstin"
                 name="gstin"
-                defaultValue={vendor?.gstin ?? ""}
+                value={gstin}
+                onChange={(e) => setGstin(e.target.value.toUpperCase())}
                 maxLength={15}
                 disabled={unregistered}
                 placeholder={unregistered ? "Not applicable" : "08AAACJ1234A1ZQ"}
                 className="font-mono uppercase"
               />
-              <p className="mt-1 text-2xs text-text-muted">
-                The first two digits set the state, which decides IGST versus CGST/SGST.
-              </p>
+              <StateHint gstin={gstin} disabled={unregistered} />
             </div>
           </div>
 
