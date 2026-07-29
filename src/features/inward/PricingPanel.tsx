@@ -82,6 +82,7 @@ export function PricingPanel({
               <Th right className="w-[104px]">MRP</Th>
               <Th right className="w-[104px]">Selling</Th>
               <Th right className="w-[92px]">Tax</Th>
+              <Th right className="w-[104px]">Incl. tax</Th>
               <Th right className="w-[100px]">Landed</Th>
               <Th right className="w-[72px]">Margin</Th>
             </tr>
@@ -151,6 +152,13 @@ function Row({
     const mrpPaise = mrp.trim() === "" ? null : parseRupeesToPaise(mrp);
     const sellPaise = selling.trim() === "" ? null : parseRupeesToPaise(selling);
 
+    // MRP is a ceiling. The database rejects this too; catching it here
+    // just gives a better message than a constraint violation.
+    if (mrpPaise !== null && sellPaise !== null && mrpPaise < sellPaise) {
+      onError("MRP cannot be lower than the selling price.");
+      return;
+    }
+
     start(async () => {
       onError(null);
       const fd = new FormData();
@@ -194,12 +202,41 @@ function Row({
     const ratePaise = parseRupeesToPaise(rate);
     if (ratePaise === null || ratePaise === 0) return;
     if (mrp.trim() !== "" || selling.trim() !== "") return;
+    // MRP and selling match in almost every case, so seed both.
     const s = suggestMrpPaise(ratePaise, line.markupMultiplier);
     setMrp((s / 100).toFixed(2));
     setSelling((s / 100).toFixed(2));
   };
 
   const lineTax = line.cgstPaise + line.sgstPaise + line.igstPaise;
+
+  const mrpPaiseNow = parseRupeesToPaise(mrp);
+  const sellPaiseNow = parseRupeesToPaise(selling);
+  const belowSelling =
+    mrpPaiseNow !== null && sellPaiseNow !== null && mrpPaiseNow < sellPaiseNow;
+
+  const syncMrpToSelling = () => {
+    if (selling.trim() === "") return;
+    setMrp(selling);
+    // Commit immediately: the click already expressed the intent, and
+    // waiting for a blur that may never come would lose it.
+    const ratePaise = parseRupeesToPaise(rate);
+    if (ratePaise === null) return;
+    const sp = parseRupeesToPaise(selling);
+    if (sp === null) return;
+    start(async () => {
+      const fd = new FormData();
+      fd.set("lineId", line.lineId);
+      fd.set("itemId", line.itemId);
+      fd.set("inwardId", inwardId);
+      fd.set("ratePaise", String(ratePaise));
+      fd.set("gstRate", String(line.gstRate));
+      fd.set("mrpPaise", String(sp));
+      fd.set("sellingPricePaise", String(sp));
+      const r = await savePricingLine(fd);
+      if (!r.ok) onError(r.error);
+    });
+  };
   const sell = line.sellingPricePaise ?? 0;
   const margin =
     sell > 0 && line.landedUnitCostPaise > 0
@@ -259,16 +296,32 @@ function Row({
         />
       </td>
       <td className="px-2 py-1.5 text-right">
-        <NarrowInput
-          widthClass="w-[92px]"
-          inputMode="decimal"
-          placeholder="0.00"
-          value={mrp}
-          onChange={(e) => setMrp(e.target.value)}
-          onBlur={commit}
-          className="tnum text-right"
-          aria-label="MRP"
-        />
+        <div className="flex items-center justify-end gap-1">
+          <NarrowInput
+            widthClass="w-[92px]"
+            inputMode="decimal"
+            placeholder="0.00"
+            value={mrp}
+            onChange={(e) => setMrp(e.target.value)}
+            onBlur={commit}
+            className={`tnum text-right ${belowSelling ? "border-status-danger-fg" : ""}`}
+            aria-label="MRP"
+          />
+          {/* MRP and selling are the same in almost every case, so make
+              matching them one click rather than retyping the number. */}
+          <button
+            type="button"
+            onClick={syncMrpToSelling}
+            title="Set MRP equal to selling price"
+            aria-label="Set MRP equal to selling price"
+            className="rounded border border-border px-1 text-2xs leading-5 text-text-muted hover:border-brand hover:text-brand"
+          >
+            =
+          </button>
+        </div>
+        {belowSelling && (
+          <span className="block text-2xs text-status-danger-fg">below selling</span>
+        )}
       </td>
       <td className="px-2 py-1.5 text-right">
         <NarrowInput
@@ -285,6 +338,9 @@ function Row({
 
       <td className="tnum px-2 py-1.5 text-right text-2xs text-text-muted">
         {lineTax > 0 ? formatPaise(lineTax) : "—"}
+      </td>
+      <td className="tnum px-2 py-1.5 text-right">
+        {line.taxablePaise > 0 ? formatPaise(line.taxablePaise + lineTax) : "—"}
       </td>
       <td className="tnum px-2 py-1.5 text-right">
         {line.landedUnitCostPaise > 0 ? formatPaise(line.landedUnitCostPaise) : "—"}

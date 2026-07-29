@@ -33,7 +33,11 @@ export function InwardDocTable({
   const withCost = showCost && pricing.length > 0;
 
   const totalQty = lines.reduce((s, l) => s + l.qty, 0);
-  const totalMrp = pricing.reduce((s, p) => s + (p.mrpPaise ?? 0) * p.qty, 0);
+  const totalTaxable = pricing.reduce((s, p) => s + p.taxablePaise, 0);
+  const totalTax = pricing.reduce(
+    (s, p) => s + p.cgstPaise + p.sgstPaise + p.igstPaise,
+    0,
+  );
   const totalLanded = pricing.reduce((s, p) => s + p.landedUnitCostPaise * p.qty, 0);
   const additionalTotal = additionalCosts.reduce((s, c) => s + c.amountPaise, 0);
 
@@ -52,17 +56,17 @@ export function InwardDocTable({
               {withCost && <Th right className="w-[96px]">Unit cost</Th>}
               {withCost && <Th right className="w-[96px]">MRP</Th>}
               {withCost && <Th right className="w-[96px]">Selling</Th>}
-              {withCost && <Th right className="w-[104px]">Tax</Th>}
+              {withCost && <Th right className="w-[92px]">Taxable</Th>}
+              {withCost && <Th right className="w-[92px]">Tax</Th>}
+              {withCost && <Th right className="w-[104px]">Incl. tax</Th>}
               {withCost && <Th right className="w-[104px]">Landing cost</Th>}
               {withCost && <Th right className="w-[80px]">Margin</Th>}
-              {withCost && <Th right className="w-[104px]">Total</Th>}
             </tr>
           </thead>
           <tbody>
             {lines.map((l, i) => {
               const p = byLine.get(l.id);
               const lineTax = p ? p.cgstPaise + p.sgstPaise + p.igstPaise : 0;
-              const landedTotal = p ? p.landedUnitCostPaise * p.qty : 0;
               const sell = p?.sellingPricePaise ?? 0;
               const margin =
                 p && sell > 0 && p.landedUnitCostPaise > 0
@@ -102,8 +106,11 @@ export function InwardDocTable({
                       <td className="tnum px-2 py-1.5 text-right">
                         {formatPaise(p?.sellingPricePaise ?? null)}
                       </td>
+                      <td className="tnum px-2 py-1.5 text-right text-text-muted">
+                        {p ? formatPaise(p.taxablePaise) : "—"}
+                      </td>
                       <td className="px-2 py-1.5 text-right">
-                        {p && p.gstRate > 0 ? (
+                        {p && lineTax > 0 ? (
                           <>
                             <span className="block text-2xs text-text-subtle">
                               GST {p.gstRate}%
@@ -115,6 +122,9 @@ export function InwardDocTable({
                         ) : (
                           <span className="text-text-subtle">—</span>
                         )}
+                      </td>
+                      <td className="tnum px-2 py-1.5 text-right font-medium">
+                        {p ? formatPaise(p.taxablePaise + lineTax) : "—"}
                       </td>
                       <td className="tnum px-2 py-1.5 text-right">
                         {p ? formatPaise(p.landedUnitCostPaise) : "—"}
@@ -137,9 +147,6 @@ export function InwardDocTable({
                           </span>
                         )}
                       </td>
-                      <td className="tnum px-2 py-1.5 text-right font-medium">
-                        {formatPaise(landedTotal)}
-                      </td>
                     </>
                   )}
                 </tr>
@@ -155,12 +162,19 @@ export function InwardDocTable({
               {withCost && (
                 <>
                   <td />
-                  <td className="tnum px-2 py-2 text-right">{formatPaise(totalMrp)}</td>
                   <td />
                   <td />
+                  <td className="tnum px-2 py-2 text-right">
+                    {formatPaise(totalTaxable)}
+                  </td>
+                  <td className="tnum px-2 py-2 text-right">{formatPaise(totalTax)}</td>
+                  <td className="tnum px-2 py-2 text-right">
+                    {formatPaise(totalTaxable + totalTax)}
+                  </td>
+                  <td className="tnum px-2 py-2 text-right">
+                    {formatPaise(totalLanded)}
+                  </td>
                   <td />
-                  <td />
-                  <td className="tnum px-2 py-2 text-right">{formatPaise(totalLanded)}</td>
                 </>
               )}
             </tr>
@@ -211,10 +225,14 @@ export function InwardDocTable({
                 <h3 className="text-sm font-medium">Summary</h3>
               </div>
               <div className="px-3 py-2">
-                <SumRow label="Taxable amount" value={formatPaise(tax.taxablePaise)} />
+                <SumRow label="Total before tax" value={formatPaise(tax.taxablePaise)} />
                 <SumRow
                   label={tax.isInterstate ? "IGST" : "CGST + SGST"}
                   value={formatPaise(tax.taxPaise)}
+                />
+                <SumRow
+                  label="Total with tax"
+                  value={formatPaise(tax.taxablePaise + tax.taxPaise)}
                 />
                 <SumRow
                   label="Additional charges"
