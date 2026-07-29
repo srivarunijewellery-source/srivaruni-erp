@@ -1,7 +1,5 @@
 "use client";
 
-import { useState } from "react";
-import { Button } from "@/components/ui/Button";
 import { Barcode } from "@/components/ui/Barcode";
 import { PhotoThumb } from "@/components/ui/PhotoThumb";
 import { LineQtyEditor } from "./LineQtyEditor";
@@ -31,8 +29,7 @@ export function LinesSection({
   editable: boolean;
   options: ItemFormOptions | null;
 }) {
-  const [editing, setEditing] = useState(false);
-  const active = editable && editing;
+  const active = editable;
 
   return (
     <div className="space-y-3">
@@ -51,12 +48,6 @@ export function LinesSection({
                 <AddItemDialog inwardId={inwardId} options={options} />
               </>
             )}
-            <Button
-              variant={active ? "primary" : "secondary"}
-              onClick={() => setEditing(!editing)}
-            >
-              {active ? "Done editing" : "Edit lines"}
-            </Button>
           </div>
         )}
       </div>

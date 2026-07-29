@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { attachExistingItem } from "./actions";
 import { Button } from "@/components/ui/Button";
-import { Card, CardBody } from "@/components/ui/Card";
+import { Modal } from "@/components/ui/Modal";
 import { Input, NarrowInput, FieldError } from "@/components/ui/Field";
 import { Barcode } from "@/components/ui/Barcode";
 import type { AttachableItem } from "./queries";
@@ -69,20 +69,15 @@ export function AttachExistingDialog({ inwardId }: { inwardId: string }) {
     });
 
   return (
-    <Card className="w-full">
-      <CardBody className="space-y-3">
-        <div className="flex items-center gap-2">
-          <Input
-            autoFocus
-            value={term}
-            onChange={(e) => setTerm(e.target.value)}
-            placeholder="Search by tag or name"
-            aria-label="Search existing items"
-          />
-          <Button variant="ghost" onClick={() => setOpen(false)}>
-            Close
-          </Button>
-        </div>
+    <Modal title="Add an existing item" onClose={() => setOpen(false)}>
+      <div className="space-y-3">
+        <Input
+          autoFocus
+          value={term}
+          onChange={(e) => setTerm(e.target.value)}
+          placeholder="Search by tag or name"
+          aria-label="Search existing items"
+        />
 
         {items.length === 0 ? (
           <p className="py-3 text-center text-sm text-text-muted">
@@ -91,7 +86,7 @@ export function AttachExistingDialog({ inwardId }: { inwardId: string }) {
               : "No unattached catalog entries. Items already received cannot be added again."}
           </p>
         ) : (
-          <ul className="divide-y divide-border">
+          <ul className="max-h-[24rem] divide-y divide-border overflow-y-auto">
             {items.map((i) => (
               <li key={i.id} className="flex items-center gap-2 py-2">
                 <div className="min-w-0 flex-1">
@@ -118,7 +113,7 @@ export function AttachExistingDialog({ inwardId }: { inwardId: string }) {
         )}
 
         {error && <FieldError>{error}</FieldError>}
-      </CardBody>
-    </Card>
+      </div>
+    </Modal>
   );
 }

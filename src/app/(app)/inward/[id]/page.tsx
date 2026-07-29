@@ -18,6 +18,8 @@ import { Badge } from "@/components/ui/Badge";
 import { Card, CardBody } from "@/components/ui/Card";
 import { InwardWorkflow } from "@/features/inward/InwardWorkflow";
 import { LinesSection } from "@/features/inward/LinesSection";
+import { InwardDocTable } from "@/features/inward/InwardDocTable";
+import { DocModeSwitch } from "@/features/inward/DocModeSwitch";
 import { InvoiceUpload } from "@/features/inward/InvoiceUpload";
 import { BillDetails } from "@/features/inward/BillDetails";
 import { PricingPanel } from "@/features/inward/PricingPanel";
@@ -118,22 +120,37 @@ export default async function InwardDetailPage({
       </div>
 
       <div className="space-y-3">
-        {showPricing && formOptions ? (
-          <PricingPanel
-            inwardId={inward.id}
-            lines={pricingLines}
-            additionalCosts={additionalCosts}
-            options={formOptions}
-            tax={taxSummary}
-          />
-        ) : (
-          <LinesSection
-            inwardId={inward.id}
-            lines={inward.lines}
-            editable={isDraft}
-            options={formOptions}
-          />
-        )}
+        <DocModeSwitch
+          canEdit={isDraft || showPricing}
+          editLabel={showPricing ? "Enter pricing" : "Edit lines"}
+          document={
+            <InwardDocTable
+              lines={inward.lines}
+              pricing={pricingLines}
+              additionalCosts={additionalCosts}
+              tax={taxSummary}
+              showCost={isOwner}
+            />
+          }
+          editor={
+            showPricing && formOptions ? (
+              <PricingPanel
+                inwardId={inward.id}
+                lines={pricingLines}
+                additionalCosts={additionalCosts}
+                options={formOptions}
+                tax={taxSummary}
+              />
+            ) : (
+              <LinesSection
+                inwardId={inward.id}
+                lines={inward.lines}
+                editable={isDraft}
+                options={formOptions}
+              />
+            )
+          }
+        />
 
         {/* Owner-only money footer. Staff see the quantity totals above
             but never a value, because no cost rows reach their session. */}
