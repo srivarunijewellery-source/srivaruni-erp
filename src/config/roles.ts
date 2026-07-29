@@ -27,7 +27,9 @@ export type Capability =
   | "transfer.receive"
   | "adjustment.approve"
   | "catalog.manage"
-  | "vendor.view";
+  | "vendor.view"
+  | "pricing.manage"
+  | "discount.manage";
 
 const RULES: Record<Capability, (r: Role) => boolean> = {
   // Creation is deliberately open. The control is at approval, so the
@@ -48,6 +50,12 @@ const RULES: Record<Capability, (r: Role) => boolean> = {
   "adjustment.approve": isOwner,
   "catalog.manage": isOwner,
   "vendor.view": isManagerOrAbove,
+
+  // Both pricing surfaces show landed cost by definition, and landed
+  // cost is already owner-only at the RLS level. Anything softer here
+  // would be a second door into the same room.
+  "pricing.manage": isOwner,
+  "discount.manage": isOwner,
 };
 
 /** Components ask can(role, "x"); they never compare roles directly. */

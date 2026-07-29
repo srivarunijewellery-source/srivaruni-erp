@@ -16,6 +16,11 @@ export const ROUTES = {
   productDetail: (id: string) => `/products/${id}`,
   payments: "/payments",
   adjustments: "/adjustments",
+  pricing: "/pricing",
+  pricingRules: "/pricing/rules",
+  pricingSettings: "/pricing/settings",
+  discounts: "/discounts",
+  discountSettings: "/discounts/settings",
 } as const;
 
 export interface NavItem {
@@ -34,4 +39,6 @@ export const NAV: readonly NavItem[] = [
   { href: ROUTES.products,  label: "Products" },
   { href: ROUTES.vendors,   label: "Vendors", requires: "vendor.view" },
   { href: ROUTES.payments,  label: "Payments", requires: "inward.viewCost" },
+  { href: ROUTES.pricing,   label: "Pricing", requires: "pricing.manage" },
+  { href: ROUTES.discounts, label: "Discounts", requires: "discount.manage" },
 ] as const;

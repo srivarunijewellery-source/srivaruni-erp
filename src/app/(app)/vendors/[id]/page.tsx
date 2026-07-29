@@ -13,6 +13,7 @@ import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { VendorDetailCard } from "@/features/vendors/VendorDetailCard";
+import { VendorPricingCard } from "@/features/pricing/VendorPricingCard";
 import { formatPaise } from "@/lib/money";
 import { formatDate } from "@/lib/format";
 import { listPayments } from "@/features/payments/queries";
@@ -66,6 +67,15 @@ export default async function VendorDetailPage({
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="lg:col-span-1">
           <VendorDetailCard vendor={vendor} />
+          {can(user.role, "pricing.manage") && (
+            <VendorPricingCard
+              vendorId={vendor.id}
+              pricingMode={vendor.pricingMode}
+              codeMultiple={vendor.codeMultiple}
+              codeHasDateSuffix={vendor.codeHasDateSuffix}
+              pricingNote={vendor.pricingNote}
+            />
+          )}
           <div className="mt-4">
             <Card>
               <CardHeader>

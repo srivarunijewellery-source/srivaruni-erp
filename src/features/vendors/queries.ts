@@ -1,3 +1,4 @@
+import type { VendorPricingMode } from "@/types/domain";
 import { createClient } from "@/lib/supabase/server";
 
 export type PriceMode = "gst_exclusive" | "gst_inclusive" | "no_gst";
@@ -16,6 +17,11 @@ export interface VendorDetail {
   defaultGstRate: number;
   paymentTermsDays: number;
   active: boolean;
+  /** How this vendor's prices are read off a product title. */
+  pricingMode: VendorPricingMode;
+  codeMultiple: number | null;
+  codeHasDateSuffix: boolean;
+  pricingNote: string | null;
 }
 
 /** Full vendor records are manager-and-above by RLS; staff use the
@@ -27,7 +33,8 @@ export async function listVendorDetails(): Promise<VendorDetail[]> {
     .select(
       `id, name, gst_status, gstin, state_code, phone, city,
        place_of_business, price_mode, default_gst_rate,
-       payment_terms_days, active`,
+       payment_terms_days, active,
+       pricing_mode, code_multiple, code_has_date_suffix, pricing_note`,
     )
     .order("name");
 
@@ -45,6 +52,10 @@ export async function listVendorDetails(): Promise<VendorDetail[]> {
     defaultGstRate: Number(v.default_gst_rate),
     paymentTermsDays: v.payment_terms_days,
     active: v.active,
+    pricingMode: v.pricing_mode,
+    codeMultiple: v.code_multiple === null ? null : Number(v.code_multiple),
+    codeHasDateSuffix: v.code_has_date_suffix,
+    pricingNote: v.pricing_note,
   }));
 }
 
@@ -80,7 +91,8 @@ export async function getVendor(id: string): Promise<VendorDetail | null> {
     .select(
       `id, name, gst_status, gstin, state_code, phone, city,
        place_of_business, price_mode, default_gst_rate,
-       payment_terms_days, active`,
+       payment_terms_days, active,
+       pricing_mode, code_multiple, code_has_date_suffix, pricing_note`,
     )
     .eq("id", id)
     .maybeSingle();
@@ -99,6 +111,10 @@ export async function getVendor(id: string): Promise<VendorDetail | null> {
     defaultGstRate: Number(data.default_gst_rate),
     paymentTermsDays: data.payment_terms_days,
     active: data.active,
+    pricingMode: data.pricing_mode,
+    codeMultiple: data.code_multiple === null ? null : Number(data.code_multiple),
+    codeHasDateSuffix: data.code_has_date_suffix,
+    pricingNote: data.pricing_note,
   };
 }
 

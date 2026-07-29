@@ -140,3 +140,160 @@ export interface ItemFormOptions {
   stones: AttributeOption[];
   sizes: AttributeOption[];
 }
+
+/* ---------------------------------------------------------------------
+   Pricing
+   ------------------------------------------------------------------ */
+
+export type VendorPricingMode = "code_multiple" | "serial_list" | "manual";
+
+/** Margin bands are basis points on the tag price: 50-55% is 5000-5500. */
+export interface PriceBand {
+  id: string;
+  label: string;
+  loBps: number;
+  hiBps: number;
+}
+
+export interface PricingRule {
+  id: string;
+  name: string;
+  vendorId: string | null;
+  vendorName: string | null;
+  categoryId: string | null;
+  categoryName: string | null;
+  itemTypeId: string | null;
+  itemTypeName: string | null;
+  bandId: string;
+  bandLabel: string;
+  specificity: number;
+  active: boolean;
+}
+
+export interface PricingSettings {
+  targetNudgeBps: number;
+  roundMode: "nearest" | "up";
+  gridSwitchPaise: Paise;
+  highEndingPaise: number;
+  lowEndingsPaise: number[];
+  marginIncludesGst: boolean;
+  defaultBandId: string | null;
+}
+
+/** What recommend_price() hands back. Every figure decided server-side. */
+export interface PriceRecommendation {
+  landedCostPaise: Paise;
+  bandId: string;
+  bandLabel: string;
+  loBps: number;
+  hiBps: number;
+  targetBps: number;
+  ruleId: string | null;
+  ruleName: string | null;
+  mrpMinPaise: Paise;
+  mrpMaxPaise: Paise;
+  idealMrpPaise: Paise;
+  recommendedMrpPaise: Paise;
+  achievedMarginBps: number;
+  inBand: boolean;
+}
+
+/** Result of reading a design code out of a product title. */
+export interface ParsedDesignCode {
+  code: string;
+  codeNumeric: number;
+  dateDigits: string | null;
+  parsedDate: string | null;
+  /** Both a 7- and an 8-digit date suffix parsed, giving different codes. */
+  ambiguous: boolean;
+  altCode: string | null;
+  altDate: string | null;
+}
+
+/* ---------------------------------------------------------------------
+   Discounts
+   ------------------------------------------------------------------ */
+
+export type DiscountScope = "selection" | "invoice";
+export type DiscountValueKind = "percent" | "amount";
+
+export interface DiscountScheme {
+  id: string;
+  name: string;
+  scope: DiscountScope;
+  valueKind: DiscountValueKind;
+  valueBps: number | null;
+  valuePaise: Paise | null;
+  startsOn: string;
+  endsOn: string;
+  active: boolean;
+  priority: number;
+  stackable: boolean;
+  minBillPaise: Paise;
+  maxDiscountPaise: Paise | null;
+  locationIds: string[] | null;
+  note: string | null;
+  targets: DiscountTarget[];
+}
+
+export interface DiscountTarget {
+  id: string;
+  categoryId: string | null;
+  categoryName: string | null;
+  itemTypeId: string | null;
+  itemTypeName: string | null;
+  vendorId: string | null;
+  vendorName: string | null;
+  itemId: string | null;
+  itemName: string | null;
+}
+
+export interface DiscountSettings {
+  maxPercentStaffBps: number;
+  maxPercentManagerBps: number;
+  maxPercentOwnerBps: number;
+  maxCampaignDays: number;
+  allowStacking: boolean;
+  neverBelowCost: boolean;
+  minMarginBps: number;
+  requireReasonAboveBps: number;
+  requireApprovalAboveBps: number;
+}
+
+/** The shape resolve_discounts() returns. Mirrors the jsonb exactly. */
+export interface DiscountResolution {
+  as_of: string;
+  role: Role;
+  role_cap_bps: number;
+  lines: Array<{
+    idx: number;
+    item_id: string;
+    item_name: string;
+    qty: number;
+    unit_price_paise: Paise;
+    gross_paise: Paise;
+    scheme_id: string | null;
+    scheme_name: string | null;
+    discount_paise: Paise;
+    net_paise: Paise;
+    capped: boolean;
+    /** The margin floor refused this discount, wholly or in part. */
+    floor_blocked: boolean;
+  }>;
+  gross_paise: Paise;
+  line_discount_paise: Paise;
+  subtotal_paise: Paise;
+  invoice_scheme_id: string | null;
+  invoice_scheme_name: string | null;
+  invoice_discount_paise: Paise;
+  manual_discount_paise: Paise;
+  manual_discount_bps: number;
+  total_discount_paise: Paise;
+  net_paise: Paise;
+  effective_discount_bps: number;
+  floor_headroom_paise: Paise;
+  role_capped: boolean;
+  requires_reason: boolean;
+  requires_approval: boolean;
+  notes: string[];
+}
