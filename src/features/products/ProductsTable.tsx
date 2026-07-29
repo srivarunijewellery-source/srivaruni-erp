@@ -47,6 +47,7 @@ export function ProductsTable({
           <col />
           <col className="w-[132px]" />
           <col className="w-[104px]" />
+          <col className="w-[84px]" />
           {showPricing && <col className="w-[96px]" />}
           <col className="w-[92px]" />
           <col className="w-[96px]" />
@@ -60,6 +61,7 @@ export function ProductsTable({
             <Th>Item</Th>
             <Th>Category</Th>
             <Th>Type</Th>
+            <Th right>Tax</Th>
             {showPricing && <Th right>Purchase</Th>}
             <Th right>MRP</Th>
             <Th right>Selling</Th>
@@ -98,6 +100,10 @@ export function ProductsTable({
               </td>
               <td className="truncate px-2 py-1.5 text-2xs text-text-subtle">
                 {r.itemTypeName ?? "—"}
+              </td>
+              <td className="px-2 py-1.5 text-right text-2xs text-text-muted">
+                {r.gstRate === null ? "—" : `${r.gstRate}%`}
+                {r.hsn && <span className="block text-text-subtle">{r.hsn}</span>}
               </td>
               {showPricing && (
                 <td className="tnum px-2 py-1.5 text-right text-text-muted">

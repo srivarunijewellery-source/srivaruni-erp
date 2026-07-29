@@ -4,7 +4,7 @@ import { useEffect, useState, useTransition } from "react";
 import { attachExistingItem } from "./actions";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody } from "@/components/ui/Card";
-import { Input, FieldError } from "@/components/ui/Field";
+import { Input, NarrowInput, FieldError } from "@/components/ui/Field";
 import { Barcode } from "@/components/ui/Barcode";
 import type { AttachableItem } from "./queries";
 
@@ -96,17 +96,18 @@ export function AttachExistingDialog({ inwardId }: { inwardId: string }) {
               <li key={i.id} className="flex items-center gap-2 py-2">
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{i.name}</p>
-                  <p className="flex items-center gap-2 text-2xs text-text-muted">
+                  <span className="flex items-center gap-2 text-2xs text-text-muted">
                     <Barcode code={i.barcode} />
-                    {i.categoryName}
-                  </p>
+                    <span className="truncate">{i.categoryName}</span>
+                  </span>
                 </div>
-                <Input
+                <NarrowInput
+                  widthClass="w-20"
                   inputMode="numeric"
                   placeholder="Qty"
                   value={qty[i.id] ?? ""}
                   onChange={(e) => setQty((p) => ({ ...p, [i.id]: e.target.value }))}
-                  className="tnum w-20 text-right"
+                  className="tnum shrink-0 text-right"
                 />
                 <Button size="sm" variant="primary" disabled={pending} onClick={() => attach(i)}>
                   Add

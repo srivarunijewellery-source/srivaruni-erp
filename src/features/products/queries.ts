@@ -10,6 +10,8 @@ export interface ProductRow {
   itemTypeName: string | null;
   colourName: string | null;
   platingName: string | null;
+  hsn: string | null;
+  gstRate: number | null;
   status: ItemStatus;
   photoPath: string | null;
   /** Null for anyone but the owner: RLS returns no cost rows to staff. */
@@ -38,7 +40,7 @@ export async function listProducts(query: string): Promise<ProductRow[]> {
     .from("items")
     .select(
       `id, barcode, name, status, category_id, created_at,
-       mrp_paise, selling_price_paise,
+       mrp_paise, selling_price_paise, hsn, gst_rate,
        colour_id, plating_id, stone_id, size_id,
        categories(name), item_types(name),
        item_photos(storage_path, is_primary, sort_order),
@@ -83,6 +85,8 @@ export async function listProducts(query: string): Promise<ProductRow[]> {
       itemTypeName: (Array.isArray(r.item_types) ? r.item_types[0] : r.item_types)?.name ?? null,
       colourName: null,
       platingName: null,
+      hsn: r.hsn,
+      gstRate: r.gst_rate === null ? null : Number(r.gst_rate),
       status: r.status,
       photoPath: primary?.storage_path ?? null,
       mrpPaise: r.mrp_paise,

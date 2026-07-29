@@ -4,7 +4,7 @@ import { useEffect, useState, useTransition } from "react";
 import { recordPayment } from "./actions";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { Input, Label, Select, FieldError } from "@/components/ui/Field";
+import { Input, NarrowInput, Label, Select, FieldError } from "@/components/ui/Field";
 import { formatPaise, parseRupeesToPaise } from "@/lib/money";
 import { formatDate } from "@/lib/format";
 import type { PaymentAccount, VendorBalanceRow, OpenBill } from "./queries";
@@ -203,22 +203,27 @@ export function PaymentForm({
                 {bills.map((b) => (
                   <div key={b.inwardId} className="flex items-center gap-3 px-3 py-2">
                     <div className="min-w-0 flex-1">
-                      <span className="font-mono text-2xs">{b.docNo}</span>
-                      <span className="ml-2 text-2xs text-text-muted">
-                        {b.invoiceNo ?? "no bill no."} · {formatDate(b.invoiceDate)}
-                      </span>
+                      <div className="flex flex-wrap items-baseline gap-x-2">
+                        <span className="whitespace-nowrap font-mono text-2xs">
+                          {b.docNo}
+                        </span>
+                        <span className="truncate text-2xs text-text-muted">
+                          {b.invoiceNo ?? "no bill no."} · {formatDate(b.invoiceDate)}
+                        </span>
+                      </div>
                       <p className="text-2xs text-text-subtle">
                         {formatPaise(b.duePaise)} due of {formatPaise(b.totalPaise)}
                       </p>
                     </div>
-                    <Input
+                    <NarrowInput
+                      widthClass="w-28"
                       inputMode="decimal"
                       placeholder="0.00"
                       value={alloc[b.inwardId] ?? ""}
                       onChange={(e) =>
                         setAlloc((p) => ({ ...p, [b.inwardId]: e.target.value }))
                       }
-                      className="tnum w-28 text-right"
+                      className="tnum shrink-0 text-right"
                     />
                   </div>
                 ))}

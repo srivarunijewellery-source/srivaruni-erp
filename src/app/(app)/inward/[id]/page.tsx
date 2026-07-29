@@ -15,22 +15,13 @@ import { can } from "@/config/roles";
 import { INWARD_STATUS } from "@/config/status";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Badge } from "@/components/ui/Badge";
-import { Barcode } from "@/components/ui/Barcode";
 import { Card, CardBody } from "@/components/ui/Card";
-import { DataTable, type Column } from "@/components/ui/DataTable";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { PhotoThumb } from "@/components/ui/PhotoThumb";
 import { InwardWorkflow } from "@/features/inward/InwardWorkflow";
-import { AddItemDialog } from "@/features/inward/AddItemDialog";
-import { AttachExistingDialog } from "@/features/inward/AttachExistingDialog";
-import { LineActions } from "@/features/inward/LineActions";
-import { LineQtyEditor } from "@/features/inward/LineQtyEditor";
+import { LinesSection } from "@/features/inward/LinesSection";
 import { InvoiceUpload } from "@/features/inward/InvoiceUpload";
 import { BillDetails } from "@/features/inward/BillDetails";
 import { PricingPanel } from "@/features/inward/PricingPanel";
-import { itemPhotoUrl } from "@/lib/storage";
 import { formatPaise } from "@/lib/money";
-import type { InwardLine } from "@/types/domain";
 
 export default async function InwardDetailPage({
   params,
@@ -76,51 +67,6 @@ export default async function InwardDetailPage({
   const additionalTotal = additionalCosts.reduce((s, c) => s + c.amountPaise, 0);
   const pricedLines = pricingLines.filter((l) => l.ratePaise !== null).length;
 
-  const columns: ReadonlyArray<Column<InwardLine>> = [
-    {
-      key: "photo",
-      header: "",
-      render: (l) => <PhotoThumb src={itemPhotoUrl(l.photoPath)} alt={l.name} size={56} />,
-    },
-    { key: "tag", header: "Tag", render: (l) => <Barcode code={l.barcode} /> },
-    { key: "name", header: "Item", render: (l) => l.name },
-    { key: "category", header: "Category", render: (l) => l.category },
-    {
-      key: "qty",
-      header: "Received",
-      numeric: true,
-      render: (l) => (
-        <LineQtyEditor
-          lineId={l.id}
-          inwardId={inward.id}
-          qty={l.qty}
-          editable={isDraft}
-        />
-      ),
-    },
-    {
-      key: "short",
-      header: "Short",
-      numeric: true,
-      render: (l) =>
-        l.qtyShort > 0 ? (
-          <span className="text-status-danger-fg">{l.qtyShort}</span>
-        ) : (
-          "—"
-        ),
-    },
-    ...(isDraft
-      ? [
-          {
-            key: "actions",
-            header: "",
-            render: (l: InwardLine) => (
-              <LineActions lineId={l.id} inwardId={inward.id} />
-            ),
-          },
-        ]
-      : []),
-  ];
 
   return (
     <>
@@ -172,26 +118,7 @@ export default async function InwardDetailPage({
       </div>
 
       <div className="space-y-3">
-        {isDraft && formOptions && (
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm text-text-muted">Add each design as you unpack it.</p>
-            <div className="flex flex-wrap items-center gap-2">
-              <AttachExistingDialog inwardId={inward.id} />
-              <AddItemDialog inwardId={inward.id} options={formOptions} />
-            </div>
-          </div>
-        )}
-
-        {inward.lines.length === 0 ? (
-          <EmptyState
-            title="Nothing added yet"
-            hint={
-              isDraft
-                ? "Open the carton and add each design. A tag number is issued automatically for every item you save."
-                : "This document has no lines."
-            }
-          />
-        ) : showPricing && formOptions ? (
+        {showPricing && formOptions ? (
           <PricingPanel
             inwardId={inward.id}
             lines={pricingLines}
@@ -200,7 +127,12 @@ export default async function InwardDetailPage({
             tax={taxSummary}
           />
         ) : (
-          <DataTable columns={columns} rows={inward.lines} getKey={(l) => l.id} />
+          <LinesSection
+            inwardId={inward.id}
+            lines={inward.lines}
+            editable={isDraft}
+            options={formOptions}
+          />
         )}
 
         {/* Owner-only money footer. Staff see the quantity totals above
