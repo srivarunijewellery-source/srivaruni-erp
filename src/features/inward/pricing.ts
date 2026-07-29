@@ -26,6 +26,10 @@ export interface PricingLine {
   platingId: string | null;
   stoneId: string | null;
   sizeId: string | null;
+  colourName: string | null;
+  platingName: string | null;
+  stoneName: string | null;
+  sizeName: string | null;
   ratePaise: Paise | null;
   gstRate: number;
   /** Computed by compute_inward_costs, so the owner sees the tax and the
@@ -100,6 +104,29 @@ export async function getPricingLines(inwardId: string): Promise<PricingLine[]> 
 
   if (error) throw error;
 
+  // Resolve attribute labels in one round trip rather than per line.
+  // The pricing screen shows these as tags on every row, so N+1 lookups
+  // here would be N+1 hops to Mumbai.
+  const attrIds = new Set<string>();
+  for (const l of data ?? []) {
+    const it = pick(l.items);
+    for (const id of [it?.colour_id, it?.plating_id, it?.stone_id, it?.size_id]) {
+      if (id) attrIds.add(id);
+    }
+  }
+
+  const attrNames = new Map<string, string>();
+  if (attrIds.size > 0) {
+    const { data: attrs } = await supabase
+      .from("attribute_options")
+      .select("id, value")
+      .in("id", [...attrIds]);
+    for (const a of attrs ?? []) attrNames.set(a.id, a.value);
+  }
+
+  const label = (id: string | null | undefined) =>
+    id ? attrNames.get(id) ?? null : null;
+
   return (data ?? []).map((l) => {
     const item = pick(l.items);
     const category = pick(item?.categories);
@@ -125,6 +152,10 @@ export async function getPricingLines(inwardId: string): Promise<PricingLine[]> 
       platingId: item?.plating_id ?? null,
       stoneId: item?.stone_id ?? null,
       sizeId: item?.size_id ?? null,
+      colourName: label(item?.colour_id),
+      platingName: label(item?.plating_id),
+      stoneName: label(item?.stone_id),
+      sizeName: label(item?.size_id),
       ratePaise: cost?.rate_paise ?? null,
       gstRate: Number(cost?.gst_rate ?? 3),
       taxablePaise: cost?.taxable_paise ?? 0,

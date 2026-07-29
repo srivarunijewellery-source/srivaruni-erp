@@ -1,31 +1,31 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { savePricingLine, saveAdditionalCost, updateItemAttributes } from "./pricingActions";
+import {
+  savePricingLine,
+  saveAdditionalCost,
+  updateItemAttributes,
+} from "./pricingActions";
+import { updateInwardLineQty } from "./actions";
 import { PhotoThumb } from "@/components/ui/PhotoThumb";
 import { Barcode } from "@/components/ui/Barcode";
-import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { Tag } from "@/components/ui/Tag";
+import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
+import { NarrowInput, Label, Select } from "@/components/ui/Field";
 import { itemPhotoUrl } from "@/lib/storage";
 import { formatPaise, parseRupeesToPaise, suggestMrpPaise } from "@/lib/money";
-import { cn } from "@/lib/cn";
 import type { PricingLine, AdditionalCost, InwardTaxSummary } from "./pricing";
-import type { AttributeOption, ItemFormOptions } from "@/types/domain";
-
-const ATTRS = [
-  { key: "colour",  field: "colourId",  label: "Colour" },
-  { key: "plating", field: "platingId", label: "Plating" },
-  { key: "stone",   field: "stoneId",   label: "Stone" },
-  { key: "size",    field: "sizeId",    label: "Size" },
-] as const;
+import type { ItemFormOptions } from "@/types/domain";
 
 /**
- * The pricing gate.
+ * Pricing as a dense table, one row per line.
  *
- * Image-led on purpose: the owner is 8,000 miles from the stock and
- * prices from the photograph, which is also the moment attribute
- * guesses made at the counter get corrected. Rate, MRP and selling
- * price all live on the same row as the picture.
+ * Was a card per line, which is fine for five items and unusable for a
+ * hundred: pricing a full consignment meant scrolling past several
+ * screens of form. Everything for a line now fits one row, saves on
+ * blur, and attributes collapse to tags with editing behind a click,
+ * because they are read far more often than they are changed.
  */
 export function PricingPanel({
   inwardId,
@@ -40,127 +40,124 @@ export function PricingPanel({
   options: ItemFormOptions;
   tax: InwardTaxSummary | null;
 }) {
-  const totalQty = lines.reduce((s, l) => s + l.qty, 0);
-  const priced = lines.filter((l) => l.ratePaise !== null && l.mrpPaise !== null).length;
+  const [editingAttrs, setEditingAttrs] = useState<PricingLine | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
+  const priced = lines.filter((l) => l.ratePaise !== null).length;
+  const totalQty = lines.reduce((s, l) => s + l.qty, 0);
 
   return (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader>
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h2 className="font-medium">Pricing</h2>
-            <p className="text-sm text-text-muted">
-              <span className="tnum font-medium">{priced}</span> of{" "}
-              <span className="tnum">{lines.length}</span> lines priced ·{" "}
-              <span className="tnum">{totalQty}</span> pieces
-            </p>
-          </div>
-        </CardHeader>
-        <CardBody className="space-y-4">
-          <AdditionalCosts inwardId={inwardId} existing={additionalCosts} />
-
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-card border border-border bg-surface px-3 py-2">
+        <div className="flex flex-wrap items-center gap-3 text-sm">
+          <span>
+            <span className="tnum font-medium">{priced}</span>
+            <span className="text-text-muted"> of {lines.length} priced</span>
+          </span>
+          <span className="text-text-muted">
+            <span className="tnum">{totalQty}</span> pieces
+          </span>
           {tax && (
-            <div className="border-t border-border pt-3">
-              <div className="mb-2 flex flex-wrap items-center gap-2 text-2xs">
-                <span className="rounded-full bg-status-neutral-bg px-2 py-0.5 text-status-neutral-fg">
-                  {tax.taxTreatment}
-                </span>
-                <span className="rounded-full bg-status-neutral-bg px-2 py-0.5 text-status-neutral-fg">
-                  {tax.isInterstate ? "Interstate · IGST" : "Intrastate · CGST + SGST"}
-                </span>
-                <span className="rounded-full bg-status-neutral-bg px-2 py-0.5 text-status-neutral-fg">
-                  {tax.itcEligible ? "Input credit recoverable" : "Tax loaded into cost"}
-                </span>
-              </div>
-              <div className="grid grid-cols-3 gap-3">
-                <Fact label="Taxable value" value={formatPaise(tax.taxablePaise)} />
-                <Fact label="Tax" value={formatPaise(tax.taxPaise)} />
-                <Fact label="Invoice total" value={formatPaise(tax.totalPaise)} emphasis />
-              </div>
-              <p className="mt-2 text-2xs text-text-muted">
-                Recalculated live from the vendor&apos;s tax setup. Extra charges below
-                are already spread across the lines, exact to the paisa.
-              </p>
-            </div>
+            <>
+              <Tag muted>{tax.isInterstate ? "IGST" : "CGST + SGST"}</Tag>
+              <Tag muted>
+                {tax.itcEligible ? "Credit recoverable" : "Tax in cost"}
+              </Tag>
+            </>
           )}
-        </CardBody>
-      </Card>
-
-      <div className="space-y-3">
-        {lines.map((line) => (
-          <PricingRow
-            key={line.lineId}
-            inwardId={inwardId}
-            line={line}
-            options={{
-              colour:  options.colours,
-              plating: options.platings,
-              stone:   options.stones,
-              size:    options.sizes,
-            }}
-          />
-        ))}
+        </div>
+        <AdditionalCosts inwardId={inwardId} existing={additionalCosts} />
       </div>
+
+      {error && (
+        <p className="rounded-control bg-status-danger-bg px-3 py-2 text-sm text-status-danger-fg">
+          {error}
+        </p>
+      )}
+
+      <div className="overflow-x-auto rounded-card border border-border bg-surface">
+        <table className="w-full border-collapse text-sm">
+          <thead>
+            <tr className="border-b border-border bg-surface-sunken">
+              <Th className="w-[36px]">#</Th>
+              <Th className="w-[48px]" />
+              <Th className="min-w-[200px]">Item</Th>
+              <Th right className="w-[72px]">Qty</Th>
+              <Th right className="w-[104px]">Rate</Th>
+              <Th right className="w-[104px]">MRP</Th>
+              <Th right className="w-[104px]">Selling</Th>
+              <Th right className="w-[92px]">Tax</Th>
+              <Th right className="w-[100px]">Landed</Th>
+              <Th right className="w-[72px]">Margin</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {lines.map((line, i) => (
+              <Row
+                key={line.lineId}
+                index={i + 1}
+                line={line}
+                inwardId={inwardId}
+                onAttrs={() => setEditingAttrs(line)}
+                onError={setError}
+              />
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {editingAttrs && (
+        <AttributeModal
+          line={editingAttrs}
+          inwardId={inwardId}
+          options={options}
+          onClose={() => setEditingAttrs(null)}
+        />
+      )}
     </div>
   );
 }
 
-function PricingRow({
-  inwardId,
+function Row({
+  index,
   line,
-  options,
+  inwardId,
+  onAttrs,
+  onError,
 }: {
-  inwardId: string;
+  index: number;
   line: PricingLine;
-  options: Record<string, AttributeOption[]>;
+  inwardId: string;
+  onAttrs: () => void;
+  onError: (m: string | null) => void;
 }) {
-  const [rate, setRate] = useState(
-    line.ratePaise === null ? "" : (line.ratePaise / 100).toFixed(2),
-  );
-  const [mrp, setMrp] = useState(
-    line.mrpPaise === null ? "" : (line.mrpPaise / 100).toFixed(2),
-  );
-  const [selling, setSelling] = useState(
-    line.sellingPricePaise === null ? "" : (line.sellingPricePaise / 100).toFixed(2),
-  );
-  const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
+  const rupees = (p: number | null) => (p === null ? "" : (p / 100).toFixed(2));
+
+  const [qty, setQty] = useState(String(line.qty));
+  const [rate, setRate] = useState(rupees(line.ratePaise));
+  const [mrp, setMrp] = useState(rupees(line.mrpPaise));
+  const [selling, setSelling] = useState(rupees(line.sellingPricePaise));
   const [pending, start] = useTransition();
 
-  /** Suggests MRP from the category multiplier. A suggestion, never an
-   *  autofill: a wrong prefilled price is worse than a blank field. */
-  const suggest = () => {
-    const ratePaise = parseRupeesToPaise(rate);
-    if (ratePaise === null || ratePaise === 0) {
-      setError("Enter the purchase rate first.");
-      return;
-    }
-    const suggested = suggestMrpPaise(ratePaise, line.markupMultiplier);
-    setMrp((suggested / 100).toFixed(2));
-    setSelling((suggested / 100).toFixed(2));
-    setError(null);
-  };
+  const tags = [line.colourName, line.platingName, line.stoneName, line.sizeName]
+    .filter(Boolean) as string[];
 
-  const save = () => {
+  /** Saves on blur. A Save button per row is one click too many across
+   *  a hundred lines, and the values are independent so a partial save
+   *  is never inconsistent. */
+  const commit = () => {
     const ratePaise = parseRupeesToPaise(rate);
-    if (ratePaise === null) {
-      setError("Enter a rate like 450 or 450.50");
+    if (rate.trim() !== "" && ratePaise === null) {
+      onError("Enter a rate like 450 or 450.50");
       return;
     }
+    if (ratePaise === null) return;
+
     const mrpPaise = mrp.trim() === "" ? null : parseRupeesToPaise(mrp);
     const sellPaise = selling.trim() === "" ? null : parseRupeesToPaise(selling);
-    if (mrp.trim() !== "" && mrpPaise === null) {
-      setError("Check the MRP amount.");
-      return;
-    }
-    if (selling.trim() !== "" && sellPaise === null) {
-      setError("Check the selling price.");
-      return;
-    }
 
     start(async () => {
-      setError(null);
+      onError(null);
       const fd = new FormData();
       fd.set("lineId", line.lineId);
       fd.set("itemId", line.itemId);
@@ -169,144 +166,201 @@ function PricingRow({
       fd.set("gstRate", String(line.gstRate));
       if (mrpPaise !== null) fd.set("mrpPaise", String(mrpPaise));
       if (sellPaise !== null) fd.set("sellingPricePaise", String(sellPaise));
+      const r = await savePricingLine(fd);
+      if (!r.ok) onError(r.error);
+    });
+  };
 
-      const result = await savePricingLine(fd);
-      if (result.ok) {
-        setSaved(true);
-        setTimeout(() => setSaved(false), 2000);
-      } else {
-        setError(result.error);
+  const commitQty = () => {
+    const n = Number(qty);
+    if (!Number.isInteger(n) || n < 1) {
+      setQty(String(line.qty));
+      return;
+    }
+    if (n === line.qty) return;
+    start(async () => {
+      onError(null);
+      const fd = new FormData();
+      fd.set("lineId", line.lineId);
+      fd.set("inwardId", inwardId);
+      fd.set("qty", String(n));
+      const r = await updateInwardLineQty(fd);
+      if (!r.ok) {
+        onError(r.error);
+        setQty(String(line.qty));
       }
     });
   };
 
-  const saveAttr = (field: string, value: string) =>
-    start(async () => {
-      const fd = new FormData();
-      fd.set("itemId", line.itemId);
-      fd.set("inwardId", inwardId);
-      fd.set("colourId",  field === "colourId"  ? value : (line.colourId ?? ""));
-      fd.set("platingId", field === "platingId" ? value : (line.platingId ?? ""));
-      fd.set("stoneId",   field === "stoneId"   ? value : (line.stoneId ?? ""));
-      fd.set("sizeId",    field === "sizeId"    ? value : (line.sizeId ?? ""));
-      const result = await updateItemAttributes(fd);
-      if (!result.ok) setError(result.error);
-    });
-
-  const current: Record<string, string | null> = {
-    colourId: line.colourId,
-    platingId: line.platingId,
-    stoneId: line.stoneId,
-    sizeId: line.sizeId,
+  /** Fills MRP and selling from the category multiplier once a rate is
+   *  in. Only fires on blur of the rate when both are still empty, so it
+   *  never overwrites a price that was typed deliberately. */
+  const maybeSuggest = () => {
+    const ratePaise = parseRupeesToPaise(rate);
+    if (ratePaise === null || ratePaise === 0) return;
+    if (mrp.trim() !== "" || selling.trim() !== "") return;
+    const s = suggestMrpPaise(ratePaise, line.markupMultiplier);
+    setMrp((s / 100).toFixed(2));
+    setSelling((s / 100).toFixed(2));
   };
 
+  const lineTax = line.cgstPaise + line.sgstPaise + line.igstPaise;
+  const sell = line.sellingPricePaise ?? 0;
+  const margin =
+    sell > 0 && line.landedUnitCostPaise > 0
+      ? ((sell - line.landedUnitCostPaise) / sell) * 100
+      : null;
+
   return (
-    <Card className={cn(pending && "opacity-70")}>
-      <CardBody>
-        <div className="flex flex-col gap-4 sm:flex-row">
-          {/* Large enough to price from, and hover magnifies further. */}
-          <PhotoThumb src={itemPhotoUrl(line.photoPath)} alt={line.name} size={104} />
-
-          <div className="min-w-0 flex-1 space-y-3">
-            <div className="flex flex-wrap items-baseline gap-2">
-              <span className="font-medium">{line.name}</span>
-              <Barcode code={line.barcode} />
-              <span className="text-sm text-text-muted">
-                {line.categoryName} · <span className="tnum">{line.qty}</span>{" "}
-                {line.qty === 1 ? "piece" : "pieces"}
-              </span>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {ATTRS.map((a) => (
-                <label key={a.key} className="block">
-                  <span className="mb-0.5 block text-2xs uppercase tracking-wide text-text-subtle">
-                    {a.label}
-                  </span>
-                  <select
-                    defaultValue={current[a.field] ?? ""}
-                    onChange={(e) => saveAttr(a.field, e.target.value)}
-                    className="w-full rounded-control border border-border bg-surface px-2 py-1 text-sm focus:border-brand focus:outline-none"
-                  >
-                    <option value="">—</option>
-                    {(options[a.key] ?? []).map((o) => (
-                      <option key={o.id} value={o.id}>{o.value}</option>
-                    ))}
-                  </select>
-                </label>
-              ))}
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:items-end">
-              <Money label="Purchase rate" value={rate} onChange={setRate} />
-              <Money label="MRP" value={mrp} onChange={setMrp} />
-              <Money label="Selling price" value={selling} onChange={setSelling} />
-              <div className="flex gap-2">
-                <Button size="sm" variant="secondary" onClick={suggest} type="button">
-                  Suggest
-                </Button>
-                <Button size="sm" variant="primary" onClick={save} disabled={pending}>
-                  {saved ? "Saved" : "Save"}
-                </Button>
-              </div>
-            </div>
-
-            {line.ratePaise !== null && (
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1 rounded-control bg-surface-sunken px-3 py-2 text-2xs sm:grid-cols-4">
-                <Fact label="Taxable" value={formatPaise(line.taxablePaise)} />
-                <Fact
-                  label={line.igstPaise > 0 ? "IGST" : "CGST + SGST"}
-                  value={formatPaise(
-                    line.igstPaise > 0
-                      ? line.igstPaise
-                      : line.cgstPaise + line.sgstPaise,
-                  )}
-                />
-                <Fact
-                  label="Freight share"
-                  value={
-                    line.allocatedAddlPaise > 0
-                      ? formatPaise(line.allocatedAddlPaise)
-                      : "—"
-                  }
-                />
-                <Fact
-                  label="Landed / piece"
-                  value={formatPaise(line.landedUnitCostPaise)}
-                  emphasis
-                />
-              </div>
-            )}
-            {error && <p className="text-sm text-status-danger-fg">{error}</p>}
-          </div>
+    <tr className={`border-b border-border last:border-0 ${pending ? "opacity-60" : ""}`}>
+      <td className="px-2 py-1.5 text-2xs text-text-subtle">{index}</td>
+      <td className="px-2 py-1.5">
+        <PhotoThumb src={itemPhotoUrl(line.photoPath)} alt={line.name} size={40} />
+      </td>
+      <td className="px-2 py-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="font-medium">{line.name}</span>
+          <Barcode code={line.barcode} />
         </div>
-      </CardBody>
-    </Card>
+        <button
+          onClick={onAttrs}
+          className="mt-0.5 flex flex-wrap items-center gap-1 text-left"
+          title="Edit attributes"
+        >
+          <span className="text-2xs text-text-subtle">{line.categoryName}</span>
+          {tags.map((t) => (
+            <Tag key={t}>{t}</Tag>
+          ))}
+          <span className="text-2xs text-brand underline">
+            {tags.length === 0 ? "add attributes" : "edit"}
+          </span>
+        </button>
+      </td>
+
+      <td className="px-2 py-1.5 text-right">
+        <NarrowInput
+          widthClass="w-[60px]"
+          inputMode="numeric"
+          value={qty}
+          onChange={(e) => setQty(e.target.value)}
+          onBlur={commitQty}
+          className="tnum text-right"
+          aria-label="Quantity"
+        />
+      </td>
+      <td className="px-2 py-1.5 text-right">
+        <NarrowInput
+          widthClass="w-[92px]"
+          inputMode="decimal"
+          placeholder="0.00"
+          value={rate}
+          onChange={(e) => setRate(e.target.value)}
+          onBlur={() => {
+            maybeSuggest();
+            commit();
+          }}
+          className="tnum text-right"
+          aria-label="Purchase rate"
+        />
+      </td>
+      <td className="px-2 py-1.5 text-right">
+        <NarrowInput
+          widthClass="w-[92px]"
+          inputMode="decimal"
+          placeholder="0.00"
+          value={mrp}
+          onChange={(e) => setMrp(e.target.value)}
+          onBlur={commit}
+          className="tnum text-right"
+          aria-label="MRP"
+        />
+      </td>
+      <td className="px-2 py-1.5 text-right">
+        <NarrowInput
+          widthClass="w-[92px]"
+          inputMode="decimal"
+          placeholder="0.00"
+          value={selling}
+          onChange={(e) => setSelling(e.target.value)}
+          onBlur={commit}
+          className="tnum text-right"
+          aria-label="Selling price"
+        />
+      </td>
+
+      <td className="tnum px-2 py-1.5 text-right text-2xs text-text-muted">
+        {lineTax > 0 ? formatPaise(lineTax) : "—"}
+      </td>
+      <td className="tnum px-2 py-1.5 text-right">
+        {line.landedUnitCostPaise > 0 ? formatPaise(line.landedUnitCostPaise) : "—"}
+      </td>
+      <td className="tnum px-2 py-1.5 text-right text-2xs">
+        {margin === null ? (
+          "—"
+        ) : (
+          <span className={margin < 0 ? "text-status-danger-fg" : "text-status-done-fg"}>
+            {margin.toFixed(1)}%
+          </span>
+        )}
+      </td>
+    </tr>
   );
 }
 
-function Money({
-  label,
-  value,
-  onChange,
+function AttributeModal({
+  line,
+  inwardId,
+  options,
+  onClose,
 }: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
+  line: PricingLine;
+  inwardId: string;
+  options: ItemFormOptions;
+  onClose: () => void;
 }) {
+  const [pending, start] = useTransition();
+
+  const save = (fd: FormData) =>
+    start(async () => {
+      fd.set("itemId", line.itemId);
+      fd.set("inwardId", inwardId);
+      await updateItemAttributes(fd);
+      onClose();
+    });
+
+  const fields = [
+    { name: "colourId", label: "Colour", value: line.colourId, opts: options.colours },
+    { name: "platingId", label: "Plating", value: line.platingId, opts: options.platings },
+    { name: "stoneId", label: "Stone", value: line.stoneId, opts: options.stones },
+    { name: "sizeId", label: "Size", value: line.sizeId, opts: options.sizes },
+  ];
+
   return (
-    <label className="block">
-      <span className="mb-0.5 block text-2xs uppercase tracking-wide text-text-subtle">
-        {label}
-      </span>
-      <input
-        value={value}
-        inputMode="decimal"
-        placeholder="0.00"
-        onChange={(e) => onChange(e.target.value)}
-        className="tnum w-full rounded-control border border-border bg-surface px-2 py-1 text-right text-sm focus:border-brand focus:outline-none"
-      />
-    </label>
+    <Modal title={line.name} onClose={onClose} width="max-w-lg">
+      <form action={save} className="space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          {fields.map((f) => (
+            <div key={f.name}>
+              <Label htmlFor={f.name}>{f.label}</Label>
+              <Select id={f.name} name={f.name} defaultValue={f.value ?? ""}>
+                <option value="">—</option>
+                {f.opts.map((o) => (
+                  <option key={o.id} value={o.id}>{o.value}</option>
+                ))}
+              </Select>
+            </div>
+          ))}
+        </div>
+        <div className="flex gap-2">
+          <Button type="submit" variant="primary" disabled={pending}>
+            {pending ? "Saving…" : "Save attributes"}
+          </Button>
+          <Button type="button" variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
@@ -336,56 +390,49 @@ function AdditionalCosts({
   const rows = [
     { type: "freight", label: "Freight", basis: "value" },
     { type: "packing", label: "Packing", basis: "quantity" },
-    { type: "hamali",  label: "Hamali",  basis: "quantity" },
+    { type: "hamali", label: "Hamali", basis: "quantity" },
   ];
 
   return (
-    <div className={cn("space-y-2", pending && "opacity-70")}>
-      <p className="text-sm text-text-muted">
-        Costs on the whole consignment. Prorated across lines at approval, exact to the paisa.
-      </p>
-      <div className="grid grid-cols-3 gap-2">
-        {rows.map((r) => {
-          const cur = find(r.type);
-          return (
-            <label key={r.type} className="block">
-              <span className="mb-0.5 block text-2xs uppercase tracking-wide text-text-subtle">
-                {r.label}
-              </span>
-              <input
-                defaultValue={cur ? (cur.amountPaise / 100).toFixed(2) : ""}
-                inputMode="decimal"
-                placeholder="0.00"
-                onBlur={(e) => save(r.type, e.target.value, r.basis)}
-                className="tnum w-full rounded-control border border-border bg-surface px-2 py-1 text-right text-sm focus:border-brand focus:outline-none"
-              />
-            </label>
-          );
-        })}
-      </div>
+    <div className={`flex items-center gap-2 ${pending ? "opacity-60" : ""}`}>
+      {rows.map((r) => {
+        const cur = find(r.type);
+        return (
+          <label key={r.type} className="flex items-center gap-1">
+            <span className="text-2xs uppercase tracking-wide text-text-subtle">
+              {r.label}
+            </span>
+            <NarrowInput
+              widthClass="w-[84px]"
+              inputMode="decimal"
+              placeholder="0.00"
+              defaultValue={cur ? (cur.amountPaise / 100).toFixed(2) : ""}
+              onBlur={(e) => save(r.type, e.target.value, r.basis)}
+              className="tnum py-1 text-right"
+            />
+          </label>
+        );
+      })}
     </div>
   );
 }
 
-function Fact({
-  label,
-  value,
-  emphasis,
+function Th({
+  children,
+  right,
+  className,
 }: {
-  label: string;
-  value: string;
-  emphasis?: boolean;
+  children?: React.ReactNode;
+  right?: boolean;
+  className?: string;
 }) {
   return (
-    <div>
-      <span className="block uppercase tracking-wide text-text-subtle">{label}</span>
-      <span
-        className={
-          emphasis ? "tnum block font-semibold text-text" : "tnum block text-text-muted"
-        }
-      >
-        {value}
-      </span>
-    </div>
+    <th
+      className={`px-2 py-1.5 text-2xs font-semibold uppercase tracking-wide text-text-muted ${
+        right ? "text-right" : "text-left"
+      } ${className ?? ""}`}
+    >
+      {children}
+    </th>
   );
 }
