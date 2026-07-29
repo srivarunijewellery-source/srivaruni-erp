@@ -195,3 +195,80 @@ export async function getProduct(id: string): Promise<ProductDetail | null> {
       .map((b) => ({ code: one(b.locations)?.code ?? "—", qty: b.qty })),
   };
 }
+
+export interface ProductMovement {
+  id: number;
+  qtyDelta: number;
+  reason: string;
+  note: string | null;
+  locationCode: string;
+  createdAt: string;
+  by: string | null;
+}
+
+export interface ProductSource {
+  vendorId: string | null;
+  vendorName: string | null;
+  inwardId: string | null;
+  docNo: string | null;
+  receivedAt: string | null;
+}
+
+/** Every movement of one item, newest first. The in/out history. */
+export async function getProductMovements(itemId: string): Promise<ProductMovement[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("stock_ledger")
+    .select("id, qty_delta, reason, note, created_at, locations(code), staff:created_by(name)")
+    .eq("item_id", itemId)
+    .order("created_at", { ascending: false })
+    .limit(100);
+
+  if (error) return [];
+  const one = <T,>(v: T | T[] | null): T | undefined =>
+    Array.isArray(v) ? v[0] : (v ?? undefined);
+
+  return (data ?? []).map((m) => ({
+    id: m.id,
+    qtyDelta: m.qty_delta,
+    reason: m.reason,
+    note: m.note,
+    locationCode: one(m.locations)?.code ?? "—",
+    createdAt: m.created_at,
+    by: one(m.staff)?.name ?? null,
+  }));
+}
+
+/** Which vendor supplied this item, via its one inward. */
+export async function getProductSource(itemId: string): Promise<ProductSource> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("inward_lines")
+    .select("inward_id, inwards(doc_no, approved_at, vendor_id, vendors(name))")
+    .eq("item_id", itemId)
+    .maybeSingle();
+
+  const one = <T,>(v: T | T[] | null): T | undefined =>
+    Array.isArray(v) ? v[0] : (v ?? undefined);
+
+  type RawVendor = { name: string };
+  type RawInward = {
+    doc_no: string;
+    approved_at: string | null;
+    vendor_id: string;
+    vendors: RawVendor | RawVendor[] | null;
+  };
+
+  const inw = one<RawInward>(
+    (data?.inwards ?? null) as RawInward | RawInward[] | null,
+  );
+  const vendor = one<RawVendor>(inw?.vendors ?? null);
+
+  return {
+    vendorId: inw?.vendor_id ?? null,
+    vendorName: vendor?.name ?? null,
+    inwardId: data?.inward_id ?? null,
+    docNo: inw?.doc_no ?? null,
+    receivedAt: inw?.approved_at ?? null,
+  };
+}

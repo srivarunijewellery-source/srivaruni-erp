@@ -5,6 +5,7 @@ import {
   savePricingLine,
   saveAdditionalCost,
   updateItemAttributes,
+  updateItemCategory,
 } from "./pricingActions";
 import { updateInwardLineQty } from "./actions";
 import { PhotoThumb } from "@/components/ui/PhotoThumb";
@@ -94,6 +95,7 @@ export function PricingPanel({
                 index={i + 1}
                 line={line}
                 inwardId={inwardId}
+                categories={options.categories}
                 onAttrs={() => setEditingAttrs(line)}
                 onError={setError}
               />
@@ -118,12 +120,14 @@ function Row({
   index,
   line,
   inwardId,
+  categories,
   onAttrs,
   onError,
 }: {
   index: number;
   line: PricingLine;
   inwardId: string;
+  categories: Array<{ id: string; name: string }>;
   onAttrs: () => void;
   onError: (m: string | null) => void;
 }) {
@@ -142,6 +146,10 @@ function Row({
    *  a hundred lines, and the values are independent so a partial save
    *  is never inconsistent. */
   const commit = () => {
+    // Clear first. Previously the banner only cleared inside the success
+    // path, so a transient mid-edit error stayed on screen after the
+    // values had been corrected.
+    onError(null);
     const ratePaise = parseRupeesToPaise(rate);
     if (rate.trim() !== "" && ratePaise === null) {
       onError("Enter a rate like 450 or 450.50");
@@ -149,8 +157,12 @@ function Row({
     }
     if (ratePaise === null) return;
 
-    const mrpPaise = mrp.trim() === "" ? null : parseRupeesToPaise(mrp);
-    const sellPaise = selling.trim() === "" ? null : parseRupeesToPaise(selling);
+    let mrpPaise = mrp.trim() === "" ? null : parseRupeesToPaise(mrp);
+    let sellPaise = selling.trim() === "" ? null : parseRupeesToPaise(selling);
+
+    // They match in almost every case, so a blank one takes the other.
+    if (mrpPaise === null && sellPaise !== null) mrpPaise = sellPaise;
+    if (sellPaise === null && mrpPaise !== null) sellPaise = mrpPaise;
 
     // MRP is a ceiling. The database rejects this too; catching it here
     // just gives a better message than a constraint violation.
@@ -254,19 +266,40 @@ function Row({
           <span className="font-medium">{line.name}</span>
           <Barcode code={line.barcode} />
         </div>
-        <button
-          onClick={onAttrs}
-          className="mt-0.5 flex flex-wrap items-center gap-1 text-left"
-          title="Edit attributes"
-        >
-          <span className="text-2xs text-text-subtle">{line.categoryName}</span>
+        <div className="mt-0.5 flex flex-wrap items-center gap-1">
+          {/* Category drives the MRP multiplier, so it is corrected here
+              rather than on a separate screen. */}
+          <select
+            value={line.categoryId}
+            onChange={(e) => {
+              const fd = new FormData();
+              fd.set("itemId", line.itemId);
+              fd.set("inwardId", inwardId);
+              fd.set("categoryId", e.target.value);
+              start(async () => {
+                onError(null);
+                const r = await updateItemCategory(fd);
+                if (!r.ok) onError(r.error);
+              });
+            }}
+            aria-label="Category"
+            className="rounded border border-transparent bg-transparent py-0 text-2xs text-text-subtle hover:border-border focus:border-brand focus:outline-none"
+          >
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
           {tags.map((t) => (
             <Tag key={t}>{t}</Tag>
           ))}
-          <span className="text-2xs text-brand underline">
+          <button
+            onClick={onAttrs}
+            className="text-2xs text-brand underline"
+            title="Edit attributes"
+          >
             {tags.length === 0 ? "add attributes" : "edit"}
-          </span>
-        </button>
+          </button>
+        </div>
       </td>
 
       <td className="px-2 py-1.5 text-right">
@@ -343,7 +376,21 @@ function Row({
         {line.taxablePaise > 0 ? formatPaise(line.taxablePaise + lineTax) : "—"}
       </td>
       <td className="tnum px-2 py-1.5 text-right">
-        {line.landedUnitCostPaise > 0 ? formatPaise(line.landedUnitCostPaise) : "—"}
+        {line.landedUnitCostPaise > 0 ? (
+          <>
+            {formatPaise(line.landedUnitCostPaise)}
+            {line.landedWithTaxPaise !== line.landedUnitCostPaise && (
+              <span
+                className="block text-2xs text-text-subtle"
+                title="Landed cost including purchase tax"
+              >
+                {formatPaise(line.landedWithTaxPaise)} inc tax
+              </span>
+            )}
+          </>
+        ) : (
+          "—"
+        )}
       </td>
       <td className="tnum px-2 py-1.5 text-right text-2xs">
         {margin === null ? (

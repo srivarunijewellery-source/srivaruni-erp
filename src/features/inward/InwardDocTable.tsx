@@ -39,6 +39,10 @@ export function InwardDocTable({
     0,
   );
   const totalLanded = pricing.reduce((s, p) => s + p.landedUnitCostPaise * p.qty, 0);
+  const totalLandedWithTax = pricing.reduce(
+    (s, p) => s + p.landedWithTaxPaise * p.qty,
+    0,
+  );
   const additionalTotal = additionalCosts.reduce((s, c) => s + c.amountPaise, 0);
 
   return (
@@ -59,7 +63,8 @@ export function InwardDocTable({
               {withCost && <Th right className="w-[92px]">Taxable</Th>}
               {withCost && <Th right className="w-[92px]">Tax</Th>}
               {withCost && <Th right className="w-[104px]">Incl. tax</Th>}
-              {withCost && <Th right className="w-[104px]">Landing cost</Th>}
+              {withCost && <Th right className="w-[104px]">Landing ex tax</Th>}
+              {withCost && <Th right className="w-[104px]">Landing inc tax</Th>}
               {withCost && <Th right className="w-[80px]">Margin</Th>}
             </tr>
           </thead>
@@ -130,9 +135,12 @@ export function InwardDocTable({
                         {p ? formatPaise(p.landedUnitCostPaise) : "—"}
                         {p && p.allocatedAddlPaise > 0 && (
                           <span className="block text-2xs text-text-subtle">
-                            incl {formatPaise(p.allocatedAddlPaise)}
+                            incl {formatPaise(p.allocatedAddlPaise)} freight
                           </span>
                         )}
+                      </td>
+                      <td className="tnum px-2 py-1.5 text-right font-medium">
+                        {p ? formatPaise(p.landedWithTaxPaise) : "—"}
                       </td>
                       <td className="tnum px-2 py-1.5 text-right">
                         {margin === null ? (
@@ -173,6 +181,9 @@ export function InwardDocTable({
                   </td>
                   <td className="tnum px-2 py-2 text-right">
                     {formatPaise(totalLanded)}
+                  </td>
+                  <td className="tnum px-2 py-2 text-right">
+                    {formatPaise(totalLandedWithTax)}
                   </td>
                   <td />
                 </>
@@ -244,10 +255,20 @@ export function InwardDocTable({
                     {formatPaise(tax.totalPaise)}
                   </span>
                 </div>
+                <div className="mt-2 border-t border-border pt-2">
+                  <SumRow
+                    label="Landing cost, excluding tax"
+                    value={formatPaise(totalLanded)}
+                  />
+                  <SumRow
+                    label="Landing cost, including tax"
+                    value={formatPaise(totalLandedWithTax)}
+                  />
+                </div>
                 <p className="mt-2 text-2xs text-text-muted">
                   {tax.itcEligible
-                    ? "Input credit recoverable, so tax is excluded from landing cost."
-                    : "Tax is not recoverable, so it is loaded into landing cost."}
+                    ? "Input credit is recoverable, so margin is calculated on the excluding-tax figure."
+                    : "Tax is not recoverable, so both figures are the same and margin uses it."}
                 </p>
               </div>
             </div>

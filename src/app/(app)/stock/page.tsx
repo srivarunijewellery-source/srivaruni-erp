@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { searchStock } from "@/features/stock/queries";
 import { PageHeader } from "@/components/ui/PageHeader";
+import Link from "next/link";
 import { Barcode } from "@/components/ui/Barcode";
+import { ROUTES } from "@/config/nav";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Input } from "@/components/ui/Field";
@@ -19,8 +21,24 @@ export default async function StockPage({
   const rows = await searchStock(q);
 
   const columns: ReadonlyArray<Column<StockRow>> = [
-    { key: "barcode", header: "Tag", render: (r) => <Barcode code={r.barcode} /> },
-    { key: "name", header: "Item", render: (r) => r.name },
+    {
+      key: "barcode",
+      header: "Tag",
+      render: (r) => (
+        <Link href={ROUTES.productDetail(r.itemId)}>
+          <Barcode code={r.barcode} />
+        </Link>
+      ),
+    },
+    {
+      key: "name",
+      header: "Item",
+      render: (r) => (
+        <Link href={ROUTES.productDetail(r.itemId)} className="font-medium hover:text-brand">
+          {r.name}
+        </Link>
+      ),
+    },
     { key: "category", header: "Category", render: (r) => r.category },
     { key: "store", header: "Store", render: (r) => <span className="font-mono text-2xs">{r.locationCode}</span> },
     { key: "qty", header: "On hand", numeric: true, render: (r) => r.qty },

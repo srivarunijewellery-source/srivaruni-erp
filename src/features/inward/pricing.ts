@@ -40,6 +40,9 @@ export interface PricingLine {
   igstPaise: Paise;
   allocatedAddlPaise: Paise;
   landedUnitCostPaise: Paise;
+  /** Landed cost with purchase tax included, whether or not that tax is
+   *  recoverable. Equals landedUnitCostPaise when it is not. */
+  landedWithTaxPaise: Paise;
   mrpPaise: Paise | null;
   sellingPricePaise: Paise | null;
 }
@@ -189,6 +192,14 @@ export async function getPricingLines(inwardId: string): Promise<PricingLine[]> 
       igstPaise: cost?.igst_paise ?? 0,
       allocatedAddlPaise: cost?.allocated_addl_paise ?? 0,
       landedUnitCostPaise: cost?.landed_unit_cost_paise ?? 0,
+      landedWithTaxPaise: (() => {
+        const q = l.qty || 1;
+        const taxable = cost?.taxable_paise ?? 0;
+        const t =
+          (cost?.cgst_paise ?? 0) + (cost?.sgst_paise ?? 0) + (cost?.igst_paise ?? 0);
+        const addl = cost?.allocated_addl_paise ?? 0;
+        return Math.round((taxable + t + addl) / q);
+      })(),
       mrpPaise: item?.mrp_paise ?? null,
       sellingPricePaise: item?.selling_price_paise ?? null,
     };

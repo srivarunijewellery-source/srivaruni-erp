@@ -106,16 +106,31 @@ export async function savePricingLine(formData: FormData): Promise<Result> {
 
   if (costError) return err(toMessage(costError));
 
-  if (v.mrpPaise !== null || v.sellingPricePaise !== null) {
-    const patch: Record<string, unknown> = {};
-    if (v.mrpPaise !== null && v.mrpPaise !== undefined) patch.mrp_paise = v.mrpPaise;
-    if (v.sellingPricePaise !== null && v.sellingPricePaise !== undefined) {
-      patch.selling_price_paise = v.sellingPricePaise;
+  // MRP and selling ALWAYS move together.
+  //
+  // Updating one alone made the database compare the new value against
+  // the stale other one still in the row, so a valid MRP was rejected
+  // for being below a selling price the user had already changed on
+  // screen. Sending both means the constraint sees the intended state.
+  //
+  // A blank one mirrors the other, because they are equal in almost
+  // every case and a half-priced item cannot be approved anyway.
+  const mrp = v.mrpPaise ?? v.sellingPricePaise ?? null;
+  const selling = v.sellingPricePaise ?? v.mrpPaise ?? null;
+
+  if (mrp !== null || selling !== null) {
+    if (mrp !== null && selling !== null && mrp < selling) {
+      return err(
+        `MRP ${(mrp / 100).toFixed(2)} is below the selling price ${(selling / 100).toFixed(2)}. MRP is the ceiling.`,
+      );
     }
-    if (Object.keys(patch).length > 0) {
-      const { error } = await supabase.from("items").update(patch).eq("id", v.itemId);
-      if (error) return err(toMessage(error));
-    }
+
+    const { error } = await supabase
+      .from("items")
+      .update({ mrp_paise: mrp, selling_price_paise: selling })
+      .eq("id", v.itemId);
+
+    if (error) return err(toMessage(error));
   }
 
   await supabase.rpc("compute_inward_costs", { p_inward: v.inwardId });
@@ -165,5 +180,42 @@ export async function saveAdditionalCost(formData: FormData): Promise<Result> {
   await supabase.rpc("compute_inward_costs", { p_inward: parsed.data.inwardId });
 
   revalidatePath(ROUTES.inwardDetail(parsed.data.inwardId));
+  return ok(undefined);
+}
+
+const categorySchema = z.object({
+  itemId: z.string().uuid(),
+  inwardId: z.string().uuid(),
+  categoryId: z.string().uuid("Choose a category."),
+});
+
+/**
+ * Changes an item's category from the pricing screen.
+ *
+ * The person unpacking the carton is guessing, and the owner correcting
+ * it while looking at the photo is the natural moment. Category also
+ * drives the MRP suggestion multiplier, so getting it right here has a
+ * direct effect on the price about to be set.
+ */
+export async function updateItemCategory(formData: FormData): Promise<Result> {
+  const parsed = categorySchema.safeParse({
+    itemId: formData.get("itemId"),
+    inwardId: formData.get("inwardId"),
+    categoryId: formData.get("categoryId"),
+  });
+  if (!parsed.success) {
+    return err(parsed.error.issues[0]?.message ?? "Could not change the category.");
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("items")
+    .update({ category_id: parsed.data.categoryId })
+    .eq("id", parsed.data.itemId);
+
+  if (error) return err(toMessage(error));
+
+  revalidatePath(ROUTES.inwardDetail(parsed.data.inwardId));
+  revalidatePath(ROUTES.products);
   return ok(undefined);
 }
