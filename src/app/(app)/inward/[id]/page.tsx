@@ -23,6 +23,7 @@ import { DocModeSwitch } from "@/features/inward/DocModeSwitch";
 import { InvoiceUpload } from "@/features/inward/InvoiceUpload";
 import { BillDetails } from "@/features/inward/BillDetails";
 import { PricingPanel } from "@/features/inward/PricingPanel";
+import { listBands } from "@/features/pricing/queries";
 import { formatPaise } from "@/lib/money";
 
 export default async function InwardDetailPage({
@@ -46,14 +47,17 @@ export default async function InwardDetailPage({
   // Every one of these is a separate round trip to Mumbai, so they run
   // in parallel. Adding a sequential await here is the single easiest
   // way to make this page feel slow again.
-  const [attachments, vendors, formOptions, pricingLines, additionalCosts, taxSummary] =
-    await Promise.all([
+  const [
+    attachments, vendors, formOptions, pricingLines,
+    additionalCosts, taxSummary, priceBands,
+  ] = await Promise.all([
     listInwardAttachments(id),
     listVendors(),
     isDraft || showPricing ? listItemFormOptions() : Promise.resolve(null),
     showPricing ? getPricingLines(id) : Promise.resolve([]),
     showPricing ? listAdditionalCosts(id) : Promise.resolve([]),
     showPricing ? getTaxSummary(id) : Promise.resolve(null),
+    showPricing ? listBands() : Promise.resolve([]),
   ]);
 
   const totalQty = inward.lines.reduce((s, l) => s + l.qty, 0);
@@ -140,6 +144,7 @@ export default async function InwardDetailPage({
                 additionalCosts={additionalCosts}
                 options={formOptions}
                 tax={taxSummary}
+                bands={priceBands}
               />
             ) : (
               <LinesSection

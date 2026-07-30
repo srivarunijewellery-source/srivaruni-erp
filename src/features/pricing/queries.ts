@@ -182,3 +182,22 @@ export async function listPricingRows(
     })
     .filter((r) => (r.landedCostPaise ?? 0) > 0);
 }
+
+/**
+ * How many inwards are still sitting at "awaiting pricing".
+ *
+ * The pricing screen looks broken when it is empty, and the reason is
+ * almost always upstream: an item has no landed cost until its inward has
+ * been priced and approved. This lets the empty state point at the real
+ * next action instead of shrugging.
+ */
+export async function countInwardsAwaitingPricing(): Promise<number> {
+  const supabase = await createClient();
+  const { count, error } = await supabase
+    .from("inwards")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "submitted");
+
+  if (error) return 0;
+  return count ?? 0;
+}

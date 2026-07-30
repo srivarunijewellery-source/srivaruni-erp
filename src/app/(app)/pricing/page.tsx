@@ -6,7 +6,9 @@ import { ROUTES } from "@/config/nav";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Card, CardBody } from "@/components/ui/Card";
-import { listBands, listPricingRows, getPricingSettings } from "@/features/pricing/queries";
+import {
+  listBands, listPricingRows, getPricingSettings, countInwardsAwaitingPricing,
+} from "@/features/pricing/queries";
 import { PricingWorkbench } from "@/features/pricing/PricingWorkbench";
 import { formatBps } from "@/lib/pricing";
 
@@ -31,10 +33,11 @@ export default async function PricingPage({
   const sp = await searchParams;
   const showAll = sp.status === "all";
 
-  const [rows, bands, settings] = await Promise.all([
+  const [rows, bands, settings, awaitingInwards] = await Promise.all([
     listPricingRows({ status: showAll ? "all" : "pending", search: sp.q }),
     listBands(),
     getPricingSettings(),
+    countInwardsAwaitingPricing(),
   ]);
 
   const defaultBand = bands.find((b) => b.id === settings?.defaultBandId);
@@ -89,7 +92,26 @@ export default async function PricingPage({
         </CardBody>
       </Card>
 
-      <PricingWorkbench rows={rows} bands={bands} />
+      {/* An empty list here nearly always means the items exist but have
+          no landed cost yet, because their inward has not been priced and
+          approved. Saying "nothing to price" would read as a fault in this
+          screen when the work is actually one screen upstream. */}
+      {rows.length === 0 ? (
+        <EmptyState
+          title={
+            showAll
+              ? "No stock has a landed cost yet"
+              : "Nothing is waiting to be priced"
+          }
+          hint={
+            awaitingInwards > 0
+              ? `An item can only be priced once its inward is priced and approved — that is what works out its landed cost. ${awaitingInwards} ${awaitingInwards === 1 ? "inward is" : "inwards are"} still awaiting pricing. Enter the rates there first; the band and the suggested MRP are on that screen too.`
+              : "Items appear here once their inward has been priced and approved, which is what gives them a landed cost to price against."
+          }
+        />
+      ) : (
+        <PricingWorkbench rows={rows} bands={bands} />
+      )}
     </>
   );
 }

@@ -346,3 +346,35 @@ export async function readDesignCode(
     parsedDate: (p?.parsed_date as string | null) ?? null,
   });
 }
+
+/**
+ * A recommendation from a rate being typed, before the inward is approved.
+ *
+ * The inward screen is where an item's FIRST price is set, and at that
+ * moment no landed cost exists — compute_inward_costs has not run. So the
+ * bare rate is passed straight in as p_landed.
+ *
+ * That is deliberate, not a shortcut. Freight allocation depends on what
+ * else shared the carton, so pricing off landed cost gives two identical
+ * necklaces different MRPs according to which shipment they arrived in.
+ * Pricing off the rate keeps identical pieces priced identically; the
+ * freight is shown separately in the Landed and Margin columns so the
+ * cost of it stays visible.
+ */
+export async function recommendForRate(
+  itemId: string,
+  bandId: string | null,
+  ratePaise: number,
+): Promise<Result<PriceRecommendation | null>> {
+  if (!ratePaise || ratePaise <= 0) return ok(null);
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("recommend_price", {
+    p_item: itemId,
+    p_band: bandId,
+    p_landed: ratePaise,
+  });
+
+  if (error) return err(toMessage(error));
+  return ok(toRecommendation(Array.isArray(data) ? data[0] : data));
+}
