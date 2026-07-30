@@ -22,6 +22,7 @@ export type Capability =
   | "inward.approve"
   | "inward.viewCost"
   | "transfer.request"
+  | "transfer.pick"
   | "transfer.approve"
   | "transfer.dispatch"
   | "transfer.receive"
@@ -43,6 +44,10 @@ const RULES: Record<Capability, (r: Role) => boolean> = {
   "inward.viewCost": isOwner,
 
   "transfer.request": () => true,
+
+  // Picking is shop-floor work. Anyone at the sending store does it;
+  // the database also checks the caller is actually at that location.
+  "transfer.pick": () => true,
   "transfer.approve": isManagerOrAbove,
   "transfer.dispatch": isManagerOrAbove,
   "transfer.receive": isManagerOrAbove,

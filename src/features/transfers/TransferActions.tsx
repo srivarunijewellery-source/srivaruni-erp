@@ -1,16 +1,16 @@
-"use client";
-
-import { useTransition, useState } from "react";
-import { approveTransfer, dispatchTransfer, receiveTransfer } from "./actions";
+import Link from "next/link";
 import { Button } from "@/components/ui/Button";
+import { ROUTES } from "@/config/nav";
 import { can } from "@/config/roles";
 import type { Role, TransferSummary } from "@/types/domain";
 
 /**
- * The next legal step in the lifecycle, and only that one.
+ * The next legal step, named, as a link into the document.
  *
- * Showing every possible action and disabling most is noise; the document
- * is only ever in one state, so it only ever has one forward move.
+ * Actions used to fire straight from this row. They no longer can: picking
+ * and receiving are scanning screens, and approving means looking at what
+ * is actually in the box. A one-click "Approve" in a list is exactly how
+ * someone signs off on a shortfall without seeing it.
  */
 export function TransferActions({
   transfer,
@@ -19,49 +19,32 @@ export function TransferActions({
   transfer: TransferSummary;
   role: Role;
 }) {
-  const [pending, start] = useTransition();
-  const [error, setError] = useState<string | null>(null);
-
   const step = (() => {
     switch (transfer.status) {
       case "requested":
+        return can(role, "transfer.pick") ? { label: "Pick", primary: true } : null;
+      case "picking":
+        return can(role, "transfer.pick") ? { label: "Continue picking", primary: true } : null;
+      case "picked":
         return can(role, "transfer.approve")
-          ? { label: "Approve", run: approveTransfer }
+          ? { label: "Approve & ship", primary: true }
           : null;
       case "approved":
-        return can(role, "transfer.dispatch")
-          ? { label: "Dispatch", run: dispatchTransfer }
-          : null;
+        return can(role, "transfer.dispatch") ? { label: "Ship", primary: true } : null;
       case "dispatched":
-        return can(role, "transfer.receive")
-          ? { label: "Confirm receipt", run: receiveTransfer }
-          : null;
+        return can(role, "transfer.receive") ? { label: "Receive", primary: true } : null;
       default:
         return null;
     }
   })();
 
-  if (!step) return null;
-
   return (
     <div className="flex items-center justify-end gap-2">
-      {error && <span className="text-2xs text-status-danger-fg">{error}</span>}
-      <Button
-        size="sm"
-        variant="primary"
-        disabled={pending}
-        onClick={() =>
-          start(async () => {
-            setError(null);
-            const fd = new FormData();
-            fd.set("transferId", transfer.id);
-            const result = await step.run(fd);
-            if (!result.ok) setError(result.error);
-          })
-        }
-      >
-        {pending ? "Working…" : step.label}
-      </Button>
+      <Link href={ROUTES.transferDetail(transfer.id)}>
+        <Button size="sm" variant={step?.primary ? "primary" : "secondary"}>
+          {step?.label ?? "Open"}
+        </Button>
+      </Link>
     </div>
   );
 }

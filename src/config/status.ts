@@ -25,10 +25,12 @@ export const INWARD_STATUS: Record<InwardStatus, { label: string; tone: Tone }> 
 };
 
 export const TRANSFER_STATUS: Record<TransferStatus, { label: string; tone: Tone }> = {
-  requested:  { label: "Requested",  tone: "pending" },
-  approved:   { label: "Approved",   tone: "approved" },
-  dispatched: { label: "In transit", tone: "transit" },
-  received:   { label: "Received",   tone: "done" },
-  rejected:   { label: "Rejected",   tone: "danger" },
-  cancelled:  { label: "Cancelled",  tone: "neutral" },
+  requested:  { label: "Requested",     tone: "pending" },
+  picking:    { label: "Being picked",  tone: "pending" },
+  picked:     { label: "Packed",        tone: "pending" },
+  approved:   { label: "Approved",      tone: "approved" },
+  dispatched: { label: "In transit",    tone: "transit" },
+  received:   { label: "Received",      tone: "done" },
+  rejected:   { label: "Rejected",      tone: "danger" },
+  cancelled:  { label: "Cancelled",     tone: "neutral" },
 };

@@ -9,8 +9,13 @@
 
 export type Role = "owner" | "manager" | "staff";
 export type InwardStatus = "draft" | "submitted" | "approved" | "rejected";
+/**
+ * Approval sits AFTER picking on purpose: the owner signs off on what is
+ * physically in the box, not on what was optimistically requested.
+ */
 export type TransferStatus =
-  | "requested" | "approved" | "dispatched"
+  | "requested" | "picking"  | "picked"
+  | "approved"  | "dispatched"
   | "received"  | "rejected" | "cancelled";
 export type ItemStatus = "pending_pricing" | "active" | "inactive" | "discontinued";
 export type LocationKind = "store" | "transit" | "damage";
@@ -81,6 +86,103 @@ export interface TransferSummary {
   qtyReceived: number;
   requestedAt: string | null;
   receivedAt: string | null;
+}
+
+/** One item on a transfer, carrying all four counts through the lifecycle. */
+export interface TransferLine {
+  id: string;
+  itemId: string;
+  barcode: string;
+  name: string;
+  category: string;
+  photoPath: string | null;
+  sellingPricePaise: Paise | null;
+  /** What the destination asked for. Never changes after the request. */
+  qtyRequested: number;
+  /** What was physically found and scanned into the box. */
+  qtyPicked: number;
+  /** What was dispatched. Set from qtyPicked when the pick is confirmed. */
+  qtySent: number;
+  /** What was scanned in at the destination. Null until receipt. */
+  qtyReceived: number | null;
+  /** Stock available at the sending store, for the picker's reference. */
+  qtyAvailable: number;
+}
+
+export interface TransferDetail {
+  id: string;
+  docNo: string;
+  status: TransferStatus;
+  fromLocationId: string;
+  fromCode: string;
+  fromName: string;
+  toLocationId: string;
+  toCode: string;
+  toName: string;
+  reason: string | null;
+  note: string | null;
+  pickNote: string | null;
+  rejectedReason: string | null;
+  courier: string | null;
+  docketNo: string | null;
+  requestedAt: string | null;
+  pickedAt: string | null;
+  approvedAt: string | null;
+  dispatchedAt: string | null;
+  receivedAt: string | null;
+  lines: TransferLine[];
+}
+
+/**
+ * A unit that has left the sending store and arrived nowhere.
+ *
+ * locationId is deliberately null. This stock belongs to no store, is not
+ * sellable, and is excluded from stock_on_hand. It is a transient state
+ * that nets to zero the moment the transfer is received.
+ */
+export interface TransitRow {
+  transferId: string;
+  docNo: string;
+  itemId: string;
+  barcode: string;
+  itemName: string;
+  category: string;
+  photoPath: string | null;
+  qty: number;
+  sellingPricePaise: Paise | null;
+  fromCode: string;
+  toCode: string;
+  courier: string | null;
+  docketNo: string | null;
+  dispatchedAt: string | null;
+  daysInTransit: number;
+}
+
+/** One box currently on the road. */
+export interface TransitBox {
+  transferId: string;
+  docNo: string;
+  fromCode: string;
+  toCode: string;
+  lines: number;
+  qtyInTransit: number;
+  valuePaise: Paise;
+  courier: string | null;
+  docketNo: string | null;
+  dispatchedAt: string | null;
+  daysInTransit: number;
+  overdue: boolean;
+}
+
+/** A candidate for the request screen's tile picker. */
+export interface PickableItem {
+  itemId: string;
+  barcode: string;
+  name: string;
+  category: string;
+  photoPath: string | null;
+  qtyAvailable: number;
+  sellingPricePaise: Paise | null;
 }
 
 export interface StockRow {

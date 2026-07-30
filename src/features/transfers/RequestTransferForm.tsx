@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { requestTransfer } from "./actions";
 import { Card, CardBody } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select, FieldError } from "@/components/ui/Field";
+import { ROUTES } from "@/config/nav";
 import type { StoreLocation } from "@/types/domain";
 
 export function RequestTransferForm({
@@ -14,6 +16,7 @@ export function RequestTransferForm({
   stores: StoreLocation[];
   defaultFromId: string | null;
 }) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -34,8 +37,11 @@ export function RequestTransferForm({
             start(async () => {
               setError(null);
               const result = await requestTransfer(fd);
-              if (result.ok) setOpen(false);
-              else setError(result.error);
+              if (result.ok) {
+                setOpen(false);
+                // An empty request is useless; go straight to picking items.
+                router.push(ROUTES.transferDetail(result.data));
+              } else setError(result.error);
             })
           }
           className="grid gap-3 sm:grid-cols-4 sm:items-end"
