@@ -1,0 +1,25 @@
+-- 0039_vendor_credit_notes.sql
+-- Applied remotely as 'vendor_credit_notes' and 'vendor_balances_with_credits'.
+--
+-- vendor_credit_notes + vendor_credit_allocations, mirroring
+-- vendor_payments + vendor_payment_allocations with one deliberate
+-- difference: no account_id and no account_ledger entry, because no money
+-- moves. Recording a credit as a payment would net the payable correctly
+-- and then quietly break the bank reconciliation.
+--
+-- A trigger refuses over-allocating a note beyond its value, and refuses
+-- applying one vendor's credit to another vendor's bill.
+--
+-- vendor_balances gained credit_paise, credit_applied_paise and
+-- credit_unapplied_paise, with due = purchased - paid - credits. The new
+-- columns are APPENDED because CREATE OR REPLACE VIEW cannot reorder or
+-- rename existing ones, and dropping the view would take its dependents.
+-- paid_paise is untouched on purpose: it feeds advance_paise and the bank
+-- side, so counting a credit as paid would invent an advance.
+--
+-- Credits do NOT touch landed cost. A credit received after the invoice
+-- does not reduce taxable value unless s.15(3)(b) conditions are met, so
+-- folding it into stock cost would overstate ITC.
+--
+-- Verified live: purchased 39,175.70 less 6,000 paid less 500 credit gave
+-- due 32,675.70; over-allocation and cross-vendor allocation both refused.

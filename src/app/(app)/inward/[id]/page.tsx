@@ -153,6 +153,7 @@ export default async function InwardDetailPage({
                 bands={priceBands}
                 vendorPricing={vendorPricing}
                 discount={inwardDiscount}
+                isApproved={inward.status === "approved"}
               />
             ) : (
               <LinesSection

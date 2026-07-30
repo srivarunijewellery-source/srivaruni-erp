@@ -1,9 +1,8 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { ROUTES } from "@/config/nav";
 import { err, ok, toMessage, type Result } from "@/lib/result";
+import { revalidateInwardCosts } from "./costCache";
 
 /**
  * Document-level pricing.
@@ -64,11 +63,6 @@ async function loadLines(inwardId: string) {
   return { supabase, lines: (data ?? []) as unknown as LineRow[], error: null };
 }
 
-function revalidate(inwardId: string) {
-  revalidatePath(ROUTES.inwardDetail(inwardId));
-  revalidatePath(ROUTES.pricing);
-  revalidatePath(ROUTES.products);
-}
 
 /**
  * Read a purchase rate off each product title.
@@ -168,7 +162,7 @@ export async function applyRatesFromTitles(
 
   if (applied > 0) {
     await supabase.rpc("compute_inward_costs", { p_inward: inwardId });
-    revalidate(inwardId);
+    await revalidateInwardCosts(inwardId);
   }
 
   return ok({ applied, leftAsTyped, refused, lines: out });
@@ -268,7 +262,7 @@ export async function applyBandToDocument(
 
   if (applied > 0) {
     await supabase.rpc("compute_inward_costs", { p_inward: inwardId });
-    revalidate(inwardId);
+    await revalidateInwardCosts(inwardId);
   }
 
   return ok({ applied, leftAsTyped, refused, lines: out });
@@ -318,6 +312,6 @@ export async function saveInwardDiscount(
   if (wErr) return err(toMessage(wErr));
 
   await supabase.rpc("compute_inward_costs", { p_inward: inwardId });
-  revalidate(inwardId);
+  await revalidateInwardCosts(inwardId);
   return ok(undefined);
 }

@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { revalidateInwardCosts } from "./costCache";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { ROUTES } from "@/config/nav";
@@ -60,8 +61,7 @@ export async function updateItemAttributes(formData: FormData): Promise<Result> 
 
   if (error) return err(toMessage(error));
 
-  revalidatePath(ROUTES.inwardDetail(parsed.data.inwardId));
-  revalidatePath(ROUTES.products);
+  await revalidateInwardCosts(parsed.data.inwardId);
   return ok(undefined);
 }
 
@@ -135,7 +135,9 @@ export async function savePricingLine(formData: FormData): Promise<Result> {
 
   await supabase.rpc("compute_inward_costs", { p_inward: v.inwardId });
 
-  revalidatePath(ROUTES.inwardDetail(v.inwardId));
+  // Rate, MRP and selling all moved: refresh the product pages too, not
+  // just this document.
+  await revalidateInwardCosts(v.inwardId);
   return ok(undefined);
 }
 
@@ -179,7 +181,7 @@ export async function saveAdditionalCost(formData: FormData): Promise<Result> {
 
   await supabase.rpc("compute_inward_costs", { p_inward: parsed.data.inwardId });
 
-  revalidatePath(ROUTES.inwardDetail(parsed.data.inwardId));
+  await revalidateInwardCosts(parsed.data.inwardId);
   return ok(undefined);
 }
 
@@ -215,7 +217,6 @@ export async function updateItemCategory(formData: FormData): Promise<Result> {
 
   if (error) return err(toMessage(error));
 
-  revalidatePath(ROUTES.inwardDetail(parsed.data.inwardId));
-  revalidatePath(ROUTES.products);
+  await revalidateInwardCosts(parsed.data.inwardId);
   return ok(undefined);
 }

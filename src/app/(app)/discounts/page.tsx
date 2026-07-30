@@ -15,6 +15,7 @@ import {
   getDiscountSettings, listLocations, listSchemes, listSellableItems,
 } from "@/features/discounts/queries";
 import { listRuleScopeOptions } from "@/features/pricing/queries";
+import { listItemFormOptions } from "@/features/inward/queries";
 import { SchemeForm } from "@/features/discounts/SchemeForm";
 import { Simulator } from "@/features/discounts/Simulator";
 
@@ -31,12 +32,13 @@ export default async function DiscountsPage() {
     );
   }
 
-  const [schemes, settings, locations, scope, items] = await Promise.all([
+  const [schemes, settings, locations, scope, items, attrs] = await Promise.all([
     listSchemes(),
     getDiscountSettings(),
     listLocations(),
     listRuleScopeOptions(),
     listSellableItems(),
+    listItemFormOptions(),
   ]);
 
   const today = new Date().toISOString().slice(0, 10);
@@ -146,6 +148,10 @@ export default async function DiscountsPage() {
           categories={scope.categories}
           itemTypes={scope.itemTypes}
           vendors={scope.vendors}
+          platings={attrs.platings}
+          stones={attrs.stones}
+          colours={attrs.colours}
+          sizes={attrs.sizes}
           locations={locations}
           maxPercentBps={settings?.maxPercentOwnerBps ?? 5000}
           maxDays={settings?.maxCampaignDays ?? 60}

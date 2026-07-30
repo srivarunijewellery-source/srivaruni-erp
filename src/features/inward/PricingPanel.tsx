@@ -42,6 +42,7 @@ export function PricingPanel({
   bands,
   vendorPricing,
   discount,
+  isApproved,
 }: {
   inwardId: string;
   lines: PricingLine[];
@@ -55,15 +56,74 @@ export function PricingPanel({
     codeMultiple: number | null;
   } | null;
   discount: { kind: "none" | "percent" | "amount"; bps: number | null; paise: number | null };
+  /** Already approved: stock is posted and costs are live on the products. */
+  isApproved: boolean;
 }) {
+  const [unlocked, setUnlocked] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const [editingAttrs, setEditingAttrs] = useState<PricingLine | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const priced = lines.filter((l) => l.ratePaise !== null).length;
   const totalQty = lines.reduce((s, l) => s + l.qty, 0);
 
+  // Re-pricing an approved document restates the cost of stock that is
+  // already on the shelf and already sellable. That deserves one
+  // deliberate step, not a stray click on a rate field.
+  if (isApproved && !unlocked) {
+    return (
+      <div className="rounded-card border border-status-pending-fg/40 bg-status-pending-bg p-4">
+        <h3 className="font-medium">This inward is already approved</h3>
+        <ul className="mt-2 space-y-1 text-sm text-text-muted">
+          <li>Stock is posted and these pieces are on sale.</li>
+          <li>
+            Changing a rate, a charge or the bill discount restates the cost of every
+            piece on this document, and the margins reported against them.
+          </li>
+          <li>Prices already printed on tags will not match until they are reprinted.</li>
+        </ul>
+        <div className="mt-3 flex items-center gap-3">
+          <Button type="button" variant="secondary" onClick={() => setConfirming(true)}>
+            Edit pricing anyway
+          </Button>
+          <span className="text-2xs text-text-subtle">
+            Every change is recorded against your name.
+          </span>
+        </div>
+
+        {confirming && (
+          <Modal title="Re-price an approved document?" onClose={() => setConfirming(false)}>
+            <p className="text-sm text-text-muted">
+              Cost and margin will be recalculated for every line on this document. Prices
+              already set stay as they are unless you change them.
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button type="button" variant="secondary" onClick={() => setConfirming(false)}>
+                Leave it alone
+              </Button>
+              <Button
+                type="button"
+                onClick={() => {
+                  setConfirming(false);
+                  setUnlocked(true);
+                }}
+              >
+                Yes, let me edit
+              </Button>
+            </div>
+          </Modal>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3">
+      {isApproved && (
+        <p className="rounded-control border border-status-pending-fg/40 bg-status-pending-bg px-3 py-2 text-sm">
+          Editing an approved document. Costs on the products update as you go.
+        </p>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-card border border-border bg-surface px-3 py-2">
         <div className="flex flex-wrap items-center gap-3 text-sm">
           <span>

@@ -82,6 +82,13 @@ export interface VendorBalance {
   advancePaise: number;
   duePaise: number;
   lastPurchaseAt: string | null;
+  /**
+   * Credits raised by the vendor. Already netted into duePaise, and
+   * deliberately kept out of paidPaise: no money moved, so counting it as
+   * paid would invent an advance and break the bank reconciliation.
+   */
+  creditPaise: number;
+  creditUnappliedPaise: number;
 }
 
 export async function getVendor(id: string): Promise<VendorDetail | null> {
@@ -150,7 +157,10 @@ export async function getVendorBalance(id: string): Promise<VendorBalance | null
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("vendor_balances")
-    .select("approved_docs, purchased_paise, paid_paise, advance_paise, due_paise, last_purchase_at")
+    .select(
+      `approved_docs, purchased_paise, paid_paise, advance_paise, due_paise,
+       last_purchase_at, credit_paise, credit_unapplied_paise`,
+    )
     .eq("vendor_id", id)
     .maybeSingle();
 
@@ -162,5 +172,7 @@ export async function getVendorBalance(id: string): Promise<VendorBalance | null
     advancePaise: Number(data.advance_paise ?? 0),
     duePaise: Number(data.due_paise ?? 0),
     lastPurchaseAt: data.last_purchase_at,
+    creditPaise: Number(data.credit_paise ?? 0),
+    creditUnappliedPaise: Number(data.credit_unapplied_paise ?? 0),
   };
 }

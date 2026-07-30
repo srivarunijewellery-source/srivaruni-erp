@@ -8,13 +8,18 @@ import { parseRupeesToPaise } from "@/lib/money";
 import { parsePercentToBps } from "@/lib/pricing";
 import { saveScheme } from "./actions";
 import type {
-  Category, DiscountScope, DiscountValueKind, ItemTypeOption, StoreLocation,
+  AttributeOption, Category, DiscountScope, DiscountValueKind,
+  ItemTypeOption, StoreLocation,
 } from "@/types/domain";
 
 interface Target {
   categoryId?: string | null;
   itemTypeId?: string | null;
   vendorId?: string | null;
+  platingId?: string | null;
+  stoneId?: string | null;
+  colourId?: string | null;
+  sizeId?: string | null;
 }
 
 /**
@@ -30,6 +35,10 @@ export function SchemeForm({
   categories,
   itemTypes,
   vendors,
+  platings,
+  stones,
+  colours,
+  sizes,
   locations,
   maxPercentBps,
   maxDays,
@@ -37,6 +46,12 @@ export function SchemeForm({
   categories: Category[];
   itemTypes: ItemTypeOption[];
   vendors: Array<{ id: string; name: string }>;
+  // Offers get described by attribute far more often than by category:
+  // "20% off rose gold" is the normal shape of a festival campaign.
+  platings: AttributeOption[];
+  stones: AttributeOption[];
+  colours: AttributeOption[];
+  sizes: AttributeOption[];
   locations: StoreLocation[];
   maxPercentBps: number;
   maxDays: number;
@@ -226,6 +241,10 @@ export function SchemeForm({
                         vendors.find((v) => v.id === t.vendorId)?.name,
                         categories.find((c) => c.id === t.categoryId)?.name,
                         itemTypes.find((x) => x.id === t.itemTypeId)?.name,
+                        platings.find((x) => x.id === t.platingId)?.value,
+                        stones.find((x) => x.id === t.stoneId)?.value,
+                        colours.find((x) => x.id === t.colourId)?.value,
+                        sizes.find((x) => x.id === t.sizeId)?.value,
                       ].filter(Boolean).join(" · ")}
                     </span>
                     <button
@@ -264,6 +283,38 @@ export function SchemeForm({
                 {typesForDraft.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
               </Select>
             </div>
+
+            <div className="grid grid-cols-4 gap-2">
+              <Select
+                value={draft.platingId ?? ""}
+                onChange={(e) => setDraft((d) => ({ ...d, platingId: e.target.value || null }))}
+              >
+                <option value="">Any plating</option>
+                {platings.map((o) => <option key={o.id} value={o.id}>{o.value}</option>)}
+              </Select>
+              <Select
+                value={draft.stoneId ?? ""}
+                onChange={(e) => setDraft((d) => ({ ...d, stoneId: e.target.value || null }))}
+              >
+                <option value="">Any stone</option>
+                {stones.map((o) => <option key={o.id} value={o.id}>{o.value}</option>)}
+              </Select>
+              <Select
+                value={draft.colourId ?? ""}
+                onChange={(e) => setDraft((d) => ({ ...d, colourId: e.target.value || null }))}
+              >
+                <option value="">Any colour</option>
+                {colours.map((o) => <option key={o.id} value={o.id}>{o.value}</option>)}
+              </Select>
+              <Select
+                value={draft.sizeId ?? ""}
+                onChange={(e) => setDraft((d) => ({ ...d, sizeId: e.target.value || null }))}
+              >
+                <option value="">Any size</option>
+                {sizes.map((o) => <option key={o.id} value={o.id}>{o.value}</option>)}
+              </Select>
+            </div>
+
             <Button size="sm" onClick={addTarget}>Add this selection</Button>
             <p className="text-2xs text-text-muted">
               Within one line every field must match. Across lines, any match counts.

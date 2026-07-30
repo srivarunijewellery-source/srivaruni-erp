@@ -14,6 +14,8 @@ import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { VendorDetailCard } from "@/features/vendors/VendorDetailCard";
 import { VendorPricingCard } from "@/features/pricing/VendorPricingCard";
+import { CreditNotesCard } from "@/features/credits/CreditNotesCard";
+import { listCreditNotes, listOpenBills } from "@/features/credits/queries";
 import { formatPaise } from "@/lib/money";
 import { formatDate } from "@/lib/format";
 import { listPayments } from "@/features/payments/queries";
@@ -30,11 +32,14 @@ export default async function VendorDetailPage({
     return <EmptyState title="Vendors are not available to your role" />;
   }
 
-  const [vendor, purchases, balance, payments] = await Promise.all([
+  const [vendor, purchases, balance, payments, creditNotes, openBills] =
+    await Promise.all([
     getVendor(id),
     getVendorPurchases(id),
     getVendorBalance(id),
     listPayments(id),
+    listCreditNotes(id),
+    listOpenBills(id),
   ]);
 
   if (!vendor) notFound();
@@ -75,6 +80,18 @@ export default async function VendorDetailPage({
               codeHasDateSuffix={vendor.codeHasDateSuffix}
               pricingNote={vendor.pricingNote}
             />
+          )}
+
+          {/* Credits are money owed, so the same gate as payments. */}
+          {can(user.role, "inward.viewCost") && (
+            <div className="mt-4">
+              <CreditNotesCard
+                vendorId={vendor.id}
+                notes={creditNotes}
+                bills={openBills}
+                unappliedPaise={balance?.creditUnappliedPaise ?? 0}
+              />
+            </div>
           )}
           <div className="mt-4">
             <Card>

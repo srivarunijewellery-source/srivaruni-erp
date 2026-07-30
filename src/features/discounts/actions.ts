@@ -11,6 +11,10 @@ const targetSchema = z.object({
   categoryId: z.string().uuid().nullable().optional(),
   itemTypeId: z.string().uuid().nullable().optional(),
   vendorId: z.string().uuid().nullable().optional(),
+  platingId: z.string().uuid().nullable().optional(),
+  stoneId: z.string().uuid().nullable().optional(),
+  colourId: z.string().uuid().nullable().optional(),
+  sizeId: z.string().uuid().nullable().optional(),
   itemId: z.string().uuid().nullable().optional(),
 });
 
@@ -89,6 +93,10 @@ export async function saveScheme(input: unknown): Promise<Result<string>> {
         category_id: t.categoryId || null,
         item_type_id: t.itemTypeId || null,
         vendor_id: t.vendorId || null,
+        plating_id: t.platingId || null,
+        stone_id: t.stoneId || null,
+        colour_id: t.colourId || null,
+        size_id: t.sizeId || null,
         item_id: t.itemId || null,
       })),
     );
