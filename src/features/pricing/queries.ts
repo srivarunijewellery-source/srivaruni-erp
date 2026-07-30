@@ -134,14 +134,20 @@ export async function listRuleScopeOptions(): Promise<{
  * cannot work.
  */
 export async function listPricingRows(
-  opts: { status?: "pending" | "all"; search?: string; limit?: number } = {},
+  opts: {
+    status?: "pending" | "all" | "priced";
+    search?: string;
+    categoryId?: string;
+    vendorId?: string;
+    limit?: number;
+  } = {},
 ): Promise<PricingRow[]> {
   const supabase = await createClient();
 
   let q = supabase
     .from("items")
     .select(
-      `id, barcode, name, mrp_paise, selling_price_paise,
+      `id, barcode, name, mrp_paise, selling_price_paise, category_id, vendor_id,
        categories(name), vendors(name),
        item_photos(storage_path, is_primary, sort_order),
        item_latest_cost(landed_cost_paise)`,
@@ -149,7 +155,10 @@ export async function listPricingRows(
     .order("created_at", { ascending: false })
     .limit(opts.limit ?? 200);
 
-  if (opts.status !== "all") q = q.is("mrp_paise", null);
+  if (opts.status === "pending") q = q.is("mrp_paise", null);
+  if (opts.status === "priced") q = q.not("mrp_paise", "is", null);
+  if (opts.categoryId) q = q.eq("category_id", opts.categoryId);
+  if (opts.vendorId) q = q.eq("vendor_id", opts.vendorId);
 
   if (opts.search) {
     const term = opts.search.trim();

@@ -3,6 +3,8 @@ import { searchStock } from "@/features/stock/queries";
 import { PageHeader } from "@/components/ui/PageHeader";
 import Link from "next/link";
 import { Barcode } from "@/components/ui/Barcode";
+import { PhotoThumb } from "@/components/ui/PhotoThumb";
+import { itemPhotoUrl } from "@/lib/storage";
 import { ROUTES } from "@/config/nav";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { DataTable, type Column } from "@/components/ui/DataTable";
@@ -21,6 +23,15 @@ export default async function StockPage({
   const rows = await searchStock(q);
 
   const columns: ReadonlyArray<Column<StockRow>> = [
+    {
+      key: "photo",
+      header: "",
+      render: (r) => (
+        <Link href={ROUTES.productDetail(r.itemId)} aria-label={r.name}>
+          <PhotoThumb src={itemPhotoUrl(r.photoPath)} alt={r.name} size={36} />
+        </Link>
+      ),
+    },
     {
       key: "barcode",
       header: "Tag",

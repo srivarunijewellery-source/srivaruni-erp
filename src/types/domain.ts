@@ -84,6 +84,7 @@ export interface TransferSummary {
 }
 
 export interface StockRow {
+  photoPath: string | null;
   itemId: string;
   barcode: string;
   name: string;

@@ -24,8 +24,28 @@ export async function searchStock(query: string): Promise<StockRow[]> {
   const { data, error } = await q;
   if (error) throw error;
 
+  // Photos come from a second read rather than a join: stock_on_hand is a
+  // view and item_photos is one-to-many, so joining would multiply the
+  // stock rows and quietly double the on-hand figures.
+  const ids = (data ?? []).map((r) => r.item_id);
+  const photos = new Map<string, string>();
+
+  if (ids.length > 0) {
+    const { data: photoRows } = await supabase
+      .from("item_photos")
+      .select("item_id, storage_path, is_primary, sort_order")
+      .in("item_id", ids)
+      .order("is_primary", { ascending: false })
+      .order("sort_order");
+
+    for (const p of photoRows ?? []) {
+      if (!photos.has(p.item_id)) photos.set(p.item_id, p.storage_path);
+    }
+  }
+
   return (data ?? []).map((r) => ({
     itemId: r.item_id,
+    photoPath: photos.get(r.item_id) ?? null,
     barcode: r.barcode,
     name: r.name,
     category: r.category,

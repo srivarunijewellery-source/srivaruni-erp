@@ -1,0 +1,32 @@
+-- 0040_vendor_money_reversals.sql
+-- Applied remotely as 'vendor_money_reversals' and
+-- 'vendor_balances_exclude_reversed'.
+--
+-- Reversal-and-reissue for vendor money, with an append-only history.
+--
+-- Editing a payment in place is deliberately not offered. A payment
+-- already spread across three bills cannot quietly become a smaller
+-- number: the allocations it settled would be wrong and nothing would say
+-- so. Instead the original is stamped reversed, its allocations are
+-- released, and the operator re-enters. The original row survives exactly
+-- as recorded.
+--
+-- Rules enforced in the database, not the form:
+--   * a reversal needs a reason
+--   * a reversal cannot itself be reversed (record fresh instead, so the
+--     history never becomes ambiguous about what was once true)
+--   * a reversed document cannot be re-allocated
+--   * nothing dated more than vendor_money_window_days() (180) ago can be
+--     changed at all, because reopening a bill from last year rewrites a
+--     period already treated as closed
+--   * vendor_money_history is append-only by trigger
+--
+-- vendor_balances now filters reversed_at IS NULL inside EACH subquery
+-- rather than at the top, so allocated_paise and advance_paise stay
+-- consistent with paid_paise. Without that filter a reversal would be
+-- cosmetic: the payment would still count as paid and the only clue would
+-- be a timestamp nobody queries.
+--
+-- Verified live: blank reason refused, double reversal refused, applying a
+-- reversed note refused, history edit refused, allocations released, and
+-- due returned to exactly its pre-test value after a reverse.
