@@ -16,6 +16,8 @@ import { VendorDetailCard } from "@/features/vendors/VendorDetailCard";
 import { VendorPricingCard } from "@/features/pricing/VendorPricingCard";
 import { CreditNotesCard } from "@/features/credits/CreditNotesCard";
 import { listCreditNotes, listOpenBills } from "@/features/credits/queries";
+import { getSettlement } from "@/features/credits/settlement";
+import { SettlementPanel } from "@/features/credits/SettlementPanel";
 import { formatPaise } from "@/lib/money";
 import { formatDate } from "@/lib/format";
 import { listPayments } from "@/features/payments/queries";
@@ -32,7 +34,7 @@ export default async function VendorDetailPage({
     return <EmptyState title="Vendors are not available to your role" />;
   }
 
-  const [vendor, purchases, balance, payments, creditNotes, openBills] =
+  const [vendor, purchases, balance, payments, creditNotes, openBills, settlement] =
     await Promise.all([
     getVendor(id),
     getVendorPurchases(id),
@@ -40,6 +42,7 @@ export default async function VendorDetailPage({
     listPayments(id),
     listCreditNotes(id),
     listOpenBills(id),
+    getSettlement(id),
   ]);
 
   if (!vendor) notFound();
@@ -83,6 +86,12 @@ export default async function VendorDetailPage({
           )}
 
           {/* Credits are money owed, so the same gate as payments. */}
+          {can(user.role, "inward.viewCost") && (
+            <div className="mt-4">
+              <SettlementPanel vendorId={vendor.id} settlement={settlement} />
+            </div>
+          )}
+
           {can(user.role, "inward.viewCost") && (
             <div className="mt-4">
               <CreditNotesCard

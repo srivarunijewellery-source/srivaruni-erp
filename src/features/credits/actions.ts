@@ -101,3 +101,64 @@ export async function allocateCredit(
   revalidatePath(ROUTES.payments);
   return ok(undefined);
 }
+
+/**
+ * Apply a payment or a credit note to one bill.
+ *
+ * The amount is worked out here rather than typed: the useful figure is
+ * always the smaller of what the source has left and what the bill still
+ * owes, and making someone compute that by hand for every line is how the
+ * old form became unusable.
+ *
+ * Over-allocation and cross-vendor mistakes are refused by database
+ * triggers, so a stale screen cannot produce a wrong allocation.
+ */
+export async function applyToBill(
+  vendorId: string,
+  kind: "payment" | "credit",
+  sourceId: string,
+  inwardId: string,
+  amountPaise: number,
+): Promise<Result> {
+  if (amountPaise <= 0) return err("Nothing left to apply.");
+
+  const supabase = await createClient();
+
+  const { error } =
+    kind === "payment"
+      ? await supabase
+          .from("vendor_payment_allocations")
+          .insert({ payment_id: sourceId, inward_id: inwardId, amount_paise: amountPaise })
+      : await supabase
+          .from("vendor_credit_allocations")
+          .insert({ credit_note_id: sourceId, inward_id: inwardId, amount_paise: amountPaise });
+
+  if (error) return err(toMessage(error));
+
+  revalidatePath(ROUTES.vendorDetail(vendorId));
+  revalidatePath(ROUTES.payments);
+  revalidatePath(ROUTES.vendors);
+  return ok(undefined);
+}
+
+/** Reverse a payment or credit note. Requires a reason; 180-day window. */
+export async function reverseMoneyDoc(
+  vendorId: string,
+  kind: "payment" | "credit",
+  id: string,
+  reason: string,
+): Promise<Result> {
+  if (!reason.trim()) return err("Give a reason for the reversal.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc(
+    kind === "payment" ? "reverse_vendor_payment" : "reverse_vendor_credit_note",
+    { p_id: id, p_reason: reason.trim() },
+  );
+
+  if (error) return err(toMessage(error));
+
+  revalidatePath(ROUTES.vendorDetail(vendorId));
+  revalidatePath(ROUTES.payments);
+  return ok(undefined);
+}
