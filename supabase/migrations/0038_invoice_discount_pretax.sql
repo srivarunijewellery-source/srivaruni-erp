@@ -1,0 +1,21 @@
+-- 0038_invoice_discount_pretax.sql
+-- Applied remotely as 'invoice_discount_pretax'.
+--
+-- Vendor discount shown ON the invoice, prorated across lines by value,
+-- applied BEFORE tax. A 7% discount takes a 2100 gross to 1953 taxable
+-- and GST is charged on 1953, so invoice_taxable_paise and the ITC
+-- claimed match what the vendor filed. Verified against live data:
+-- 2100 -> discount 147, taxable 1953, IGST 58.59, landed/unit 976.50.
+--
+-- For a gst_inclusive vendor the discount MUST come off the gross before
+-- taxable is derived: that tax formula computes tax as gross minus
+-- taxable, so reducing taxable alone would silently reclassify the
+-- discount as tax.
+--
+-- Post-invoice credit notes are deliberately not modelled here. They do
+-- not reduce taxable value under s.15(3)(b) unless specific conditions
+-- are met, so folding them into landed cost would overstate ITC. Those
+-- belong against the vendor on the payments side.
+--
+-- Full statement text is in the remote migration history; recover with
+-- `supabase db pull` if this file and the database ever disagree.

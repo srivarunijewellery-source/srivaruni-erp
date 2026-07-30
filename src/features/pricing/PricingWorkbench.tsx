@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
+import { ROUTES } from "@/config/nav";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { NarrowInput, Select } from "@/components/ui/Field";
@@ -215,7 +217,14 @@ export function PricingWorkbench({
                     <div className="flex items-center gap-2">
                       <PhotoThumb src={itemPhotoUrl(row.photoPath)} alt={row.name} size={36} />
                       <div className="min-w-0">
-                        <div className="truncate font-medium">{row.name}</div>
+                        <div className="truncate font-medium">
+                          <Link
+                            href={ROUTES.productDetail(row.itemId)}
+                            className="rounded-sm underline decoration-border decoration-dotted underline-offset-2 hover:decoration-brand hover:text-brand focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
+                          >
+                            {row.name}
+                          </Link>
+                        </div>
                         <div className="truncate text-2xs text-text-muted">
                           <span className="font-mono">{row.barcode}</span>
                           {" · "}{row.categoryName}

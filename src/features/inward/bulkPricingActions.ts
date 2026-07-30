@@ -273,3 +273,51 @@ export async function applyBandToDocument(
 
   return ok({ applied, leftAsTyped, refused, lines: out });
 }
+
+/**
+ * The invoice-level trade discount, as printed on the vendor's bill.
+ *
+ * Applied before tax and prorated across lines by value, because that is
+ * how GST treats a discount recorded on the invoice: the taxable value
+ * itself is reduced, so tax is charged on the net and the ITC claimed
+ * matches what the vendor filed.
+ *
+ * A credit note received later is a different animal — it does not reduce
+ * taxable value — and belongs against the vendor on the payments side,
+ * not folded into the cost of stock.
+ */
+export async function saveInwardDiscount(
+  inwardId: string,
+  kind: "none" | "percent" | "amount",
+  value: string,
+): Promise<Result<void>> {
+  const supabase = await createClient();
+
+  let bps: number | null = null;
+  let paise: number | null = null;
+
+  if (kind === "percent") {
+    const pct = Number(value.replace(/[%\s]/g, ""));
+    if (!Number.isFinite(pct) || pct <= 0 || pct > 100) {
+      return err("Enter a discount percentage between 0 and 100.");
+    }
+    bps = Math.round(pct * 100);
+  } else if (kind === "amount") {
+    const rupees = Number(value.replace(/[,\s]/g, ""));
+    if (!Number.isFinite(rupees) || rupees <= 0) {
+      return err("Enter a discount amount like 250 or 250.50");
+    }
+    paise = Math.round(rupees * 100);
+  }
+
+  const { error: wErr } = await supabase
+    .from("inwards")
+    .update({ discount_kind: kind, discount_bps: bps, discount_paise: paise })
+    .eq("id", inwardId);
+
+  if (wErr) return err(toMessage(wErr));
+
+  await supabase.rpc("compute_inward_costs", { p_inward: inwardId });
+  revalidate(inwardId);
+  return ok(undefined);
+}

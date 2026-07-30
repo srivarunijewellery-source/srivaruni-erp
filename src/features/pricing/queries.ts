@@ -228,3 +228,24 @@ export async function getInwardVendorPricing(inwardId: string): Promise<{
     codeMultiple: v.code_multiple === null ? null : Number(v.code_multiple),
   };
 }
+
+/** The invoice-level discount recorded on an inward. */
+export async function getInwardDiscount(inwardId: string): Promise<{
+  kind: "none" | "percent" | "amount";
+  bps: number | null;
+  paise: number | null;
+}> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("inwards")
+    .select("discount_kind, discount_bps, discount_paise")
+    .eq("id", inwardId)
+    .maybeSingle();
+
+  if (error || !data) return { kind: "none", bps: null, paise: null };
+  return {
+    kind: data.discount_kind,
+    bps: data.discount_bps,
+    paise: data.discount_paise,
+  };
+}

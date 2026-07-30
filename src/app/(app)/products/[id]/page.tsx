@@ -16,6 +16,8 @@ import { can } from "@/config/roles";
 import { ROUTES } from "@/config/nav";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { formatPaise } from "@/lib/money";
+import { formatBps, marginBps } from "@/lib/pricing";
 import { Badge } from "@/components/ui/Badge";
 import { PhotoThumb } from "@/components/ui/PhotoThumb";
 import { ProductDetailCard } from "@/features/products/ProductDetailCard";
@@ -124,6 +126,68 @@ export default async function ProductDetailPage({
               )}
             </CardBody>
           </Card>
+
+          {/* Cost and margin.
+              Freight, packing and hamali are prorated across the lines of
+              an inward, so the adjusted cost is what this piece actually
+              cost to put on the shelf — and that, not the bare vendor
+              rate, is what every margin here is measured against. The
+              rate is shown alongside it so the difference is visible
+              rather than buried. */}
+          {canEditPricing && (
+            <Card>
+              <CardHeader>
+                <h2 className="font-medium">Cost and margin</h2>
+              </CardHeader>
+              <CardBody className="space-y-1 text-sm">
+                {product.landedCostPaise === null ? (
+                  <p className="text-text-muted">
+                    No cost yet. It is worked out when the inward carrying this piece is
+                    priced and approved.
+                  </p>
+                ) : (
+                  <>
+                    <Row label="Vendor rate" value={formatPaise(product.purchaseRatePaise)} />
+                    <Row
+                      label="Charges less bill discount"
+                      value={
+                        product.purchaseRatePaise !== null
+                          ? formatPaise(product.landedCostPaise - product.purchaseRatePaise)
+                          : "—"
+                      }
+                    />
+                    <div className="flex justify-between border-t border-border pt-1 font-medium">
+                      <span>Adjusted cost</span>
+                      <span className="tnum">{formatPaise(product.landedCostPaise)}</span>
+                    </div>
+
+                    <div className="mt-2 space-y-1 border-t border-border pt-2">
+                      <Row label="MRP" value={formatPaise(product.mrpPaise)} />
+                      <Row label="Selling" value={formatPaise(product.sellingPricePaise)} />
+                      <div className="flex justify-between font-medium">
+                        <span>Margin on adjusted cost</span>
+                        <span className="tnum">
+                          {formatBps(
+                            marginBps(product.sellingPricePaise, product.landedCostPaise),
+                          )}
+                        </span>
+                      </div>
+                      {product.purchaseRatePaise !== null &&
+                        product.purchaseRatePaise !== product.landedCostPaise && (
+                          <p className="text-2xs text-text-subtle">
+                            On the bare rate it would read{" "}
+                            {formatBps(
+                              marginBps(product.sellingPricePaise, product.purchaseRatePaise),
+                            )}
+                            . The adjusted figure is the real one.
+                          </p>
+                        )}
+                    </div>
+                  </>
+                )}
+              </CardBody>
+            </Card>
+          )}
         </div>
 
         <div className="space-y-4 lg:col-span-2">
@@ -253,6 +317,15 @@ function SourceRow({ label, value }: { label: string; value: React.ReactNode }) 
     <div className="flex justify-between gap-3 border-b border-border py-1.5 last:border-0">
       <span className="text-text-muted">{label}</span>
       <span className="text-right">{value}</span>
+    </div>
+  );
+}
+
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between">
+      <span className="text-text-muted">{label}</span>
+      <span className="tnum">{value}</span>
     </div>
   );
 }

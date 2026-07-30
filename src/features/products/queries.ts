@@ -18,6 +18,8 @@ export interface ProductRow {
   mrpPaise: Paise | null;
   sellingPricePaise: Paise | null;
   landedCostPaise: Paise | null;
+  /** The bare vendor rate, before freight and packing were prorated in. */
+  purchaseRatePaise: Paise | null;
   onHand: number;
   createdAt: string;
   colourId: string | null;
@@ -57,13 +59,17 @@ export async function listProducts(query: string): Promise<ProductRow[]> {
 
   const ids = (data ?? []).map((r) => r.id);
   const costs = new Map<string, number>();
+  const rates = new Map<string, number | null>();
 
   if (ids.length > 0) {
     const { data: costRows } = await supabase
       .from("item_latest_cost")
-      .select("item_id, landed_cost_paise")
+      .select("item_id, purchase_rate_paise, landed_cost_paise")
       .in("item_id", ids);
-    for (const c of costRows ?? []) costs.set(c.item_id, c.landed_cost_paise);
+    for (const c of costRows ?? []) {
+      costs.set(c.item_id, c.landed_cost_paise);
+      rates.set(c.item_id, c.purchase_rate_paise);
+    }
   }
 
   return (data ?? []).map((r) => {
@@ -92,6 +98,7 @@ export async function listProducts(query: string): Promise<ProductRow[]> {
       mrpPaise: r.mrp_paise,
       sellingPricePaise: r.selling_price_paise,
       landedCostPaise: costs.get(r.id) ?? null,
+      purchaseRatePaise: rates.get(r.id) ?? null,
       onHand: balances.reduce((s, b) => s + b.qty, 0),
       createdAt: r.created_at,
       colourId: r.colour_id,
@@ -150,7 +157,7 @@ export async function getProduct(id: string): Promise<ProductDetail | null> {
 
   const { data: cost } = await supabase
     .from("item_latest_cost")
-    .select("landed_cost_paise")
+    .select("purchase_rate_paise, landed_cost_paise")
     .eq("item_id", id)
     .maybeSingle();
 
@@ -175,6 +182,7 @@ export async function getProduct(id: string): Promise<ProductDetail | null> {
     mrpPaise: data.mrp_paise,
     sellingPricePaise: data.selling_price_paise,
     landedCostPaise: cost?.landed_cost_paise ?? null,
+    purchaseRatePaise: cost?.purchase_rate_paise ?? null,
     onHand: balances.reduce((s, b) => s + b.qty, 0),
     createdAt: data.created_at,
     colourId: data.colour_id,

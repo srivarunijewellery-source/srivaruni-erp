@@ -1,7 +1,10 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
+import { ROUTES } from "@/config/nav";
 import { DocumentPricingBar } from "./DocumentPricingBar";
+import { saveInwardDiscount } from "./bulkPricingActions";
 import type { PriceBand } from "@/types/domain";
 import {
   savePricingLine,
@@ -38,6 +41,7 @@ export function PricingPanel({
   tax,
   bands,
   vendorPricing,
+  discount,
 }: {
   inwardId: string;
   lines: PricingLine[];
@@ -50,6 +54,7 @@ export function PricingPanel({
     pricingMode: "code_multiple" | "serial_list" | "manual";
     codeMultiple: number | null;
   } | null;
+  discount: { kind: "none" | "percent" | "amount"; bps: number | null; paise: number | null };
 }) {
   const [editingAttrs, setEditingAttrs] = useState<PricingLine | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -70,7 +75,11 @@ export function PricingPanel({
           </span>
 
         </div>
-        <AdditionalCosts inwardId={inwardId} existing={additionalCosts} />
+        <AdditionalCosts
+          inwardId={inwardId}
+          existing={additionalCosts}
+          discount={discount}
+        />
       </div>
 
       {tax && <TaxBanner tax={tax} />}
@@ -264,7 +273,16 @@ function Row({
       </td>
       <td className="px-2 py-1.5">
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className="font-medium">{line.name}</span>
+          {/* Straight through to the product. Pricing raises questions
+              about the piece itself — past prices, photos, attributes —
+              and hunting for it by barcode is friction at exactly the
+              wrong moment. */}
+          <Link
+            href={ROUTES.productDetail(line.itemId)}
+            className="font-medium rounded-sm underline decoration-border decoration-dotted underline-offset-2 hover:decoration-brand hover:text-brand focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
+          >
+            {line.name}
+          </Link>
           <Barcode code={line.barcode} />
         </div>
         <div className="mt-0.5 flex flex-wrap items-center gap-1">
@@ -463,11 +481,14 @@ function AttributeModal({
 function AdditionalCosts({
   inwardId,
   existing,
+  discount,
 }: {
   inwardId: string;
   existing: AdditionalCost[];
+  discount: { kind: "none" | "percent" | "amount"; bps: number | null; paise: number | null };
 }) {
   const [pending, start] = useTransition();
+  const [kind, setKind] = useState<"none" | "percent" | "amount">(discount.kind);
   const find = (t: string) => existing.find((c) => c.costType === t);
 
   const save = (costType: string, raw: string, basis: string) => {
@@ -509,6 +530,51 @@ function AdditionalCosts({
           </label>
         );
       })}
+
+      {/* Invoice discount. Unlike freight this is part of the vendor's
+          taxable supply, so it comes off before GST and every line's
+          taxable value drops with it. */}
+      <label className="ml-2 flex items-center gap-1 border-l border-border pl-3">
+        <span className="text-2xs uppercase tracking-wide text-text-subtle">
+          Bill disc.
+        </span>
+        <select
+          defaultValue={discount.kind}
+          aria-label="Discount type"
+          onChange={(e) => {
+            const kind = e.target.value as "none" | "percent" | "amount";
+            if (kind === "none") {
+              start(async () => { await saveInwardDiscount(inwardId, "none", ""); });
+            }
+            setKind(kind);
+          }}
+          className="rounded border border-border bg-surface px-1 py-1 text-2xs"
+        >
+          <option value="none">none</option>
+          <option value="percent">%</option>
+          <option value="amount">₹</option>
+        </select>
+        {kind !== "none" && (
+          <NarrowInput
+            widthClass="w-[72px]"
+            inputMode="decimal"
+            placeholder={kind === "percent" ? "7" : "0.00"}
+            defaultValue={
+              discount.kind === "percent" && discount.bps !== null
+                ? (discount.bps / 100).toString()
+                : discount.kind === "amount" && discount.paise !== null
+                  ? (discount.paise / 100).toFixed(2)
+                  : ""
+            }
+            onBlur={(e) => {
+              const v = e.target.value.trim();
+              if (v === "") return;
+              start(async () => { await saveInwardDiscount(inwardId, kind, v); });
+            }}
+            className="tnum py-1 text-right"
+          />
+        )}
+      </label>
     </div>
   );
 }
