@@ -24,7 +24,7 @@ import { InvoiceUpload } from "@/features/inward/InvoiceUpload";
 import { BillDetails } from "@/features/inward/BillDetails";
 import { PricingPanel } from "@/features/inward/PricingPanel";
 import {
-  listBands, getInwardVendorPricing, getInwardDiscount,
+  listBands, getInwardVendorPricing, getInwardDiscount, getInwardCostTotals,
 } from "@/features/pricing/queries";
 import { formatPaise } from "@/lib/money";
 
@@ -51,7 +51,7 @@ export default async function InwardDetailPage({
   // way to make this page feel slow again.
   const [
     attachments, vendors, formOptions, pricingLines,
-    additionalCosts, taxSummary, priceBands, vendorPricing, inwardDiscount,
+    additionalCosts, taxSummary, priceBands, vendorPricing, inwardDiscount, costTotals,
   ] = await Promise.all([
     listInwardAttachments(id),
     listVendors(),
@@ -64,6 +64,7 @@ export default async function InwardDetailPage({
     showPricing
       ? getInwardDiscount(id)
       : Promise.resolve({ kind: "none" as const, bps: null, paise: null }),
+    showPricing ? getInwardCostTotals(id) : Promise.resolve(null),
   ]);
 
   const totalQty = inward.lines.reduce((s, l) => s + l.qty, 0);
@@ -174,16 +175,33 @@ export default async function InwardDetailPage({
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 <Foot label="Lines priced" value={`${pricedLines} / ${pricingLines.length}`} />
                 <Foot label="Pieces" value={String(totalQty)} />
-                <Foot label="Purchase value" value={formatPaise(purchaseValue)} />
+                <Foot label="Gross (rate x qty)" value={formatPaise(costTotals?.grossPaise ?? purchaseValue)} />
+                <Foot
+                  label="Bill discount"
+                  value={
+                    costTotals && costTotals.discountPaise > 0
+                      ? `- ${formatPaise(costTotals.discountPaise)}`
+                      : "—"
+                  }
+                />
+                <Foot label="Taxable" value={formatPaise(costTotals?.taxablePaise ?? 0)} />
+                <Foot label="GST" value={formatPaise(costTotals?.taxPaise ?? 0)} />
                 <Foot
                   label="Freight and packing"
                   value={additionalTotal > 0 ? formatPaise(additionalTotal) : "—"}
                 />
+                <Foot
+                  label="Landed total"
+                  value={formatPaise(costTotals?.landedPaise ?? 0)}
+                  emphasis
+                />
               </div>
               <p className="mt-3 border-t border-border pt-3 text-2xs text-text-muted">
-                Purchase value is rate x quantity as entered. The taxable amount, GST
-                split and prorated landed cost are computed at approval from the
-                vendor&apos;s tax setup.
+                Gross is rate x quantity as typed. The bill discount comes off before GST,
+                so taxable is the net. Landed total is what this carton cost to put on the
+                shelf: taxable{costTotals?.itcEligible === false ? " plus GST" : ""} plus the
+                prorated freight and packing. It is the figure every margin is measured
+                against.
               </p>
             </CardBody>
           </Card>
@@ -218,11 +236,27 @@ function Tally({
   );
 }
 
-function Foot({ label, value }: { label: string; value: string }) {
+function Foot({
+  label,
+  value,
+  emphasis,
+}: {
+  label: string;
+  value: string;
+  emphasis?: boolean;
+}) {
   return (
     <div>
       <p className="text-2xs uppercase tracking-wide text-text-subtle">{label}</p>
-      <p className="tnum mt-0.5 text-lg font-medium">{value}</p>
+      <p
+        className={
+          emphasis
+            ? "tnum mt-0.5 text-lg font-semibold text-brand"
+            : "tnum mt-0.5 text-lg font-medium"
+        }
+      >
+        {value}
+      </p>
     </div>
   );
 }

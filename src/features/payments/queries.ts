@@ -17,6 +17,10 @@ export interface VendorBalanceRow {
   duePaise: number;
   paymentTermsDays: number;
   lastPaymentAt: string | null;
+  /** Credits raised by the vendor. Already netted into duePaise. */
+  creditPaise: number;
+  /** Credit not yet tied to a specific bill. Still reduces what is owed. */
+  creditUnappliedPaise: number;
 }
 
 export interface OpenBill {
@@ -72,7 +76,8 @@ export async function listVendorBalances(): Promise<VendorBalanceRow[]> {
     .from("vendor_balances")
     .select(
       `vendor_id, vendor_name, purchased_paise, paid_paise,
-       advance_paise, due_paise, payment_terms_days, last_payment_at`,
+       advance_paise, due_paise, payment_terms_days, last_payment_at,
+       credit_paise, credit_unapplied_paise`,
     )
     .order("due_paise", { ascending: false });
 
@@ -86,6 +91,8 @@ export async function listVendorBalances(): Promise<VendorBalanceRow[]> {
     duePaise: Number(v.due_paise ?? 0),
     paymentTermsDays: v.payment_terms_days ?? 0,
     lastPaymentAt: v.last_payment_at,
+    creditPaise: Number(v.credit_paise ?? 0),
+    creditUnappliedPaise: Number(v.credit_unapplied_paise ?? 0),
   }));
 }
 

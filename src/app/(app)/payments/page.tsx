@@ -38,6 +38,8 @@ export default async function PaymentsPage() {
 
   const totalDue = balances.reduce((s, b) => s + Math.max(0, b.duePaise), 0);
   const totalAdvance = balances.reduce((s, b) => s + Math.max(0, b.advancePaise), 0);
+  const totalCredit = balances.reduce((s, b) => s + b.creditPaise, 0);
+  const totalCreditUnapplied = balances.reduce((s, b) => s + b.creditUnappliedPaise, 0);
   const owing = balances.filter((b) => b.duePaise > 0);
 
   return (
@@ -50,6 +52,18 @@ export default async function PaymentsPage() {
       <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat label="Total owed" value={formatPaise(totalDue)} emphasis />
         <Stat label="Advances out" value={formatPaise(totalAdvance)} />
+        <Stat
+          label="Credit notes"
+          value={
+            totalCredit > 0
+              ? `${formatPaise(totalCredit)}${
+                  totalCreditUnapplied > 0
+                    ? ` · ${formatPaise(totalCreditUnapplied)} unapplied`
+                    : ""
+                }`
+              : "—"
+          }
+        />
         <Stat label="Vendors owing" value={String(owing.length)} />
         <Stat
           label="Cash and bank"
@@ -104,6 +118,7 @@ export default async function PaymentsPage() {
                     <Th right>Purchased</Th>
                     <Th right>Paid</Th>
                     <Th right>Advance</Th>
+                    <Th right>Credit</Th>
                     <Th right>Due</Th>
                   </tr>
                 </thead>
@@ -126,6 +141,22 @@ export default async function PaymentsPage() {
                       </td>
                       <td className="tnum px-2 py-1.5 text-right">
                         {b.advancePaise > 0 ? formatPaise(b.advancePaise) : "—"}
+                      </td>
+                      {/* Credits already reduce Due. What is worth seeing is
+                          how much is still floating, not yet tied to a bill. */}
+                      <td className="tnum px-3 py-2 text-right">
+                        {b.creditPaise > 0 ? (
+                          <>
+                            {formatPaise(b.creditPaise)}
+                            {b.creditUnappliedPaise > 0 && (
+                              <span className="block text-2xs text-text-muted">
+                                {formatPaise(b.creditUnappliedPaise)} unapplied
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          "—"
+                        )}
                       </td>
                       <td
                         className={`tnum px-2 py-1.5 text-right font-medium ${

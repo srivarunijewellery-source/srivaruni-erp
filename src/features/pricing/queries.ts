@@ -249,3 +249,69 @@ export async function getInwardDiscount(inwardId: string): Promise<{
     paise: data.discount_paise,
   };
 }
+
+export interface InwardCostTotals {
+  grossPaise: number;
+  discountPaise: number;
+  taxablePaise: number;
+  taxPaise: number;
+  additionalPaise: number;
+  /** What the carton actually cost to put on the shelf. */
+  landedPaise: number;
+  itcEligible: boolean;
+}
+
+/**
+ * The document's money totals, taken from what the costing engine
+ * computed rather than recomputed in the page.
+ *
+ * rate x qty is only the gross. It ignores the bill discount, so a footer
+ * built on it overstates what was spent — and it says nothing about the
+ * landed total, which is the number that actually matters.
+ */
+export async function getInwardCostTotals(
+  inwardId: string,
+): Promise<InwardCostTotals | null> {
+  const supabase = await createClient();
+
+  const [header, lines, addl] = await Promise.all([
+    supabase
+      .from("inward_header_costs")
+      .select(
+        `invoice_taxable_paise, invoice_tax_paise,
+         invoice_discount_paise, itc_eligible`,
+      )
+      .eq("inward_id", inwardId)
+      .maybeSingle(),
+    supabase
+      .from("inward_lines")
+      .select("qty, inward_line_costs(rate_paise, landed_unit_cost_paise)")
+      .eq("inward_id", inwardId),
+    supabase
+      .from("inward_additional_costs")
+      .select("amount_paise")
+      .eq("inward_id", inwardId),
+  ]);
+
+  if (header.error || !header.data) return null;
+
+  let gross = 0;
+  let landed = 0;
+  for (const l of lines.data ?? []) {
+    const c = pick(l.inward_line_costs) as
+      | { rate_paise: number | null; landed_unit_cost_paise: number | null }
+      | undefined;
+    gross += (c?.rate_paise ?? 0) * l.qty;
+    landed += (c?.landed_unit_cost_paise ?? 0) * l.qty;
+  }
+
+  return {
+    grossPaise: gross,
+    discountPaise: header.data.invoice_discount_paise ?? 0,
+    taxablePaise: header.data.invoice_taxable_paise ?? 0,
+    taxPaise: header.data.invoice_tax_paise ?? 0,
+    additionalPaise: (addl.data ?? []).reduce((s, a) => s + a.amount_paise, 0),
+    landedPaise: landed,
+    itcEligible: Boolean(header.data.itc_eligible),
+  };
+}
