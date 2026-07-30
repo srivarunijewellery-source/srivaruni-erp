@@ -23,7 +23,7 @@ import { DocModeSwitch } from "@/features/inward/DocModeSwitch";
 import { InvoiceUpload } from "@/features/inward/InvoiceUpload";
 import { BillDetails } from "@/features/inward/BillDetails";
 import { PricingPanel } from "@/features/inward/PricingPanel";
-import { listBands } from "@/features/pricing/queries";
+import { listBands, getInwardVendorPricing } from "@/features/pricing/queries";
 import { formatPaise } from "@/lib/money";
 
 export default async function InwardDetailPage({
@@ -49,7 +49,7 @@ export default async function InwardDetailPage({
   // way to make this page feel slow again.
   const [
     attachments, vendors, formOptions, pricingLines,
-    additionalCosts, taxSummary, priceBands,
+    additionalCosts, taxSummary, priceBands, vendorPricing,
   ] = await Promise.all([
     listInwardAttachments(id),
     listVendors(),
@@ -58,6 +58,7 @@ export default async function InwardDetailPage({
     showPricing ? listAdditionalCosts(id) : Promise.resolve([]),
     showPricing ? getTaxSummary(id) : Promise.resolve(null),
     showPricing ? listBands() : Promise.resolve([]),
+    showPricing ? getInwardVendorPricing(id) : Promise.resolve(null),
   ]);
 
   const totalQty = inward.lines.reduce((s, l) => s + l.qty, 0);
@@ -145,6 +146,7 @@ export default async function InwardDetailPage({
                 options={formOptions}
                 tax={taxSummary}
                 bands={priceBands}
+                vendorPricing={vendorPricing}
               />
             ) : (
               <LinesSection

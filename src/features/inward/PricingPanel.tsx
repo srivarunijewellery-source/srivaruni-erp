@@ -1,9 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { recommendForRate } from "@/features/pricing/actions";
-import { formatBps } from "@/lib/pricing";
-import type { PriceBand, PriceRecommendation } from "@/types/domain";
+import { DocumentPricingBar } from "./DocumentPricingBar";
+import type { PriceBand } from "@/types/domain";
 import {
   savePricingLine,
   saveAdditionalCost,
@@ -38,6 +37,7 @@ export function PricingPanel({
   options,
   tax,
   bands,
+  vendorPricing,
 }: {
   inwardId: string;
   lines: PricingLine[];
@@ -45,6 +45,11 @@ export function PricingPanel({
   options: ItemFormOptions;
   tax: InwardTaxSummary | null;
   bands: PriceBand[];
+  vendorPricing: {
+    name: string;
+    pricingMode: "code_multiple" | "serial_list" | "manual";
+    codeMultiple: number | null;
+  } | null;
 }) {
   const [editingAttrs, setEditingAttrs] = useState<PricingLine | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -76,6 +81,8 @@ export function PricingPanel({
         </p>
       )}
 
+      <DocumentPricingBar inwardId={inwardId} bands={bands} vendor={vendorPricing} />
+
       <div className="overflow-x-auto rounded-card border border-border bg-surface">
         <table className="w-full border-collapse text-sm">
           <thead>
@@ -101,7 +108,6 @@ export function PricingPanel({
                 line={line}
                 inwardId={inwardId}
                 categories={options.categories}
-                bands={bands}
                 onAttrs={() => setEditingAttrs(line)}
                 onError={setError}
               />
@@ -127,7 +133,6 @@ function Row({
   line,
   inwardId,
   categories,
-  bands,
   onAttrs,
   onError,
 }: {
@@ -135,7 +140,6 @@ function Row({
   line: PricingLine;
   inwardId: string;
   categories: Array<{ id: string; name: string }>;
-  bands: PriceBand[];
   onAttrs: () => void;
   onError: (m: string | null) => void;
 }) {
@@ -147,31 +151,6 @@ function Row({
   const [selling, setSelling] = useState(rupees(line.sellingPricePaise));
   const [pending, start] = useTransition();
 
-  // Band-driven recommendation, computed in Postgres off the bare rate.
-  const [bandId, setBandId] = useState("");
-  const [rec, setRec] = useState<PriceRecommendation | null>(null);
-  const [recBusy, setRecBusy] = useState(false);
-
-  async function recommend(nextBand?: string) {
-    const ratePaise = parseRupeesToPaise(rate);
-    if (ratePaise === null || ratePaise === 0) {
-      setRec(null);
-      return;
-    }
-    setRecBusy(true);
-    const res = await recommendForRate(line.itemId, (nextBand ?? bandId) || null, ratePaise);
-    setRecBusy(false);
-    if (res.ok) setRec(res.data);
-  }
-
-  /** Take the recommendation into MRP and selling together. */
-  function useRecommended() {
-    if (!rec) return;
-    const v = (rec.recommendedMrpPaise / 100).toFixed(2);
-    setMrp(v);
-    setSelling(v);
-    commit();
-  }
 
   const tags = [line.colourName, line.platingName, line.stoneName, line.sizeName]
     .filter(Boolean) as string[];
@@ -355,7 +334,6 @@ function Row({
           value={rate}
           onChange={(e) => setRate(e.target.value)}
           onBlur={() => {
-            void recommend();
             maybeSuggest();
             commit();
           }}
@@ -390,36 +368,6 @@ function Row({
         {belowSelling && (
           <span className="block text-2xs text-status-danger-fg">below selling</span>
         )}
-        {/* Pricing happens here, not on a separate screen: this is where
-            an item's first price is set, so the band and its suggestion
-            belong in the same row as the rate that drives them. */}
-        <div className="mt-1 flex items-center justify-end gap-1">
-          <select
-            value={bandId}
-            onChange={(e) => {
-              setBandId(e.target.value);
-              void recommend(e.target.value);
-            }}
-            aria-label="Margin band"
-            className="rounded border border-border bg-surface px-1 py-0.5 text-2xs text-text-muted"
-          >
-            <option value="">Band…</option>
-            {bands.map((b) => (
-              <option key={b.id} value={b.id}>{b.label}</option>
-            ))}
-          </select>
-          {recBusy && <span className="text-2xs text-text-muted">…</span>}
-          {!recBusy && rec && (
-            <button
-              type="button"
-              onClick={useRecommended}
-              title={`Band ${rec.bandLabel} on a rate of ${(rec.landedCostPaise / 100).toFixed(2)}. Range ${(rec.mrpMinPaise / 100).toFixed(0)}–${(rec.mrpMaxPaise / 100).toFixed(0)}.`}
-              className="tnum rounded border border-border px-1 text-2xs leading-5 text-brand hover:border-brand"
-            >
-              {(rec.recommendedMrpPaise / 100).toFixed(0)} · {formatBps(rec.achievedMarginBps)}
-            </button>
-          )}
-        </div>
       </td>
       <td className="px-2 py-1.5 text-right">
         <NarrowInput

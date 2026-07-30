@@ -201,3 +201,30 @@ export async function countInwardsAwaitingPricing(): Promise<number> {
   if (error) return 0;
   return count ?? 0;
 }
+
+/** The vendor's pricing convention, for the document pricing bar. */
+export async function getInwardVendorPricing(inwardId: string): Promise<{
+  name: string;
+  pricingMode: "code_multiple" | "serial_list" | "manual";
+  codeMultiple: number | null;
+} | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("inwards")
+    .select("vendors(name, pricing_mode, code_multiple)")
+    .eq("id", inwardId)
+    .maybeSingle();
+
+  if (error || !data) return null;
+  const v = pick(data.vendors) as
+    | { name: string; pricing_mode: "code_multiple" | "serial_list" | "manual";
+        code_multiple: string | null }
+    | undefined;
+  if (!v) return null;
+
+  return {
+    name: v.name,
+    pricingMode: v.pricing_mode,
+    codeMultiple: v.code_multiple === null ? null : Number(v.code_multiple),
+  };
+}
