@@ -36,6 +36,7 @@ export function DocumentPricingBar({
 }) {
   const [bandId, setBandId] = useState(bands[0]?.id ?? "");
   const [mode, setMode] = useState<Mode>("rules_first");
+  const [replaceExisting, setReplaceExisting] = useState(false);
   const [result, setResult] = useState<BulkOutcome | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -79,7 +80,7 @@ export function DocumentPricingBar({
           type="button"
           variant="secondary"
           disabled={!canReadCodes || pending}
-          onClick={() => run(() => applyRatesFromTitles(inwardId))}
+          onClick={() => run(() => applyRatesFromTitles(inwardId, replaceExisting))}
         >
           Read rates from titles
         </Button>
@@ -117,11 +118,26 @@ export function DocumentPricingBar({
         <Button
           type="button"
           disabled={pending || !bandId}
-          onClick={() => run(() => applyBandToDocument(inwardId, bandId, mode))}
+          onClick={() => run(() => applyBandToDocument(inwardId, bandId, mode, replaceExisting))}
         >
           Apply to all lines
         </Button>
       </div>
+
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={replaceExisting}
+          onChange={(e) => setReplaceExisting(e.target.checked)}
+          className="size-4 rounded border-border"
+        />
+        <span>
+          Replace values already entered
+          <span className="text-text-muted">
+            {" "}— off by default, so neither button overwrites work you typed
+          </span>
+        </span>
+      </label>
 
       <p className="text-2xs text-text-muted">
         MRP is worked out from the bare rate, not the landed cost — freight depends on what else

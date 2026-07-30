@@ -12,8 +12,10 @@ import { err, ok, toMessage, type Result } from "@/lib/result";
  * whole inward in a pass and report per line what happened, because the
  * lines they could NOT do are the ones that need a human.
  *
- * Both skip anything already filled in. A bulk action that overwrites
- * deliberate work is a bulk action nobody dares press twice.
+ * Both skip anything already filled in by default. A bulk action that
+ * silently overwrites deliberate work is one nobody dares press twice.
+ * `replaceExisting` is the deliberate escape hatch, driven by an explicit
+ * checkbox, for when the existing values are the ones that are wrong.
  *
  * compute_inward_costs is called once at the end rather than per line —
  * it reallocates freight across the whole document, so calling it inside
@@ -79,6 +81,7 @@ function revalidate(inwardId: string) {
  */
 export async function applyRatesFromTitles(
   inwardId: string,
+  replaceExisting = false,
 ): Promise<Result<BulkOutcome>> {
   const { supabase, lines, error } = await loadLines(inwardId);
   if (error || !lines) return err(toMessage(error));
@@ -110,7 +113,7 @@ export async function applyRatesFromTitles(
     const name = line.items?.name ?? "—";
     const existing = one(line.inward_line_costs)?.rate_paise ?? null;
 
-    if (existing !== null && existing > 0) {
+    if (!replaceExisting && existing !== null && existing > 0) {
       leftAsTyped++;
       out.push({ lineId: line.id, itemName: name, ok: false, reason: "Rate already entered" });
       continue;
@@ -185,6 +188,7 @@ export async function applyBandToDocument(
   inwardId: string,
   bandId: string,
   mode: "rules_first" | "override",
+  replaceExisting = false,
 ): Promise<Result<BulkOutcome>> {
   if (!bandId) return err("Choose a band first.");
 
@@ -199,7 +203,9 @@ export async function applyBandToDocument(
     const name = line.items?.name ?? "—";
     const rate = one(line.inward_line_costs)?.rate_paise ?? null;
 
-    if (line.items?.mrp_paise !== null && line.items?.mrp_paise !== undefined) {
+    if (!replaceExisting
+        && line.items?.mrp_paise !== null
+        && line.items?.mrp_paise !== undefined) {
       leftAsTyped++;
       out.push({ lineId: line.id, itemName: name, ok: false, reason: "Already priced" });
       continue;

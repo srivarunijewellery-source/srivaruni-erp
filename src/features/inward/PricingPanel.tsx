@@ -17,7 +17,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { NarrowInput, Label, Select } from "@/components/ui/Field";
 import { itemPhotoUrl } from "@/lib/storage";
-import { formatPaise, parseRupeesToPaise, suggestMrpPaise } from "@/lib/money";
+import { formatPaise, parseRupeesToPaise } from "@/lib/money";
 import type { PricingLine, AdditionalCost, InwardTaxSummary } from "./pricing";
 import type { ItemFormOptions } from "@/types/domain";
 
@@ -103,7 +103,7 @@ export function PricingPanel({
           <tbody>
             {lines.map((line, i) => (
               <Row
-                key={line.lineId}
+                key={`${line.lineId}:${line.ratePaise ?? ""}:${line.mrpPaise ?? ""}:${line.sellingPricePaise ?? ""}`}
                 index={i + 1}
                 line={line}
                 inwardId={inwardId}
@@ -220,18 +220,6 @@ function Row({
     });
   };
 
-  /** Fills MRP and selling from the category multiplier once a rate is
-   *  in. Only fires on blur of the rate when both are still empty, so it
-   *  never overwrites a price that was typed deliberately. */
-  const maybeSuggest = () => {
-    const ratePaise = parseRupeesToPaise(rate);
-    if (ratePaise === null || ratePaise === 0) return;
-    if (mrp.trim() !== "" || selling.trim() !== "") return;
-    // MRP and selling match in almost every case, so seed both.
-    const s = suggestMrpPaise(ratePaise, line.markupMultiplier);
-    setMrp((s / 100).toFixed(2));
-    setSelling((s / 100).toFixed(2));
-  };
 
   const lineTax = line.cgstPaise + line.sgstPaise + line.igstPaise;
 
@@ -333,10 +321,7 @@ function Row({
           placeholder="0.00"
           value={rate}
           onChange={(e) => setRate(e.target.value)}
-          onBlur={() => {
-            maybeSuggest();
-            commit();
-          }}
+          onBlur={commit}
           className="tnum text-right"
           aria-label="Purchase rate"
         />
