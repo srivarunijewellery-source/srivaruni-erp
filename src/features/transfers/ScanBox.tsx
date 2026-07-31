@@ -107,9 +107,11 @@ export function ScanBox({
         <div
           className={cn(
             "rounded-card px-4 py-3",
-            last.lineComplete
-              ? "bg-status-done-bg text-status-done-fg"
-              : "bg-status-approved-bg text-status-approved-fg",
+            last.isExtra
+              ? "bg-status-pending-bg text-status-pending-fg"
+              : last.lineComplete
+                ? "bg-status-done-bg text-status-done-fg"
+                : "bg-status-approved-bg text-status-approved-fg",
           )}
         >
           <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -117,17 +119,19 @@ export function ScanBox({
               {verb} {last.name}
             </p>
             <p className="tnum font-mono text-lg font-semibold">
-              {last.counted} / {last.target}
+              {last.isExtra ? last.counted : `${last.counted} / ${last.target}`}
             </p>
           </div>
           <div className="mt-1 flex flex-wrap items-center justify-between gap-2 text-sm">
             <span className="font-mono text-2xs">{last.barcode}</span>
             <span>
-              {last.docComplete
-                ? "That is the whole document. Nothing left to scan."
-                : last.remaining > 0
-                  ? `${last.remaining} more of this item`
-                  : "This item is complete"}
+              {last.isExtra
+                ? "Not on the original request \u2014 added to the box."
+                : last.docComplete
+                  ? "That is the whole document. Nothing left to scan."
+                  : last.remaining > 0
+                    ? `${last.remaining} more of this item`
+                    : "This item is complete"}
             </span>
           </div>
           <button

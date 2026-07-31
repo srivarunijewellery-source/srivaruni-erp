@@ -1,0 +1,93 @@
+import { createClient } from "@/lib/supabase/server";
+
+export interface LabelItem {
+  itemId: string;
+  barcode: string;
+  designCode: string | null;
+  name: string;
+  /** Legal MRP, not the (possibly discounted) selling price -- this is what a price tag declares. */
+  mrpPaise: number | null;
+  photoPath: string | null;
+}
+
+const SELECT = "id, barcode, design_code, name, mrp_paise" as const;
+
+function toLabelItem(r: {
+  id: string;
+  barcode: string;
+  design_code: string | null;
+  name: string;
+  mrp_paise: number | null;
+}): LabelItem {
+  return {
+    itemId: r.id,
+    barcode: r.barcode,
+    designCode: r.design_code,
+    name: r.name,
+    mrpPaise: r.mrp_paise,
+    photoPath: null,
+  };
+}
+
+/** Search-as-you-type for the ad hoc print queue. */
+export async function searchLabelItems(query: string, limit = 15): Promise<LabelItem[]> {
+  const term = query.trim();
+  if (!term) return [];
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("items")
+    .select(SELECT)
+    .eq("status", "active")
+    .or(`barcode.ilike.%${term}%,name.ilike.%${term}%,design_code.ilike.%${term}%`)
+    .order("name")
+    .limit(limit);
+
+  if (error) throw error;
+  return (data ?? []).map(toLabelItem);
+}
+
+/** Full label data for a known set of items, in the order requested. */
+export async function getLabelItems(itemIds: string[]): Promise<LabelItem[]> {
+  if (itemIds.length === 0) return [];
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("items").select(SELECT).in("id", itemIds);
+  if (error) throw error;
+
+  const byId = new Map((data ?? []).map((r) => [r.id, toLabelItem(r)]));
+  return itemIds.map((id) => byId.get(id)).filter((x): x is LabelItem => Boolean(x));
+}
+
+/** One item + its inward quantity, for prefilling the queue from an inward document. */
+export interface InwardLabelLine {
+  item: LabelItem;
+  qty: number;
+}
+
+export async function getInwardLinesForLabels(inwardId: string): Promise<InwardLabelLine[]> {
+  const supabase = await createClient();
+
+  // Embedded from inwards, matching the pattern already used in
+  // features/inward/queries.ts -- inward_lines is never queried standalone
+  // elsewhere in this codebase, so this follows the established shape
+  // rather than guessing at a foreign key column name.
+  const { data, error } = await supabase
+    .from("inwards")
+    .select(`inward_lines(qty, items(${SELECT}))`)
+    .eq("id", inwardId)
+    .maybeSingle();
+
+  if (error || !data) return [];
+
+  type Row = { qty: number; items: Parameters<typeof toLabelItem>[0] | Parameters<typeof toLabelItem>[0][] | null };
+  const lines = (data.inward_lines ?? []) as Row[];
+
+  return lines
+    .map((r) => {
+      const item = Array.isArray(r.items) ? r.items[0] : r.items;
+      if (!item) return null;
+      return { item: toLabelItem(item), qty: Number(r.qty ?? 0) };
+    })
+    .filter((x): x is InwardLabelLine => x !== null);
+}

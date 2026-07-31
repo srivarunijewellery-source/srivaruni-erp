@@ -30,6 +30,8 @@ export function ApprovalPanel({ transfer }: { transfer: TransferDetail }) {
 
   const sent = transfer.lines.reduce((n, l) => n + l.qtySent, 0);
   const anyAdjusted = transfer.lines.some((l) => l.qtySent !== l.qtyPicked);
+  const shortLines = transfer.lines.filter((l) => l.qtyRequested > 0 && l.qtyPicked < l.qtyRequested);
+  const extraLines = transfer.lines.filter((l) => l.qtyRequested === 0);
 
   function run(action: (fd: FormData) => Promise<{ ok: boolean; error?: string }>, extra?: Record<string, string>) {
     start(async () => {
@@ -76,6 +78,29 @@ export function ApprovalPanel({ transfer }: { transfer: TransferDetail }) {
               </Button>
             </div>
           </div>
+
+          {shortLines.length > 0 && (
+            <div className="rounded-card bg-status-danger-bg px-3 py-2 text-status-danger-fg">
+              <p className="font-medium">
+                {shortLines.length} {shortLines.length === 1 ? "line" : "lines"} short of what
+                was requested.
+              </p>
+              <p className="mt-0.5 text-sm">
+                {transfer.pickNote || "No reason was recorded by the picker."}
+              </p>
+            </div>
+          )}
+
+          {extraLines.length > 0 && (
+            <p className="text-2xs text-text-muted">
+              {extraLines.length} {extraLines.length === 1 ? "item was" : "items were"} added
+              during picking that weren&rsquo;t on the original request &mdash; marked{" "}
+              <span className="rounded-full bg-status-pending-bg px-1.5 py-0.5 font-medium text-status-pending-fg">
+                Extra
+              </span>{" "}
+              below.
+            </p>
+          )}
 
           {anyAdjusted && (
             <p className="text-2xs text-text-muted">
@@ -160,7 +185,7 @@ function QtyRow({
   const changed = Number.isFinite(numeric) && numeric !== line.qtySent;
   const overShelf = numeric > line.qtyAvailable;
   const overPicked = numeric > line.qtyPicked;
-  const neverScanned = line.qtyPicked === 0 && numeric > 0;
+  const isExtra = line.qtyRequested === 0;
 
   function commit() {
     if (!Number.isFinite(numeric) || numeric < 0) {
@@ -187,19 +212,26 @@ function QtyRow({
     <li className="flex items-center gap-3 py-2">
       <PhotoThumb src={itemPhotoUrl(line.photoPath)} alt={line.name} size={44} />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium">{line.name}</p>
+        <p className="flex items-center gap-1.5 truncate text-sm font-medium">
+          {line.name}
+          {isExtra && (
+            <span className="shrink-0 rounded-full bg-status-pending-bg px-1.5 py-0.5 text-2xs font-medium text-status-pending-fg">
+              Extra
+            </span>
+          )}
+        </p>
         <p className="font-mono text-2xs text-text-muted">
           {line.barcode} · {line.qtyPicked} scanned · {line.qtyAvailable} on shelf
         </p>
+        {isExtra && (
+          <p className="text-2xs text-text-muted">Not on the original request.</p>
+        )}
         {changed && overShelf && (
           <p className="text-2xs text-status-danger-fg">
             More than {fromCode} holds -- approval will refuse this.
           </p>
         )}
-        {changed && !overShelf && neverScanned && (
-          <p className="text-2xs text-status-danger-fg">Not scanned during picking.</p>
-        )}
-        {changed && !overShelf && !neverScanned && overPicked && (
+        {changed && !overShelf && !isExtra && overPicked && (
           <p className="text-2xs text-status-danger-fg">
             Higher than the {line.qtyPicked} that was scanned.
           </p>

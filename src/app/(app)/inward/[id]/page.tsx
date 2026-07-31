@@ -14,6 +14,9 @@ import {
 import { can } from "@/config/roles";
 import { INWARD_STATUS } from "@/config/status";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { Button } from "@/components/ui/Button";
+import { ROUTES } from "@/config/nav";
+import Link from "next/link";
 import { Badge } from "@/components/ui/Badge";
 import { Card, CardBody } from "@/components/ui/Card";
 import { InwardWorkflow } from "@/features/inward/InwardWorkflow";
@@ -87,9 +90,16 @@ export default async function InwardDetailPage({
         title={inward.docNo}
         description={`${inward.vendorName} · ${inward.locationCode}`}
         action={
-          <Badge tone={INWARD_STATUS[inward.status].tone}>
-            {INWARD_STATUS[inward.status].label}
-          </Badge>
+          <div className="flex items-center gap-3">
+            <Link href={`${ROUTES.barcodes}?inwardId=${inward.id}`}>
+              <Button size="sm" variant="secondary">
+                Print barcodes
+              </Button>
+            </Link>
+            <Badge tone={INWARD_STATUS[inward.status].tone}>
+              {INWARD_STATUS[inward.status].label}
+            </Badge>
+          </div>
         }
       />
 

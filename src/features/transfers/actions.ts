@@ -19,6 +19,8 @@ export interface ScanResult {
   remaining: number;
   lineComplete: boolean;
   docComplete: boolean;
+  /** True only from scan_pick: this barcode wasn't on the original request. */
+  isExtra: boolean;
 }
 
 const uuid = z.string().uuid();
@@ -248,6 +250,7 @@ async function scan(
     remaining: Number(r.remaining),
     lineComplete: Boolean(r.line_complete),
     docComplete: Boolean(r.doc_complete),
+    isExtra: Boolean(r.is_extra),
   });
 }
 

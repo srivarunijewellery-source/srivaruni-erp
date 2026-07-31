@@ -15,6 +15,7 @@ import { QtyAdjuster } from "@/features/products/QtyAdjuster";
 import { can } from "@/config/roles";
 import { ROUTES } from "@/config/nav";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { formatPaise } from "@/lib/money";
 import { formatBps, marginBps } from "@/lib/pricing";
@@ -61,6 +62,11 @@ export default async function ProductDetailPage({
         action={
           <div className="flex items-center gap-3">
             <Badge tone={STATUS_TONE[product.status]}>{product.status}</Badge>
+            <Link href={`${ROUTES.barcodes}?itemId=${product.id}`}>
+              <Button size="sm" variant="secondary">
+                Print barcode
+              </Button>
+            </Link>
             <Link href={ROUTES.products} className="text-sm text-brand hover:underline">
               All products
             </Link>

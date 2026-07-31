@@ -27,9 +27,16 @@ export function LineProgress({
       {lines.map((l) => {
         const target = mode === "pick" ? l.qtyRequested : l.qtySent;
         const counted = mode === "pick" ? l.qtyPicked : (l.qtyReceived ?? 0);
-        const complete = counted >= target;
-        const short = target - counted;
+        const complete = target > 0 && counted >= target;
+        const short = Math.max(target - counted, 0);
         const pct = target > 0 ? Math.min(100, (counted / target) * 100) : 0;
+
+        // Zero target means different things per screen: while picking it
+        // means this was added and never part of the original ask (still
+        // shown, since it's genuinely going in the box); on the receive
+        // screen it means the line never actually shipped at all.
+        const zeroTarget = target === 0;
+        const extra = mode === "pick" && zeroTarget;
 
         // Only meaningful while picking: the shelf may not hold what was asked for.
         const overAvailable = mode === "pick" && l.qtyRequested > l.qtyAvailable;
@@ -39,7 +46,14 @@ export function LineProgress({
             <PhotoThumb src={itemPhotoUrl(l.photoPath)} alt={l.name} size={44} />
 
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium">{l.name}</p>
+              <p className="flex items-center gap-1.5 truncate text-sm font-medium">
+                {l.name}
+                {extra && (
+                  <span className="shrink-0 rounded-full bg-status-pending-bg px-1.5 py-0.5 text-2xs font-medium text-status-pending-fg">
+                    Extra
+                  </span>
+                )}
+              </p>
               <p className="font-mono text-2xs text-text-muted">
                 {l.barcode}
                 {showAvailable && (
@@ -55,19 +69,27 @@ export function LineProgress({
                 <div
                   className={cn(
                     "h-full rounded-full transition-[width]",
-                    complete ? "bg-status-done-fg" : "bg-brand",
+                    extra ? "bg-status-pending-fg" : complete ? "bg-status-done-fg" : "bg-brand",
                   )}
-                  style={{ width: `${pct}%` }}
+                  style={{ width: extra ? "100%" : `${pct}%` }}
                 />
               </div>
             </div>
 
             <div className="shrink-0 text-right">
               <p className="tnum font-mono text-sm font-semibold">
-                {counted}
-                <span className="text-text-muted"> / {target}</span>
+                {extra ? (
+                  l.qtySent
+                ) : mode === "receive" && zeroTarget ? (
+                  <span className="text-text-muted">not shipped</span>
+                ) : (
+                  <>
+                    {counted}
+                    <span className="text-text-muted"> / {target}</span>
+                  </>
+                )}
               </p>
-              {short > 0 && (
+              {!extra && !zeroTarget && short > 0 && (
                 <p className="text-2xs text-status-danger-fg">{short} short</p>
               )}
             </div>

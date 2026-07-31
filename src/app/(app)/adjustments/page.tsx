@@ -19,6 +19,7 @@ const REASON_TONE: Record<string, "pending" | "danger" | "neutral"> = {
   adjustment: "pending",
   damage: "danger",
   count_variance: "danger",
+  lost_in_transit: "danger",
 };
 
 export default async function AdjustmentsPage() {

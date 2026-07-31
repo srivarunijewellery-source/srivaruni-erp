@@ -24,6 +24,7 @@ export const ROUTES = {
   pricingSettings: "/pricing/settings",
   discounts: "/discounts",
   discountSettings: "/discounts/settings",
+  barcodes: "/utilities/barcodes",
 } as const;
 
 export interface NavItem {
@@ -78,6 +79,10 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { href: ROUTES.discounts,        label: "Discounts",        requires: "discount.manage" },
       { href: ROUTES.discountSettings, label: "Discount settings", requires: "discount.manage" },
     ],
+  },
+  {
+    label: "Utilities",
+    items: [{ href: ROUTES.barcodes, label: "Barcode labels" }],
   },
 ] as const;
 

@@ -3,7 +3,45 @@
 Unzip over the repo root. Every path is repo-relative; nothing outside the
 files listed here is touched.
 
-## Update — reject reopens for pick, approval/shipping split (this delivery)
+## Update — lost in transit, pick-note visibility, extras at any stage (this delivery)
+
+**Lost in transit is now its own distinct, trackable thing.** Previously a
+receive-time shortfall landed in the generic `damage` bucket under the
+generic `count_variance` reason -- indistinguishable from an item that
+arrived physically broken. There is now a dedicated `lost` location kind, a
+dedicated `LST` location, and a dedicated `lost_in_transit` reason on the
+stock ledger. `receive_transfer` routes shortfalls there with a clear note.
+Both enum additions (`stock_reason`, `location_kind`) had to be their own
+migrations -- Postgres won't let a freshly-added enum value be used in the
+same transaction that added it. `0050`–`0053`.
+
+**Fixed: the pick shortfall reason wasn't visible at approval.** Genuine
+bug, not a design choice -- `ApprovalPanel` never rendered
+`transfer.pickNote` at all. It now shows as a red banner at the top of the
+approval screen whenever a line came up short, with the picker's stated
+reason or an explicit "no reason was recorded" if they left it blank.
+
+**Adding pieces not on the list now works at picking time too, not just at
+approval.** `scan_pick` previously refused any barcode not already on the
+transfer outright. It now accepts it, inserting a new line with
+`qty_requested = 0` -- the flag used consistently everywhere a line is
+shown (pick screen, approval screen, shipping screen, the slip) to mean
+"added later, not part of the original ask," rendered as an **Extra**
+badge. The same flag is used whether the addition happens during picking
+(scan) or at approval (search-add, from the previous round). This required
+loosening two check constraints from the original pick-stage work that
+assumed every line had a positive requested quantity -- found immediately
+by testing live, not by inspection. `0054`–`0057`.
+
+Also fixed in the Adjustments module while in the area: `lost_in_transit`
+added to the reason filter and tone map so it actually surfaces there, and
+a small pre-existing display bug where `.replace("_", " ")` only swaps the
+first underscore -- harmless for `count_variance`, would have rendered
+`lost_in_transit` as "lost in_transit".
+
+---
+
+## Update — reject reopens for pick, approval/shipping split
 
 **"Send back" is now a bounce, not an ending.** It previously moved a box
 to a terminal `rejected` status, which meant recreating the whole document

@@ -97,7 +97,7 @@ export async function listCorrectionMovements(): Promise<LedgerMovement[]> {
       `id, item_id, qty_delta, reason, note, created_at,
        items(barcode, name), locations(code), staff:created_by(name)`,
     )
-    .in("reason", ["adjustment", "damage", "count_variance"])
+    .in("reason", ["adjustment", "damage", "count_variance", "lost_in_transit"])
     .order("created_at", { ascending: false })
     .limit(150);
 
