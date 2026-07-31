@@ -2,22 +2,34 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentUser } from "@/features/auth/session";
 import { getLabelItems } from "@/features/barcodes/queries";
-import { generateLabelsPdf } from "@/features/barcodes/pdf";
-import { DEFAULT_GAP_MM, MIN_GAP_MM, MAX_GAP_MM, type PrintAreaMm } from "@/features/barcodes/constants";
+import { generateLabelsPdf, generateCalibrationPdf } from "@/features/barcodes/pdf";
+import {
+  MIN_PRINT_AREA_MM,
+  MAX_PRINT_AREA_MM,
+  MIN_FOLD_AT_MM,
+  MIN_GAP_MM,
+  MAX_GAP_MM,
+} from "@/features/barcodes/constants";
 
-const schema = z.object({
-  printAreaMm: z.union([z.literal(65), z.literal(70)]),
-  gapMm: z.number().min(MIN_GAP_MM).max(MAX_GAP_MM).optional(),
-  items: z
-    .array(
-      z.object({
-        itemId: z.string().uuid(),
-        qty: z.number().int().min(1).max(200),
-      }),
-    )
-    .min(1)
-    .max(500),
+const geometry = z.object({
+  printAreaMm: z.number().min(MIN_PRINT_AREA_MM).max(MAX_PRINT_AREA_MM),
+  foldAtMm: z.number().min(MIN_FOLD_AT_MM).max(MAX_PRINT_AREA_MM),
+  gapMm: z.number().min(MIN_GAP_MM).max(MAX_GAP_MM),
 });
+
+const schema = z.discriminatedUnion("mode", [
+  z.object({
+    mode: z.literal("labels"),
+    geometry,
+    items: z
+      .array(z.object({ itemId: z.string().uuid(), qty: z.number().int().min(1).max(200) }))
+      .min(1)
+      .max(500),
+  }),
+  // The calibration sheet needs no items: it is a ruler, printed once,
+  // to measure the stock rather than keep guessing at it.
+  z.object({ mode: z.literal("calibration"), geometry }),
+]);
 
 /**
  * Never trusts the client for barcode, name, or price -- only item ids
@@ -28,11 +40,18 @@ export async function POST(request: Request) {
   const user = await getCurrentUser();
   if (!user) return new NextResponse("Not signed in", { status: 401 });
 
-  const body = await request.json().catch(() => null);
-  const parsed = schema.safeParse(body);
+  const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
-    return new NextResponse(parsed.error.issues[0]?.message ?? "Invalid request", {
-      status: 400,
+    return new NextResponse(parsed.error.issues[0]?.message ?? "Invalid request", { status: 400 });
+  }
+
+  if (parsed.data.mode === "calibration") {
+    const bytes = await generateCalibrationPdf(parsed.data.geometry);
+    return new NextResponse(Buffer.from(bytes), {
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="label-calibration.pdf"`,
+      },
     });
   }
 
@@ -40,8 +59,8 @@ export async function POST(request: Request) {
   const qtyById = new Map(parsed.data.items.map((i) => [i.itemId, i.qty]));
 
   // getLabelItems drops any id RLS hides or that no longer exists -- the
-  // queue silently shrinks rather than the whole print job failing over
-  // one stale barcode.
+  // queue silently shrinks rather than the whole job failing over one
+  // stale barcode.
   const labelData = items.map((item) => ({
     barcode: item.barcode,
     designCode: item.designCode,
@@ -54,13 +73,8 @@ export async function POST(request: Request) {
     return new NextResponse("None of the requested items could be found", { status: 404 });
   }
 
-  const pdfBytes = await generateLabelsPdf(
-    labelData,
-    parsed.data.printAreaMm as PrintAreaMm,
-    parsed.data.gapMm ?? DEFAULT_GAP_MM,
-  );
-
-  return new NextResponse(Buffer.from(pdfBytes), {
+  const bytes = await generateLabelsPdf(labelData, parsed.data.geometry);
+  return new NextResponse(Buffer.from(bytes), {
     headers: {
       "Content-Type": "application/pdf",
       "Content-Disposition": `attachment; filename="labels-${Date.now()}.pdf"`,

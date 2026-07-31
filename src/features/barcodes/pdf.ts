@@ -1,42 +1,36 @@
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb, type PDFFont } from "pdf-lib";
 import bwipjs from "bwip-js";
-import { DEFAULT_GAP_MM, MIN_GAP_MM, MAX_GAP_MM, type PrintAreaMm } from "./constants";
+import {
+  LABEL_W_MM,
+  LABEL_H_MM,
+  clampGeometry,
+  type LabelGeometry,
+} from "./constants";
+import { APP } from "@/config/app";
 
 /**
- * The physical spec, confirmed against a photo of the actual roll stock:
+ * Jewellery flag tag, 100mm x 15mm continuous roll, one label per row.
  *
- *   - Full label:      100mm x 15mm, continuous roll, one label per row
- *   - Printable area:   65mm x 15mm, or 70mm x 15mm (chosen per print run)
- *   - The printable area folds at ITS OWN midpoint -- not the label's
- *     midpoint. The remainder (100 - printable) is a blank adhesive tail
- *     used to wrap around a string loop and seal to itself.
+ * The printable head folds back on itself around a string or a ring
+ * shank, leaving a two-sided flag. Both original front faces stay
+ * outward, so each panel is its own readable face:
  *
- * Mechanically: thermal stock prints on the face and carries adhesive on
- * the back. Folding brings the two printed-face halves back-to-back
- * (adhesive-to-adhesive), sandwiching a string loop, while both original
- * front faces stay externally visible -- one per side, like a tiny closed
- * book. So: barcode on one half, item details on the other, and both
- * remain readable after folding, not hidden against each other.
+ *   left panel  -> shop name, barcode, item code   (the scan-me face)
+ *   right panel -> item name, design code, MRP     (the customer face)
  *
- * Known assumption, flagged for correction after a real test print: the
- * printable zone is LEFT-aligned within the 100mm label (printed head
- * first, blank tail feeds through after). If the real stock is tail-first,
- * flip PRINTABLE_ALIGN below -- everything else is unaffected.
- *
- * gapMm is the blank space between one label and the next along the feed
- * direction -- the physical gap visible between labels on the die-cut
- * roll, typically 2-3mm for this kind of stock. It is NOT part of the
- * 100mm label itself; it is extra page width appended after it, so each
- * PDF page represents one full pitch (label + trailing gap) rather than
- * just the label. Set it to 0 if the printer's own gap sensor already
- * handles spacing and the PDF should describe only the label.
+ * The fold position is a MEASURED value, not printArea / 2. The first
+ * real print run showed the stock is pre-scored at a fixed point that
+ * does not coincide with the midpoint of the printable area, so the two
+ * panels are not equal halves. generateCalibrationPdf below prints a
+ * millimetre ruler for measuring both that score line and the true
+ * printable width -- print it once, read the numbers off, enter them in
+ * the UI. Guessing these is what produced the misalignment.
  */
 const MM = 2.834645669; // 1mm in PDF points
-const LABEL_W_MM = 100;
-const LABEL_H_MM = 15;
-const PRINTABLE_ALIGN: "left" | "right" = "left";
 
-export type { PrintAreaMm };
+function mm(v: number) {
+  return v * MM;
+}
 
 export interface LabelData {
   barcode: string;
@@ -44,10 +38,6 @@ export interface LabelData {
   name: string;
   mrpPaise: number | null;
   qty: number;
-}
-
-function mm(v: number) {
-  return v * MM;
 }
 
 async function barcodePng(value: string): Promise<{ bytes: Buffer; w: number; h: number }> {
@@ -58,24 +48,21 @@ async function barcodePng(value: string): Promise<{ bytes: Buffer; w: number; h:
     includetext: false,
     scale: 4,
   });
-  const w = bytes.readUInt32BE(16);
-  const h = bytes.readUInt32BE(20);
-  return { bytes, w, h };
+  return { bytes, w: bytes.readUInt32BE(16), h: bytes.readUInt32BE(20) };
 }
 
-function drawWrappedName(
-  page: PDFPage,
+/** Wraps to at most maxLines, shrinking nothing -- overflow is truncated. */
+function wrap(
   text: string,
   font: PDFFont,
   size: number,
-  x: number,
-  topY: number,
   maxWidth: number,
   maxLines: number,
-): number {
+): string[] {
   const words = text.split(/\s+/).filter(Boolean);
   const lines: string[] = [];
   let current = "";
+
   for (const w of words) {
     const trial = current ? `${current} ${w}` : w;
     if (font.widthOfTextAtSize(trial, size) <= maxWidth) {
@@ -87,129 +74,239 @@ function drawWrappedName(
     }
   }
   if (current && lines.length < maxLines) lines.push(current);
-
-  let y = topY;
-  for (const line of lines.slice(0, maxLines)) {
-    page.drawText(line, { x, y, size, font, color: rgb(0, 0, 0) });
-    y -= size + 1.2;
-  }
-  return y;
+  return lines.slice(0, maxLines);
 }
 
-/**
- * Builds the print-ready PDF: one label per page, with `qty` copies per
- * line item. Each page is sized to the label (100mm x 15mm) plus the
- * configured inter-label gap appended after it, so a page represents one
- * full pitch of the roll, not just the label.
- *
- * This is a first version validated against the stated dimensions, not
- * against a real print -- the one thing that can't be checked from here.
- * Test-print a single sheet before running a full batch, and the fold
- * alignment / panel split are the two things worth eyeballing first.
- */
+function formatMrp(paise: number): string {
+  return `Rs.${(paise / 100).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+}
+
 export async function generateLabelsPdf(
   items: LabelData[],
-  printAreaMm: PrintAreaMm,
-  gapMm: number = DEFAULT_GAP_MM,
+  geometry: Partial<LabelGeometry> = {},
 ): Promise<Uint8Array> {
+  const { printAreaMm, foldAtMm, gapMm } = clampGeometry(geometry);
+
   const doc = await PDFDocument.create();
-  const fontRegular = await doc.embedFont(StandardFonts.Helvetica);
-  const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const regular = await doc.embedFont(StandardFonts.Helvetica);
+  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
 
-  const printArea = mm(printAreaMm);
-  const panelW = printArea / 2;
-  const pad = mm(1.2);
-  const labelW = mm(LABEL_W_MM); // the label itself -- all content positioning is relative to this
+  const labelW = mm(LABEL_W_MM);
   const labelH = mm(LABEL_H_MM);
-  const gap = mm(Math.max(MIN_GAP_MM, Math.min(MAX_GAP_MM, gapMm)));
-  const pitchW = labelW + gap; // the page -- one full advance of the roll
+  const pitchW = labelW + mm(gapMm);
+  const printArea = mm(printAreaMm);
+  const foldX = mm(foldAtMm);
+  const pad = mm(1.3);
 
-  const printableX0 = PRINTABLE_ALIGN === "left" ? 0 : labelW - printArea;
+  const leftW = foldX;
+  const rightW = printArea - foldX;
 
-  // One barcode image per distinct value, reused across repeated copies.
-  const barcodeCache = new Map<string, { bytes: Buffer; w: number; h: number }>();
+  const cache = new Map<string, { bytes: Buffer; w: number; h: number }>();
   for (const item of items) {
-    if (!barcodeCache.has(item.barcode)) {
-      barcodeCache.set(item.barcode, await barcodePng(item.barcode));
-    }
+    if (!cache.has(item.barcode)) cache.set(item.barcode, await barcodePng(item.barcode));
   }
 
   for (const item of items) {
-    const copies = Math.max(1, Math.floor(item.qty));
-    const png = barcodeCache.get(item.barcode)!;
-    const pngImage = await doc.embedPng(png.bytes);
+    const png = cache.get(item.barcode)!;
+    const image = await doc.embedPng(png.bytes);
 
-    for (let i = 0; i < copies; i++) {
+    for (let copy = 0; copy < Math.max(1, Math.floor(item.qty)); copy++) {
       const page = doc.addPage([pitchW, labelH]);
 
-      // Boundary between the printable zone and the blank wrap-around tail.
+      // Fold line. Dashed so it reads as "fold here", not as a border.
       page.drawLine({
-        start: { x: printableX0 + printArea, y: 0 },
-        end: { x: printableX0 + printArea, y: labelH },
+        start: { x: foldX, y: 0 },
+        end: { x: foldX, y: labelH },
         thickness: 0.4,
-        color: rgb(0.55, 0.55, 0.55),
+        color: rgb(0.45, 0.45, 0.45),
+        dashArray: [1.5, 1.5],
       });
 
-      // Fold line, at the printable zone's own midpoint.
-      page.drawLine({
-        start: { x: printableX0 + panelW, y: 0 },
-        end: { x: printableX0 + panelW, y: labelH },
-        thickness: 0.4,
-        color: rgb(0.35, 0.35, 0.35),
-        dashArray: [2, 2],
-      });
-
-      // --- Panel 1: barcode ------------------------------------------
-      const barH = mm(7.5);
-      const naturalW = (png.w / png.h) * barH;
-      const maxW = panelW - 2 * pad;
-      const barW = Math.min(naturalW, maxW);
-      const barX = printableX0 + (panelW - barW) / 2;
-      const barY = labelH - pad - barH;
-      page.drawImage(pngImage, { x: barX, y: barY, width: barW, height: barH });
-
-      const codeSize = 5.2;
-      const codeW = fontRegular.widthOfTextAtSize(item.barcode, codeSize);
-      page.drawText(item.barcode, {
-        x: printableX0 + (panelW - codeW) / 2,
-        y: pad,
-        size: codeSize,
-        font: fontRegular,
+      // ---------- left panel: shop name, barcode, item code ----------
+      const shopSize = 4.6;
+      const shopName = APP.tagName.toUpperCase();
+      const shopW = bold.widthOfTextAtSize(shopName, shopSize);
+      page.drawText(shopName, {
+        x: (leftW - shopW) / 2,
+        y: labelH - pad - shopSize + 1,
+        size: shopSize,
+        font: bold,
         color: rgb(0, 0, 0),
       });
 
-      // --- Panel 2: item details ---------------------------------------
-      const px = printableX0 + panelW + pad;
-      const pMaxW = panelW - 2 * pad;
-      let ty = labelH - pad - mm(2.3);
+      // Hairline under the shop name: cheap way to make a thermal label
+      // look deliberate rather than dumped, and it survives low DPI.
+      page.drawLine({
+        start: { x: (leftW - shopW) / 2, y: labelH - pad - shopSize - 1 },
+        end: { x: (leftW + shopW) / 2, y: labelH - pad - shopSize - 1 },
+        thickness: 0.4,
+        color: rgb(0, 0, 0),
+      });
+
+      const codeSize = 5.4;
+      const barTop = labelH - pad - shopSize - 3.5;
+      const barBottom = pad + codeSize + 1.5;
+      const barH = Math.max(mm(4), barTop - barBottom);
+      const barMaxW = leftW - 2 * pad;
+      const barW = Math.min((png.w / png.h) * barH, barMaxW);
+
+      page.drawImage(image, {
+        x: (leftW - barW) / 2,
+        y: barBottom,
+        width: barW,
+        height: barH,
+      });
+
+      const codeW = bold.widthOfTextAtSize(item.barcode, codeSize);
+      page.drawText(item.barcode, {
+        x: (leftW - codeW) / 2,
+        y: pad,
+        size: codeSize,
+        font: bold,
+        color: rgb(0, 0, 0),
+      });
+
+      // ---------- right panel: item name, design code, MRP ----------
+      const rx = foldX + pad;
+      const rMaxW = rightW - 2 * pad;
+      let ry = labelH - pad - 5;
+
+      for (const line of wrap(item.name, bold, 5.6, rMaxW, 2)) {
+        page.drawText(line, { x: rx, y: ry, size: 5.6, font: bold, color: rgb(0, 0, 0) });
+        ry -= 6.2;
+      }
 
       if (item.designCode) {
-        page.drawText(item.designCode.slice(0, 22), {
-          x: px,
-          y: ty,
-          size: 6.5,
-          font: fontBold,
-          color: rgb(0, 0, 0),
+        ry -= 0.5;
+        page.drawText(item.designCode.slice(0, 26), {
+          x: rx,
+          y: ry,
+          size: 4.8,
+          font: regular,
+          color: rgb(0.25, 0.25, 0.25),
         });
       }
-      ty -= mm(2.0);
-
-      ty = drawWrappedName(page, item.name, fontRegular, 5, px, ty, pMaxW, 2);
 
       if (item.mrpPaise !== null) {
-        const mrpText = `MRP Rs.${(item.mrpPaise / 100).toLocaleString("en-IN", {
-          maximumFractionDigits: 0,
-        })}`;
-        page.drawText(mrpText, {
-          x: px,
+        // MRP anchored to the bottom rather than flowing after the name,
+        // so it lands in the same place on every tag regardless of how
+        // long the item name runs. A price that moves around is a price
+        // that gets misread at the counter.
+        page.drawText("MRP", {
+          x: rx,
+          y: pad + 0.5,
+          size: 4.6,
+          font: regular,
+          color: rgb(0.3, 0.3, 0.3),
+        });
+        const mrpLabelW = regular.widthOfTextAtSize("MRP", 4.6);
+        page.drawText(formatMrp(item.mrpPaise), {
+          x: rx + mrpLabelW + 2.5,
           y: pad,
-          size: 5.4,
-          font: fontBold,
+          size: 7.2,
+          font: bold,
           color: rgb(0, 0, 0),
         });
       }
     }
   }
+
+  return doc.save();
+}
+
+/**
+ * A one-off ruler, printed on the real stock, to replace guesswork.
+ *
+ * Print a single copy, then read off two numbers against the scale:
+ *   1. where the stock's pre-scored fold line falls  -> Fold position
+ *   2. where the printable area stops being crisp    -> Printable width
+ *
+ * Enter both in the print screen and every subsequent label matches the
+ * physical stock. This exists because the alternative -- inferring
+ * millimetres from a photograph -- is how the first run came out
+ * misaligned.
+ */
+export async function generateCalibrationPdf(
+  geometry: Partial<LabelGeometry> = {},
+): Promise<Uint8Array> {
+  const { printAreaMm, foldAtMm, gapMm } = clampGeometry(geometry);
+
+  const doc = await PDFDocument.create();
+  const regular = await doc.embedFont(StandardFonts.Helvetica);
+  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+
+  const labelH = mm(LABEL_H_MM);
+  const page = doc.addPage([mm(LABEL_W_MM) + mm(gapMm), labelH]);
+
+  const baseY = labelH * 0.42;
+
+  page.drawLine({
+    start: { x: 0, y: baseY },
+    end: { x: mm(LABEL_W_MM), y: baseY },
+    thickness: 0.5,
+    color: rgb(0, 0, 0),
+  });
+
+  for (let i = 0; i <= LABEL_W_MM; i++) {
+    const x = mm(i);
+    const major = i % 10 === 0;
+    const mid = i % 5 === 0;
+    page.drawLine({
+      start: { x, y: baseY },
+      end: { x, y: baseY + (major ? 6 : mid ? 3.5 : 2) },
+      thickness: major ? 0.5 : 0.3,
+      color: rgb(0, 0, 0),
+    });
+    if (major && i > 0) {
+      const label = String(i);
+      page.drawText(label, {
+        x: x - regular.widthOfTextAtSize(label, 4.6) / 2,
+        y: baseY + 7.5,
+        size: 4.6,
+        font: bold,
+        color: rgb(0, 0, 0),
+      });
+    }
+  }
+
+  page.drawText("mm from left edge -- mark where the stock folds", {
+    x: mm(1),
+    y: baseY - 6,
+    size: 4.4,
+    font: regular,
+    color: rgb(0.3, 0.3, 0.3),
+  });
+
+  // Where the CURRENT settings think things are, so the difference
+  // between assumption and reality is visible on one sheet.
+  page.drawLine({
+    start: { x: mm(foldAtMm), y: 0 },
+    end: { x: mm(foldAtMm), y: labelH },
+    thickness: 0.5,
+    color: rgb(0.45, 0.45, 0.45),
+    dashArray: [1.5, 1.5],
+  });
+  page.drawText(`fold ${foldAtMm}`, {
+    x: mm(foldAtMm) + 1.5,
+    y: labelH - 6,
+    size: 4.2,
+    font: regular,
+    color: rgb(0.35, 0.35, 0.35),
+  });
+
+  page.drawLine({
+    start: { x: mm(printAreaMm), y: 0 },
+    end: { x: mm(printAreaMm), y: labelH },
+    thickness: 0.5,
+    color: rgb(0.55, 0.55, 0.55),
+  });
+  page.drawText(`edge ${printAreaMm}`, {
+    x: Math.max(0, mm(printAreaMm) - 22),
+    y: 1.5,
+    size: 4.2,
+    font: regular,
+    color: rgb(0.35, 0.35, 0.35),
+  });
 
   return doc.save();
 }

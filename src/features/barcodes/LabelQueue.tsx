@@ -9,7 +9,16 @@ import { itemPhotoUrl } from "@/lib/storage";
 import { formatPaise } from "@/lib/money";
 import { searchItemsForLabels } from "./actions";
 import type { LabelItem } from "./queries";
-import { DEFAULT_GAP_MM, MIN_GAP_MM, MAX_GAP_MM, type PrintAreaMm } from "./constants";
+import {
+  DEFAULT_GEOMETRY,
+  MIN_PRINT_AREA_MM,
+  MAX_PRINT_AREA_MM,
+  MIN_FOLD_AT_MM,
+  MIN_GAP_MM,
+  MAX_GAP_MM,
+  clampGeometry,
+  type LabelGeometry,
+} from "./constants";
 
 interface QueueLine {
   item: LabelItem;
@@ -24,8 +33,7 @@ interface QueueLine {
  */
 export function LabelQueue({ initial }: { initial: QueueLine[] }) {
   const [queue, setQueue] = useState<QueueLine[]>(initial);
-  const [printArea, setPrintArea] = useState<PrintAreaMm>(65);
-  const [gapMm, setGapMm] = useState(DEFAULT_GAP_MM);
+  const [geometry, setGeometry] = useState<LabelGeometry>(DEFAULT_GEOMETRY);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<LabelItem[]>([]);
   const [searching, setSearching] = useState(false);
@@ -77,21 +85,17 @@ export function LabelQueue({ initial }: { initial: QueueLine[] }) {
 
   const totalPieces = queue.reduce((n, l) => n + l.qty, 0);
 
-  function generate() {
+  function download(body: unknown, filename: string) {
     setError(null);
     start(async () => {
       const res = await fetch("/api/barcodes/pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          printAreaMm: printArea,
-          gapMm,
-          items: queue.map((l) => ({ itemId: l.item.itemId, qty: l.qty })),
-        }),
+        body: JSON.stringify(body),
       });
 
       if (!res.ok) {
-        setError((await res.text().catch(() => "")) || "Could not generate the labels.");
+        setError((await res.text().catch(() => "")) || "Could not generate the PDF.");
         return;
       }
 
@@ -99,10 +103,32 @@ export function LabelQueue({ initial }: { initial: QueueLine[] }) {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `labels-${printArea}mm-${Date.now()}.pdf`;
+      a.download = filename;
       a.click();
       URL.revokeObjectURL(url);
     });
+  }
+
+  function generate() {
+    download(
+      {
+        mode: "labels",
+        geometry: clampGeometry(geometry),
+        items: queue.map((l) => ({ itemId: l.item.itemId, qty: l.qty })),
+      },
+      `labels-${geometry.printAreaMm}mm-${Date.now()}.pdf`,
+    );
+  }
+
+  function calibrate() {
+    download(
+      { mode: "calibration", geometry: clampGeometry(geometry) },
+      "label-calibration.pdf",
+    );
+  }
+
+  function setGeo(patch: Partial<LabelGeometry>) {
+    setGeometry((g) => ({ ...g, ...patch }));
   }
 
   return (
@@ -117,45 +143,15 @@ export function LabelQueue({ initial }: { initial: QueueLine[] }) {
                   ? "Nothing queued yet"
                   : `${totalPieces} ${totalPieces === 1 ? "label" : "labels"} across ${queue.length} ${queue.length === 1 ? "item" : "items"}`}
               </p>
-              <p className="mt-0.5 text-2xs text-text-subtle">
-                Gap is the blank space between labels on the roll -- set to 0 if your printer
-                already senses label breaks on its own.
-              </p>
             </div>
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2 text-sm">
-                <label htmlFor="print-area" className="font-medium text-text">
-                  Printable area
-                </label>
-                <select
-                  id="print-area"
-                  value={printArea}
-                  onChange={(e) => setPrintArea(Number(e.target.value) as PrintAreaMm)}
-                  className="h-9 rounded-control border border-border bg-surface px-2 text-sm"
-                >
-                  <option value={65}>65mm</option>
-                  <option value={70}>70mm</option>
-                </select>
-              </div>
-              <div className="flex items-center gap-2 text-sm">
-                <label htmlFor="gap-mm" className="font-medium text-text">
-                  Gap between labels
-                </label>
-                <input
-                  id="gap-mm"
-                  type="number"
-                  min={MIN_GAP_MM}
-                  max={MAX_GAP_MM}
-                  step={0.5}
-                  value={gapMm}
-                  onChange={(e) => {
-                    const v = Number(e.target.value);
-                    setGapMm(Number.isFinite(v) ? Math.max(MIN_GAP_MM, Math.min(MAX_GAP_MM, v)) : DEFAULT_GAP_MM);
-                  }}
-                  className="h-9 w-16 rounded-control border border-border bg-surface px-2 text-right font-mono text-sm"
-                />
-                <span className="text-text-muted">mm</span>
-              </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="secondary"
+                disabled={pending}
+                onClick={calibrate}
+              >
+                Calibration sheet
+              </Button>
               <Button
                 variant="primary"
                 size="lg"
@@ -167,6 +163,48 @@ export function LabelQueue({ initial }: { initial: QueueLine[] }) {
             </div>
           </div>
           {error && <FieldError>{error}</FieldError>}
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <span className="font-medium">Label geometry</span>
+        </CardHeader>
+        <CardBody className="space-y-3">
+          <p className="text-2xs text-text-muted">
+            Measured from your actual stock, not guessed. Print the calibration sheet once,
+            read the two numbers off the ruler, and enter them here &mdash; every label after
+            that lines up.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <NumField
+              id="print-area"
+              label="Printable width"
+              hint="Where print stops being crisp"
+              value={geometry.printAreaMm}
+              min={MIN_PRINT_AREA_MM}
+              max={MAX_PRINT_AREA_MM}
+              onChange={(v) => setGeo({ printAreaMm: v })}
+            />
+            <NumField
+              id="fold-at"
+              label="Fold position"
+              hint="From the left edge of the label"
+              value={geometry.foldAtMm}
+              min={MIN_FOLD_AT_MM}
+              max={MAX_PRINT_AREA_MM}
+              onChange={(v) => setGeo({ foldAtMm: v })}
+            />
+            <NumField
+              id="gap-mm"
+              label="Gap between labels"
+              hint="0 if the printer senses breaks"
+              value={geometry.gapMm}
+              min={MIN_GAP_MM}
+              max={MAX_GAP_MM}
+              onChange={(v) => setGeo({ gapMm: v })}
+            />
+          </div>
         </CardBody>
       </Card>
 
@@ -239,6 +277,49 @@ export function LabelQueue({ initial }: { initial: QueueLine[] }) {
           </CardBody>
         </Card>
       )}
+    </div>
+  );
+}
+
+function NumField({
+  id,
+  label,
+  hint,
+  value,
+  min,
+  max,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  hint: string;
+  value: number;
+  min: number;
+  max: number;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div>
+      <label htmlFor={id} className="mb-1 block text-sm font-medium text-text">
+        {label}
+      </label>
+      <div className="flex items-center gap-1.5">
+        <input
+          id={id}
+          type="number"
+          min={min}
+          max={max}
+          step={0.5}
+          value={value}
+          onChange={(e) => {
+            const v = Number(e.target.value);
+            if (Number.isFinite(v)) onChange(v);
+          }}
+          className="h-9 w-20 rounded-control border border-border bg-surface px-2 text-right font-mono text-sm"
+        />
+        <span className="text-sm text-text-muted">mm</span>
+      </div>
+      <p className="mt-0.5 text-2xs text-text-subtle">{hint}</p>
     </div>
   );
 }

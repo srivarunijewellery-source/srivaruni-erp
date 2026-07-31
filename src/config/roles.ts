@@ -29,6 +29,7 @@ export type Capability =
   | "adjustment.approve"
   | "catalog.manage"
   | "vendor.view"
+  | "customer.manage"
   | "pricing.manage"
   | "discount.manage";
 
@@ -55,6 +56,11 @@ const RULES: Record<Capability, (r: Role) => boolean> = {
   "adjustment.approve": isOwner,
   "catalog.manage": isOwner,
   "vendor.view": isManagerOrAbove,
+
+  // Anyone at the counter needs to add a walk-in customer while
+  // the person is standing there. RLS already limits writes to
+  // authenticated staff, and customers cannot be deleted at all.
+  "customer.manage": () => true,
 
   // Both pricing surfaces show landed cost by definition, and landed
   // cost is already owner-only at the RLS level. Anything softer here
