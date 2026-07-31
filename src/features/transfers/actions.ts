@@ -5,6 +5,8 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { ROUTES } from "@/config/nav";
 import { err, ok, toMessage, type Result } from "@/lib/result";
+import { listPickableStock } from "./queries";
+import type { PickableItem } from "@/types/domain";
 
 /** What a scan gives back, so the counter updates without a round trip. */
 export interface ScanResult {
@@ -142,6 +144,49 @@ export async function setTransferLine(formData: FormData): Promise<Result> {
   return ok(undefined);
 }
 
+/* --------------------------------------------------------------- approval */
+
+/**
+ * Changes what will actually ship, from the approval screen -- bump a
+ * line up, trim it down, or add an item the picker never scanned at all.
+ * Only reachable while the box sits at "picked, awaiting approval"; the
+ * database enforces that, and separately refuses at approve_transfer if
+ * the total exceeds what the source store actually holds.
+ */
+export async function setApprovalLine(formData: FormData): Promise<Result> {
+  const parsed = lineSchema.safeParse({
+    transferId: formData.get("transferId"),
+    itemId: formData.get("itemId"),
+    qty: formData.get("qty"),
+  });
+  if (!parsed.success) return err(parsed.error.issues[0]?.message ?? "Check the quantity.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("set_approval_line", {
+    p_transfer: parsed.data.transferId,
+    p_item: parsed.data.itemId,
+    p_qty: parsed.data.qty,
+  });
+  if (error) return err(toMessage(error));
+
+  revalidate(parsed.data.transferId);
+  return ok(undefined);
+}
+
+/** Search results for the "add another item" box on the approval screen. */
+export async function searchAddableStock(
+  locationId: string,
+  query: string,
+): Promise<Result<PickableItem[]>> {
+  if (!query.trim()) return ok([]);
+  try {
+    const items = await listPickableStock(locationId, { query, inStockOnly: true, limit: 12 });
+    return ok(items);
+  } catch (e) {
+    return err(toMessage(e));
+  }
+}
+
 /* -------------------------------------------------------------------- pick */
 
 export async function startPick(formData: FormData): Promise<Result> {
@@ -277,21 +322,6 @@ export async function dispatchTransfer(formData: FormData): Promise<Result> {
 
   revalidate(parsed.data.transferId);
   return ok(undefined);
-}
-
-/**
- * Approve and ship in one press.
- *
- * These are two database calls on purpose rather than one combined
- * function: approval and dispatch are separately logged against different
- * people and times, and collapsing them in Postgres would lose that. If
- * approval succeeds and dispatch fails, the document sits at approved,
- * which is a valid resting state — nothing is left half-moved.
- */
-export async function approveAndDispatch(formData: FormData): Promise<Result> {
-  const approved = await approveTransfer(formData);
-  if (!approved.ok) return approved;
-  return dispatchTransfer(formData);
 }
 
 /* ----------------------------------------------------------------- receive */

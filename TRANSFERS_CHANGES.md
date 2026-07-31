@@ -3,7 +3,40 @@
 Unzip over the repo root. Every path is repo-relative; nothing outside the
 files listed here is touched.
 
-## Update — bugfix + request flow rework (this delivery)
+## Update — reject reopens for pick, approval/shipping split (this delivery)
+
+**"Send back" is now a bounce, not an ending.** It previously moved a box
+to a terminal `rejected` status, which meant recreating the whole document
+from scratch to try again. It now returns the same document to `requested`
+with pick counts reset (`qty_picked = 0`, `qty_sent = qty_requested`,
+`qty_received = null`) — nothing has touched the stock ledger yet at
+`picked`, so there's nothing to reverse, only the pick state to clear.
+Lines are untouched, so nothing has to be re-entered. The reason is kept
+and shown as a banner on the pick screen so staff know why they're
+re-picking. `0048_reject_reopens_for_pick.sql`.
+
+**Approval and shipping are now two distinct, separate steps** — not one
+combined "Approve and ship" button. `ApprovalPanel.tsx` (status `picked`)
+has no courier/docket fields; it only reviews and approves. Once approved,
+`ShippingPanel.tsx` (status `approved`) is the only place courier and
+docket get captured, and the only place "Mark dispatched" fires. The old
+`approveAndDispatch` shortcut action is removed.
+
+**The approval screen can now change what ships.** Bump a line above what
+was scanned, trim it down, or add an item the picker never touched at all
+— each is its own database call (`set_approval_line`,
+`0049_set_approval_line.sql`), with an inline warning when a quantity
+exceeds what was scanned or what the source store actually holds. That
+warning is advisory; `approve_transfer`'s existing stock-sufficiency check
+is the real backstop and refuses the approval outright if the numbers
+don't add up. Verified live: a line pushed to a quantity beyond shelf
+stock is rejected at approval, not silently accepted.
+
+Removed: `DispatchPanel.tsx` (split into the two panels above).
+
+---
+
+## Update — bugfix + request flow rework
 
 **Production bug fixed.** `receive_transfer` (untouched by the original pick-
 stage work) moved stock out of transit for every line unconditionally. Once

@@ -26,9 +26,7 @@ export function TransferActions({
       case "picking":
         return can(role, "transfer.pick") ? { label: "Continue picking", primary: true } : null;
       case "picked":
-        return can(role, "transfer.approve")
-          ? { label: "Approve & ship", primary: true }
-          : null;
+        return can(role, "transfer.approve") ? { label: "Review & approve", primary: true } : null;
       case "approved":
         return can(role, "transfer.dispatch") ? { label: "Ship", primary: true } : null;
       case "dispatched":

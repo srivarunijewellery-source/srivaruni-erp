@@ -11,6 +11,20 @@ import { ROUTES } from "@/config/nav";
 import type { TransferDetail } from "@/types/domain";
 
 export function PickPanel({ transfer }: { transfer: TransferDetail }) {
+  return (
+    <div className="space-y-4">
+      {transfer.rejectedReason && (
+        <div className="rounded-card bg-status-danger-bg px-4 py-3 text-status-danger-fg">
+          <p className="font-medium">Sent back for re-pick</p>
+          <p className="mt-0.5 text-sm">{transfer.rejectedReason}</p>
+        </div>
+      )}
+      <PickPanelBody transfer={transfer} />
+    </div>
+  );
+}
+
+function PickPanelBody({ transfer }: { transfer: TransferDetail }) {
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState("");

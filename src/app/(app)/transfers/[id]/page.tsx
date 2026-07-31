@@ -13,7 +13,8 @@ import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { RequestBuilder } from "@/features/transfers/RequestBuilder";
 import { StockFilterBar, type StockFilterState } from "@/features/transfers/StockFilterBar";
 import { PickPanel } from "@/features/transfers/PickPanel";
-import { DispatchPanel } from "@/features/transfers/DispatchPanel";
+import { ApprovalPanel } from "@/features/transfers/ApprovalPanel";
+import { ShippingPanel } from "@/features/transfers/ShippingPanel";
 import { ReceivePanel } from "@/features/transfers/ReceivePanel";
 import { LineProgress } from "@/features/transfers/LineProgress";
 import { formatDateTime } from "@/lib/format";
@@ -90,14 +91,24 @@ export default async function TransferDetailPage({
           ) : (
             <ReadOnly transfer={transfer} mode="pick" />
           ))}
-        {(transfer.status === "picked" || transfer.status === "approved") &&
+        {transfer.status === "picked" &&
           (can(user.role, "transfer.approve") ? (
-            <DispatchPanel transfer={transfer} />
+            <ApprovalPanel transfer={transfer} />
           ) : (
             <ReadOnly
               transfer={transfer}
               mode="pick"
-              hint="Packed and sent for approval. Waiting on a manager or the owner to approve and ship."
+              hint="Packed and sent for approval. Waiting on a manager or the owner to review."
+            />
+          ))}
+        {transfer.status === "approved" &&
+          (can(user.role, "transfer.dispatch") ? (
+            <ShippingPanel transfer={transfer} />
+          ) : (
+            <ReadOnly
+              transfer={transfer}
+              mode="pick"
+              hint="Approved. Waiting to be handed to the courier and shipped."
             />
           ))}
         {transfer.status === "dispatched" &&
