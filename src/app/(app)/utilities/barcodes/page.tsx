@@ -1,25 +1,33 @@
 import type { Metadata } from "next";
 import { requireUser } from "@/features/auth/session";
 import { getInwardLinesForLabels, getLabelItems } from "@/features/barcodes/queries";
+import { getLabelSettings } from "@/features/barcodes/settings";
+import { listInwards } from "@/features/inward/queries";
 import { LabelQueue } from "@/features/barcodes/LabelQueue";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { can } from "@/config/roles";
 
 export const metadata: Metadata = { title: "Barcode labels" };
 
 /**
  * Three ways in, one queue:
- *   - blank                     ad hoc reprint / batch build
+ *   - blank                      ad hoc reprint / batch build
  *   - ?itemId=<id>               from a product's detail page, qty 1
- *   - ?inwardId=<id>             from an inward document, one line per
- *                                 item at that document's received qty
+ *   - ?inwardId=<id>             a whole inward document, each line at
+ *                                its received quantity -- also pickable
+ *                                from the dropdown on this page, so a
+ *                                fresh delivery does not require going
+ *                                back to find the document first
  */
 export default async function BarcodesPage({
   searchParams,
 }: {
   searchParams: Promise<{ itemId?: string; inwardId?: string }>;
 }) {
-  await requireUser();
+  const user = await requireUser();
   const { itemId, inwardId } = await searchParams;
+
+  const [settings, inwards] = await Promise.all([getLabelSettings(), listInwards()]);
 
   const initial = inwardId
     ? (await getInwardLinesForLabels(inwardId)).map((l) => ({ item: l.item, qty: l.qty || 1 }))
@@ -31,9 +39,20 @@ export default async function BarcodesPage({
     <>
       <PageHeader
         title="Barcode labels"
-        description="100mm x 15mm flag tags. Barcode on one fold, item details on the other."
+        description="100mm x 15mm flag tags. Barcode on one fold, name and price on the other."
       />
-      <LabelQueue initial={initial} />
+      <LabelQueue
+        initial={initial}
+        settings={settings}
+        canEditSettings={can(user.role, "pricing.manage")}
+        inwards={inwards.map((i) => ({
+          id: i.id,
+          docNo: i.docNo,
+          vendorName: i.vendorName,
+          totalQty: i.totalQty,
+        }))}
+        selectedInwardId={inwardId ?? ""}
+      />
     </>
   );
 }

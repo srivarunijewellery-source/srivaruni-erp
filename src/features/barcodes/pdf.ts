@@ -15,8 +15,8 @@ import { APP } from "@/config/app";
  * shank, leaving a two-sided flag. Both original front faces stay
  * outward, so each panel is its own readable face:
  *
- *   left panel  -> shop name, barcode, item code   (the scan-me face)
- *   right panel -> item name, design code, MRP     (the customer face)
+ *   left panel  -> barcode, item code                  (the scan face)
+ *   right panel -> brand band, item name, MRP          (the customer face)
  *
  * The fold position is a MEASURED value, not printArea / 2. The first
  * real print run showed the stock is pre-scored at a fixed point that
@@ -122,31 +122,11 @@ export async function generateLabelsPdf(
         dashArray: [1.5, 1.5],
       });
 
-      // ---------- left panel: shop name, barcode, item code ----------
-      const shopSize = 4.6;
-      const shopName = APP.tagName.toUpperCase();
-      const shopW = bold.widthOfTextAtSize(shopName, shopSize);
-      page.drawText(shopName, {
-        x: (leftW - shopW) / 2,
-        y: labelH - pad - shopSize + 1,
-        size: shopSize,
-        font: bold,
-        color: rgb(0, 0, 0),
-      });
-
-      // Hairline under the shop name: cheap way to make a thermal label
-      // look deliberate rather than dumped, and it survives low DPI.
-      page.drawLine({
-        start: { x: (leftW - shopW) / 2, y: labelH - pad - shopSize - 1 },
-        end: { x: (leftW + shopW) / 2, y: labelH - pad - shopSize - 1 },
-        thickness: 0.4,
-        color: rgb(0, 0, 0),
-      });
-
-      const codeSize = 5.4;
-      const barTop = labelH - pad - shopSize - 3.5;
-      const barBottom = pad + codeSize + 1.5;
-      const barH = Math.max(mm(4), barTop - barBottom);
+      // ---------- left panel: barcode + item code (the scan face) ----------
+      const codeSize = 6.2;
+      const barTop = labelH - pad;
+      const barBottom = pad + codeSize + 2;
+      const barH = Math.max(mm(4.5), barTop - barBottom);
       const barMaxW = leftW - 2 * pad;
       const barW = Math.min((png.w / png.h) * barH, barMaxW);
 
@@ -166,47 +146,71 @@ export async function generateLabelsPdf(
         color: rgb(0, 0, 0),
       });
 
-      // ---------- right panel: item name, design code, MRP ----------
+      // ---------- right panel: brand band, item name, MRP ----------
       const rx = foldX + pad;
       const rMaxW = rightW - 2 * pad;
-      let ry = labelH - pad - 5;
 
-      for (const line of wrap(item.name, bold, 5.6, rMaxW, 2)) {
-        page.drawText(line, { x: rx, y: ry, size: 5.6, font: bold, color: rgb(0, 0, 0) });
-        ry -= 6.2;
-      }
+      // Solid band with the name reversed out of it. On a thermal printer
+      // a filled block is the one thing that always renders cleanly at
+      // this size -- far more legible than a hairline rule, and it gives
+      // the tag an actual identity from across a counter.
+      const bandH = mm(4.2);
+      const bandY = labelH - bandH;
+      page.drawRectangle({
+        x: foldX,
+        y: bandY,
+        width: rightW,
+        height: bandH,
+        color: rgb(0, 0, 0),
+      });
 
-      if (item.designCode) {
-        ry -= 0.5;
-        page.drawText(item.designCode.slice(0, 26), {
-          x: rx,
-          y: ry,
-          size: 4.8,
-          font: regular,
-          color: rgb(0.25, 0.25, 0.25),
-        });
+      const brand = APP.tagName.toUpperCase();
+      let brandSize = 6.4;
+      while (bold.widthOfTextAtSize(brand, brandSize) > rMaxW && brandSize > 3.6) {
+        brandSize -= 0.15;
       }
+      const brandW = bold.widthOfTextAtSize(brand, brandSize);
+      page.drawText(brand, {
+        x: foldX + (rightW - brandW) / 2,
+        y: bandY + (bandH - brandSize) / 2 + 0.9,
+        size: brandSize,
+        font: bold,
+        color: rgb(1, 1, 1),
+      });
+
+      // MRP sits on the baseline first and the name fills what is left,
+      // so the price lands in the same spot on every tag no matter how
+      // long the name runs. A price that moves gets misread at a counter.
+      const mrpNumSize = 10;
+      const mrpTop = pad + mrpNumSize;
 
       if (item.mrpPaise !== null) {
-        // MRP anchored to the bottom rather than flowing after the name,
-        // so it lands in the same place on every tag regardless of how
-        // long the item name runs. A price that moves around is a price
-        // that gets misread at the counter.
         page.drawText("MRP", {
           x: rx,
-          y: pad + 0.5,
+          y: pad + 1.2,
           size: 4.6,
           font: regular,
-          color: rgb(0.3, 0.3, 0.3),
+          color: rgb(0.35, 0.35, 0.35),
         });
         const mrpLabelW = regular.widthOfTextAtSize("MRP", 4.6);
         page.drawText(formatMrp(item.mrpPaise), {
-          x: rx + mrpLabelW + 2.5,
+          x: rx + mrpLabelW + 2.2,
           y: pad,
-          size: 7.2,
+          size: mrpNumSize,
           font: bold,
           color: rgb(0, 0, 0),
         });
+      }
+
+      const nameTop = bandY - 1.5;
+      const nameRoom = nameTop - mrpTop;
+      const nameSize = 5.8;
+      const maxNameLines = Math.max(1, Math.floor(nameRoom / (nameSize + 0.8)));
+
+      let ny = nameTop - nameSize;
+      for (const line of wrap(item.name, bold, nameSize, rMaxW, Math.min(2, maxNameLines))) {
+        page.drawText(line, { x: rx, y: ny, size: nameSize, font: bold, color: rgb(0, 0, 0) });
+        ny -= nameSize + 0.8;
       }
     }
   }

@@ -27,6 +27,9 @@ export const ROUTES = {
   discounts: "/discounts",
   discountSettings: "/discounts/settings",
   barcodes: "/utilities/barcodes",
+  coupons: "/coupons",
+  couponNew: "/coupons/new",
+  couponBatch: (id: string) => `/coupons/${id}`,
 } as const;
 
 export interface NavItem {
@@ -70,6 +73,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { href: ROUTES.transfers,   label: "Transfers" },
       { href: ROUTES.transit,     label: "In transit" },
       { href: ROUTES.customers,   label: "Customers" },
+      { href: ROUTES.coupons,     label: "Coupons" },
       { href: ROUTES.adjustments, label: "Adjustments" },
     ],
   },

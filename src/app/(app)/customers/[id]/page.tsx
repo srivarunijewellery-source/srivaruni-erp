@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/features/auth/session";
 import { getCustomer } from "@/features/customers/queries";
+import { listCustomerCoupons } from "@/features/coupons/queries";
 import { can } from "@/config/roles";
 import { ROUTES } from "@/config/nav";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -23,6 +24,8 @@ export default async function CustomerDetailPage({
   const [{ id }, { edit }, user] = await Promise.all([params, searchParams, requireUser()]);
   const customer = await getCustomer(id);
   if (!customer) notFound();
+
+  const coupons = await listCustomerCoupons(customer.id);
 
   const editing = edit === "1" && can(user.role, "customer.manage");
 
@@ -77,6 +80,30 @@ export default async function CustomerDetailPage({
                 <p>{customer.notes}</p>
               </div>
             )}
+          </CardBody>
+        </Card>
+      )}
+
+      {coupons.length > 0 && (
+        <Card className="mt-4">
+          <CardHeader>
+            <span className="font-medium">Coupons held</span>
+          </CardHeader>
+          <CardBody className="py-0">
+            <ul className="divide-y divide-border">
+              {coupons.map((c) => (
+                <li key={c.id} className="flex flex-wrap items-center gap-3 py-2">
+                  <span className="font-mono text-sm font-medium">{c.code}</span>
+                  <span className="min-w-0 flex-1 truncate text-2xs text-text-muted">
+                    {c.batchName}
+                  </span>
+                  <span className="text-2xs capitalize text-text-muted">{c.status}</span>
+                  <span className="tnum font-mono text-2xs">
+                    till {formatDate(c.validTo)}
+                  </span>
+                </li>
+              ))}
+            </ul>
           </CardBody>
         </Card>
       )}

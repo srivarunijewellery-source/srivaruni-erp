@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input, FieldError } from "@/components/ui/Field";
@@ -8,9 +9,10 @@ import { PhotoThumb } from "@/components/ui/PhotoThumb";
 import { itemPhotoUrl } from "@/lib/storage";
 import { formatPaise } from "@/lib/money";
 import { searchItemsForLabels } from "./actions";
+import { saveLabelSettings } from "./settingsActions";
+import { ROUTES } from "@/config/nav";
 import type { LabelItem } from "./queries";
 import {
-  DEFAULT_GEOMETRY,
   MIN_PRINT_AREA_MM,
   MAX_PRINT_AREA_MM,
   MIN_FOLD_AT_MM,
@@ -31,14 +33,37 @@ interface QueueLine {
  * server when generating; barcode, name and price are always re-read
  * server-side at that point, never trusted from this screen.
  */
-export function LabelQueue({ initial }: { initial: QueueLine[] }) {
+export interface InwardOption {
+  id: string;
+  docNo: string;
+  vendorName: string;
+  totalQty: number;
+}
+
+export function LabelQueue({
+  initial,
+  settings,
+  canEditSettings,
+  inwards,
+  selectedInwardId,
+}: {
+  initial: QueueLine[];
+  settings: LabelGeometry;
+  canEditSettings: boolean;
+  inwards: InwardOption[];
+  selectedInwardId: string;
+}) {
+  const router = useRouter();
   const [queue, setQueue] = useState<QueueLine[]>(initial);
-  const [geometry, setGeometry] = useState<LabelGeometry>(DEFAULT_GEOMETRY);
+  const [showSettings, setShowSettings] = useState(false);
+  // Seeded from the saved settings row, so a refresh no longer resets it.
+  const [geometry, setGeometry] = useState<LabelGeometry>(settings);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<LabelItem[]>([]);
   const [searching, setSearching] = useState(false);
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -129,6 +154,25 @@ export function LabelQueue({ initial }: { initial: QueueLine[] }) {
 
   function setGeo(patch: Partial<LabelGeometry>) {
     setGeometry((g) => ({ ...g, ...patch }));
+    setSaved(false);
+  }
+
+  function persistSettings() {
+    setError(null);
+    start(async () => {
+      const g = clampGeometry(geometry);
+      const fd = new FormData();
+      fd.set("printAreaMm", String(g.printAreaMm));
+      fd.set("foldAtMm", String(g.foldAtMm));
+      fd.set("gapMm", String(g.gapMm));
+      const result = await saveLabelSettings(fd);
+      if (result.ok) {
+        setGeometry(g);
+        setSaved(true);
+      } else {
+        setError(result.error);
+      }
+    });
   }
 
   return (
@@ -146,11 +190,12 @@ export function LabelQueue({ initial }: { initial: QueueLine[] }) {
             </div>
             <div className="flex items-center gap-2">
               <Button
-                variant="secondary"
-                disabled={pending}
-                onClick={calibrate}
+                variant="ghost"
+                aria-label="Label settings"
+                title="Label settings"
+                onClick={() => setShowSettings((v) => !v)}
               >
-                Calibration sheet
+                &#9881;
               </Button>
               <Button
                 variant="primary"
@@ -166,52 +211,95 @@ export function LabelQueue({ initial }: { initial: QueueLine[] }) {
         </CardBody>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <span className="font-medium">Label geometry</span>
-        </CardHeader>
-        <CardBody className="space-y-3">
-          <p className="text-2xs text-text-muted">
-            Measured from your actual stock, not guessed. Print the calibration sheet once,
-            read the two numbers off the ruler, and enter them here &mdash; every label after
-            that lines up.
-          </p>
-          <div className="grid gap-3 sm:grid-cols-3">
-            <NumField
-              id="print-area"
-              label="Printable width"
-              hint="Where print stops being crisp"
-              value={geometry.printAreaMm}
-              min={MIN_PRINT_AREA_MM}
-              max={MAX_PRINT_AREA_MM}
-              onChange={(v) => setGeo({ printAreaMm: v })}
-            />
-            <NumField
-              id="fold-at"
-              label="Fold position"
-              hint="From the left edge of the label"
-              value={geometry.foldAtMm}
-              min={MIN_FOLD_AT_MM}
-              max={MAX_PRINT_AREA_MM}
-              onChange={(v) => setGeo({ foldAtMm: v })}
-            />
-            <NumField
-              id="gap-mm"
-              label="Gap between labels"
-              hint="0 if the printer senses breaks"
-              value={geometry.gapMm}
-              min={MIN_GAP_MM}
-              max={MAX_GAP_MM}
-              onChange={(v) => setGeo({ gapMm: v })}
-            />
-          </div>
-        </CardBody>
-      </Card>
+      {showSettings && (
+        <Card>
+          <CardHeader className="flex items-center justify-between gap-3">
+            <span className="font-medium">Label settings</span>
+            <span className="text-2xs text-text-muted">Applies to everyone, saved for good</span>
+          </CardHeader>
+          <CardBody className="space-y-3">
+            <p className="text-2xs text-text-muted">
+              Measured from your actual stock, not guessed. Print the calibration sheet once,
+              read the two numbers off the ruler, and save them here.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <NumField
+                id="print-area"
+                label="Printable width"
+                hint="Where print stops being crisp"
+                value={geometry.printAreaMm}
+                min={MIN_PRINT_AREA_MM}
+                max={MAX_PRINT_AREA_MM}
+                disabled={!canEditSettings}
+                onChange={(v) => setGeo({ printAreaMm: v })}
+              />
+              <NumField
+                id="fold-at"
+                label="Fold position"
+                hint="From the left edge of the label"
+                value={geometry.foldAtMm}
+                min={MIN_FOLD_AT_MM}
+                max={MAX_PRINT_AREA_MM}
+                disabled={!canEditSettings}
+                onChange={(v) => setGeo({ foldAtMm: v })}
+              />
+              <NumField
+                id="gap-mm"
+                label="Gap between labels"
+                hint="0 if the printer senses breaks"
+                value={geometry.gapMm}
+                min={MIN_GAP_MM}
+                max={MAX_GAP_MM}
+                disabled={!canEditSettings}
+                onChange={(v) => setGeo({ gapMm: v })}
+              />
+            </div>
+            {canEditSettings ? (
+              <div className="flex items-center gap-2">
+                <Button variant="primary" disabled={pending} onClick={persistSettings}>
+                  {saved ? "Saved" : "Save settings"}
+                </Button>
+                <Button variant="secondary" disabled={pending} onClick={calibrate}>
+                  Calibration sheet
+                </Button>
+              </div>
+            ) : (
+              <p className="text-2xs text-text-muted">
+                Only a manager or the owner can change these.
+              </p>
+            )}
+          </CardBody>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
           <span className="font-medium">Add items</span>
         </CardHeader>
+        <CardBody className="space-y-2 border-b border-border">
+          <label htmlFor="inward-pick" className="block text-sm font-medium text-text">
+            Load a whole inward document
+          </label>
+          <select
+            id="inward-pick"
+            value={selectedInwardId}
+            onChange={(e) => {
+              const v = e.target.value;
+              router.push(v ? `${ROUTES.barcodes}?inwardId=${v}` : ROUTES.barcodes);
+            }}
+            className="h-9 w-full rounded-control border border-border bg-surface px-2 text-sm"
+          >
+            <option value="">Choose a delivery&hellip;</option>
+            {inwards.map((i) => (
+              <option key={i.id} value={i.id}>
+                {i.docNo} &mdash; {i.vendorName} ({i.totalQty} pcs)
+              </option>
+            ))}
+          </select>
+          <p className="text-2xs text-text-subtle">
+            Queues every line at the quantity received. Replaces whatever is queued now.
+          </p>
+        </CardBody>
         <CardBody className="space-y-2">
           <Input
             value={query}
@@ -288,6 +376,7 @@ function NumField({
   value,
   min,
   max,
+  disabled,
   onChange,
 }: {
   id: string;
@@ -296,6 +385,7 @@ function NumField({
   value: number;
   min: number;
   max: number;
+  disabled?: boolean;
   onChange: (v: number) => void;
 }) {
   return (
@@ -311,6 +401,7 @@ function NumField({
           max={max}
           step={0.5}
           value={value}
+          disabled={disabled}
           onChange={(e) => {
             const v = Number(e.target.value);
             if (Number.isFinite(v)) onChange(v);
