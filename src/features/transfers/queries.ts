@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import type {
   PickableItem,
+  StockFilterOptions,
   TransferDetail,
   TransferLine,
   TransferSummary,
@@ -255,58 +256,90 @@ export async function listTransitBoxes(): Promise<TransitBox[]> {
 }
 
 /**
- * Candidates for the request screen's tile grid: what the sending store
- * actually has on the shelf, filtered the way a person would think about
- * it — by category, or by typing part of a name or barcode.
+ * Candidates for the request tile grid.
+ *
+ * This is an RPC, not a select(), because the filters need a lateral join
+ * against stock_ledger to compute "days since this item last arrived at
+ * this store" per row -- not expressible through the query builder, and
+ * a client-side join would mean pulling every ledger row for every item.
+ * The function runs security invoker, so RLS applies exactly as it would
+ * to a hand-written query; nothing is bypassed by moving it into SQL.
  */
 export async function listPickableStock(
-  fromLocationCode: string,
-  opts: { query?: string; category?: string; limit?: number } = {},
+  locationId: string,
+  opts: {
+    query?: string;
+    category?: string;
+    itemType?: string;
+    plating?: string;
+    inStockOnly?: boolean;
+    minAgeDays?: number;
+    limit?: number;
+  } = {},
 ): Promise<PickableItem[]> {
   const supabase = await createClient();
 
-  let q = supabase
-    .from("stock_on_hand")
-    .select("item_id, barcode, name, category, qty, selling_price_paise")
-    .eq("location_code", fromLocationCode)
-    .gt("qty", 0)
-    .order("name")
-    .limit(opts.limit ?? 120);
+  const { data, error } = await supabase.rpc("list_pickable_stock", {
+    p_location: locationId,
+    p_query: opts.query?.trim() || null,
+    p_category: opts.category || null,
+    p_item_type: opts.itemType || null,
+    p_plating: opts.plating || null,
+    p_in_stock_only: opts.inStockOnly ?? true,
+    p_min_age_days: opts.minAgeDays ?? null,
+    p_limit: opts.limit ?? 200,
+  });
 
-  const term = opts.query?.trim();
-  if (term) q = q.or(`barcode.ilike.%${term}%,name.ilike.%${term}%`);
-  if (opts.category) q = q.eq("category", opts.category);
-
-  const { data, error } = await q;
   if (error) throw error;
 
-  const photos = await photoMap(
-    supabase,
-    (data ?? []).map((r) => r.item_id as string),
-  );
+  // list_pickable_stock is not in the generated Database types (the last
+  // db:types run predates it), so the client falls back to `unknown` here.
+  // Annotated by hand rather than regenerating types for one query.
+  type Row = {
+    item_id: string;
+    barcode: string;
+    name: string;
+    category: string;
+    item_type: string | null;
+    plating: string | null;
+    photo_path: string | null;
+    selling_price_paise: number | null;
+    qty_available: number;
+    age_days: number | null;
+  };
 
-  return (data ?? []).map((r) => ({
+  return ((data ?? []) as Row[]).map((r) => ({
     itemId: r.item_id,
     barcode: r.barcode,
     name: r.name,
     category: r.category,
-    photoPath: photos.get(r.item_id) ?? null,
-    qtyAvailable: Number(r.qty ?? 0),
+    itemType: r.item_type,
+    plating: r.plating,
+    photoPath: r.photo_path,
+    qtyAvailable: Number(r.qty_available ?? 0),
+    ageDays: r.age_days === null ? null : Number(r.age_days),
     sellingPricePaise: r.selling_price_paise,
   }));
 }
 
-/** Distinct categories held at a store, for the request screen's filter. */
-export async function listStockCategories(fromLocationCode: string): Promise<string[]> {
+/**
+ * Filter choices scoped to what a store actually holds, so the dropdowns
+ * never offer a category or plating that returns an empty grid.
+ */
+export async function listStockFilterOptions(locationId: string): Promise<StockFilterOptions> {
   const supabase = await createClient();
 
   const { data, error } = await supabase
-    .from("stock_on_hand")
-    .select("category")
-    .eq("location_code", fromLocationCode)
-    .gt("qty", 0);
+    .rpc("list_stock_filter_options", { p_location: locationId })
+    .single();
 
   if (error) throw error;
 
-  return [...new Set((data ?? []).map((r) => r.category as string))].sort();
+  const row = data as { categories: string[]; item_types: string[]; platings: string[] } | null;
+
+  return {
+    categories: row?.categories ?? [],
+    itemTypes: row?.item_types ?? [],
+    platings: row?.platings ?? [],
+  };
 }

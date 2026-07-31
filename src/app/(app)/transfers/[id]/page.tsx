@@ -2,11 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/features/auth/session";
-import {
-  getTransfer,
-  listPickableStock,
-  listStockCategories,
-} from "@/features/transfers/queries";
+import { getTransfer, listPickableStock, listStockFilterOptions } from "@/features/transfers/queries";
 import { can } from "@/config/roles";
 import { ROUTES } from "@/config/nav";
 import { TRANSFER_STATUS } from "@/config/status";
@@ -14,9 +10,8 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { RequestBuilder } from "@/features/transfers/RequestBuilder";
-import { RequestFilters } from "@/features/transfers/RequestFilters";
+import { StockFilterBar, type StockFilterState } from "@/features/transfers/StockFilterBar";
 import { PickPanel } from "@/features/transfers/PickPanel";
 import { DispatchPanel } from "@/features/transfers/DispatchPanel";
 import { ReceivePanel } from "@/features/transfers/ReceivePanel";
@@ -45,14 +40,26 @@ export default async function TransferDetailPage({
     0,
   );
 
-  // Only a request is still being built, and only then is the shelf listed.
-  const building = transfer.status === "requested";
-  const [pickable, categories] = building
+  // Requests are now built before they exist (see /transfers/new), so a
+  // request that has reached this page already has its lines. This section
+  // only covers adding a forgotten item to one still sitting at "requested".
+  const canAddMore = transfer.status === "requested" && can(user.role, "transfer.request");
+  const [pickable, filterOptions] = canAddMore
     ? await Promise.all([
-        listPickableStock(transfer.fromCode, { query: q, category }),
-        listStockCategories(transfer.fromCode),
+        listPickableStock(transfer.fromLocationId, { query: q, category }),
+        listStockFilterOptions(transfer.fromLocationId),
       ])
-    : [[], []];
+    : [[], { categories: [], itemTypes: [], platings: [] }];
+
+  const filterValue: StockFilterState = {
+    from: transfer.fromLocationId,
+    q,
+    category,
+    itemType: "",
+    plating: "",
+    inStock: true,
+    minAge: "",
+  };
 
   return (
     <>
@@ -70,6 +77,53 @@ export default async function TransferDetailPage({
           </div>
         }
       />
+
+      {/* Whatever the next legal action is, it comes first -- not after a
+          screen of metadata someone has to scroll past to find it. */}
+      <div className="mb-4">
+        {transfer.status === "requested" && can(user.role, "transfer.pick") && (
+          <PickPanel transfer={transfer} />
+        )}
+        {transfer.status === "picking" &&
+          (can(user.role, "transfer.pick") ? (
+            <PickPanel transfer={transfer} />
+          ) : (
+            <ReadOnly transfer={transfer} mode="pick" />
+          ))}
+        {(transfer.status === "picked" || transfer.status === "approved") &&
+          (can(user.role, "transfer.approve") ? (
+            <DispatchPanel transfer={transfer} />
+          ) : (
+            <ReadOnly
+              transfer={transfer}
+              mode="pick"
+              hint="Packed and sent for approval. Waiting on a manager or the owner to approve and ship."
+            />
+          ))}
+        {transfer.status === "dispatched" &&
+          (can(user.role, "transfer.receive") ? (
+            <ReceivePanel transfer={transfer} />
+          ) : (
+            <ReadOnly
+              transfer={transfer}
+              mode="receive"
+              hint={`In transit. Belongs to no store until ${transfer.toCode} confirms receipt.`}
+            />
+          ))}
+        {(transfer.status === "received" ||
+          transfer.status === "rejected" ||
+          transfer.status === "cancelled") && (
+          <ReadOnly
+            transfer={transfer}
+            mode="receive"
+            hint={
+              transfer.status === "received"
+                ? `Booked into ${transfer.toName} on ${formatDateTime(transfer.receivedAt)}.`
+                : undefined
+            }
+          />
+        )}
+      </div>
 
       <div className="mb-4 grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
@@ -102,29 +156,18 @@ export default async function TransferDetailPage({
         </Card>
       </div>
 
-      {/* ---------------------------------------------------- build a request */}
-      {building && (
+      {canAddMore && (
         <div className="space-y-4">
-          {transfer.lines.length > 0 && (
-            <Card>
-              <CardHeader>
-                <span className="font-medium">On the request</span>
-              </CardHeader>
-              <CardBody className="py-0">
-                <LineProgress lines={transfer.lines} mode="pick" showAvailable />
-              </CardBody>
-            </Card>
-          )}
-
-          {can(user.role, "transfer.pick") && <PickPanel transfer={transfer} />}
-
-          <RequestFilters
-            transferId={transfer.id}
-            categories={categories}
-            query={q}
-            category={category}
+          <p className="text-sm text-text-muted">
+            Forgot something? Add it here before picking starts.
+          </p>
+          <StockFilterBar
+            basePath={ROUTES.transferDetail(transfer.id)}
+            locations={[]}
+            options={filterOptions}
+            value={filterValue}
+            lockFrom
           />
-
           <RequestBuilder
             transferId={transfer.id}
             items={pickable}
@@ -132,60 +175,6 @@ export default async function TransferDetailPage({
             fromCode={transfer.fromCode}
           />
         </div>
-      )}
-
-      {/* ------------------------------------------------------------- picking */}
-      {transfer.status === "picking" &&
-        (can(user.role, "transfer.pick") ? (
-          <PickPanel transfer={transfer} />
-        ) : (
-          <ReadOnly transfer={transfer} mode="pick" />
-        ))}
-
-      {/* -------------------------------------------------- approve and ship */}
-      {(transfer.status === "picked" || transfer.status === "approved") &&
-        (can(user.role, "transfer.approve") ? (
-          <DispatchPanel transfer={transfer} />
-        ) : (
-          <ReadOnly
-            transfer={transfer}
-            mode="pick"
-            hint="Packed and waiting on the owner to approve and ship."
-          />
-        ))}
-
-      {/* ------------------------------------------------------------ receive */}
-      {transfer.status === "dispatched" &&
-        (can(user.role, "transfer.receive") ? (
-          <ReceivePanel transfer={transfer} />
-        ) : (
-          <ReadOnly
-            transfer={transfer}
-            mode="receive"
-            hint={`In transit. Belongs to no store until ${transfer.toCode} confirms receipt.`}
-          />
-        ))}
-
-      {/* -------------------------------------------------------------- closed */}
-      {(transfer.status === "received" ||
-        transfer.status === "rejected" ||
-        transfer.status === "cancelled") && (
-        <ReadOnly
-          transfer={transfer}
-          mode="receive"
-          hint={
-            transfer.status === "received"
-              ? `Booked into ${transfer.toName} on ${formatDateTime(transfer.receivedAt)}.`
-              : undefined
-          }
-        />
-      )}
-
-      {building && transfer.lines.length === 0 && pickable.length === 0 && (
-        <EmptyState
-          title="Nothing to send"
-          hint={`${transfer.fromName} is not holding any stock that matches.`}
-        />
       )}
     </>
   );
@@ -208,16 +197,15 @@ function Detail({
   );
 }
 
-async function ReadOnly({
+function ReadOnly({
   transfer,
   mode,
   hint,
 }: {
-  transfer: Awaited<ReturnType<typeof getTransfer>>;
+  transfer: NonNullable<Awaited<ReturnType<typeof getTransfer>>>;
   mode: "pick" | "receive";
   hint?: string;
 }) {
-  if (!transfer) return null;
   return (
     <Card>
       <CardHeader className="flex items-center justify-between gap-3">

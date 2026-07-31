@@ -180,9 +180,20 @@ export interface PickableItem {
   barcode: string;
   name: string;
   category: string;
+  itemType: string | null;
+  plating: string | null;
   photoPath: string | null;
   qtyAvailable: number;
+  /** Days since stock of this item last moved into this store. Null if never. */
+  ageDays: number | null;
   sellingPricePaise: Paise | null;
+}
+
+/** What the filter bar can offer, scoped to what a store actually holds. */
+export interface StockFilterOptions {
+  categories: string[];
+  itemTypes: string[];
+  platings: string[];
 }
 
 export interface StockRow {

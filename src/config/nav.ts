@@ -8,6 +8,7 @@ export const ROUTES = {
   inwardNew: "/inward/new",
   inwardDetail: (id: string) => `/inward/${id}`,
   transfers: "/transfers",
+  transferNew: "/transfers/new",
   transferDetail: (id: string) => `/transfers/${id}`,
   transferSlip: (id: string) => `/transfers/${id}/slip`,
   transit: "/transfers/transit",

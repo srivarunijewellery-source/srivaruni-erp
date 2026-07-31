@@ -3,6 +3,59 @@
 Unzip over the repo root. Every path is repo-relative; nothing outside the
 files listed here is touched.
 
+## Update — bugfix + request flow rework (this delivery)
+
+**Production bug fixed.** `receive_transfer` (untouched by the original pick-
+stage work) moved stock out of transit for every line unconditionally. Once
+a short pick could leave a line at `qty_sent = 0`, that produced a zero-
+delta `stock_ledger` insert, which `stock_ledger_qty_delta_check` correctly
+rejected — the exact error reported. Fixed in `0045_fix_receive_transfer.sql`
+by excluding `qty_sent = 0` lines from that insert, matching the pattern
+already used in `dispatch_transfer`. Verified live with the exact repro (a
+line requested and never picked at all, reaching receipt) and reversed.
+
+**Request creation is now cart-first.** `/transfers/new` — filter and browse
+stock at the source store, build a selection, and only then create the
+document. `create_transfer_request` (`0046`) does the transfer row and every
+line in one transaction, so no half-built request is ever visible on the
+list. The old `requestTransfer` action (empty transfer, then add lines one
+tap at a time) still exists for the "add a forgotten item" case on an
+already-`requested` document, but is no longer the primary path.
+
+**Filters:** category, item type, plating, "sitting here since" (30/60/90/
+180+ days, computed from the last positive `stock_ledger` entry at that
+location), and an in-stock toggle (on by default; off browses the full
+catalogue including zero-stock items). Backed by two new read functions,
+`list_pickable_stock` and `list_stock_filter_options` (`0047`) — both
+`security invoker`, so RLS applies exactly as it would to a hand-written
+query.
+
+**No sales filter.** There is no sales/POS table in this schema yet — only
+vendor bills on the purchase side. Rather than fake a metric, this filter
+was not built. It's a straightforward addition once a sales module exists;
+the filter bar has a slot ready for it.
+
+**Primary actions moved to the top of every screen**, above scan boxes and
+line detail rather than below them: "Start picking" / "Send for approval" on
+the pick screen, "Approve and ship" on the dispatch screen, "Confirm
+receipt" on the receive screen. Language changed to match the confirmed
+flow — picking ends with **sending for approval**, not "sealing a box".
+
+**Roles confirmed, no change needed.** `transfer.approve` and
+`transfer.receive` were already `isManagerOrAbove`; `transfer.pick` was
+already open to all roles, with the database separately checking the caller
+is actually at the sending location. Matches "approval to owner or manager,
+picking from staff."
+
+New: `NewRequestBuilder.tsx`, `StockFilterBar.tsx`,
+`app/(app)/transfers/new/page.tsx`. Removed: `RequestFilters.tsx`,
+`RequestTransferForm.tsx` (superseded by the new page). `RequestBuilder.tsx`
+kept, narrowed to the "add more items to an existing request" case.
+
+---
+
+## Original delivery
+
 ## Database
 
 The four migrations in `supabase/migrations/` are **already applied** to

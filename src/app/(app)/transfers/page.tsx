@@ -1,15 +1,16 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { requireUser } from "@/features/auth/session";
 import { listTransfers } from "@/features/transfers/queries";
-import { listStores } from "@/features/inward/queries";
 import { TRANSFER_STATUS } from "@/config/status";
 import { can } from "@/config/roles";
+import { ROUTES } from "@/config/nav";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { TransferActions } from "@/features/transfers/TransferActions";
-import { RequestTransferForm } from "@/features/transfers/RequestTransferForm";
 import { formatDate } from "@/lib/format";
 import type { TransferSummary } from "@/types/domain";
 
@@ -17,7 +18,7 @@ export const metadata: Metadata = { title: "Transfers" };
 
 export default async function TransfersPage() {
   const user = await requireUser();
-  const [transfers, stores] = await Promise.all([listTransfers(), listStores()]);
+  const transfers = await listTransfers();
 
   const columns: ReadonlyArray<Column<TransferSummary>> = [
     { key: "doc", header: "Document", render: (r) => <span className="font-mono">{r.docNo}</span> },
@@ -63,13 +64,14 @@ export default async function TransfersPage() {
       <PageHeader
         title="Transfers"
         description="Anyone can raise a request. Stock only moves once it is approved, and lands only when the receiving store confirms."
+        action={
+          can(user.role, "transfer.request") && (
+            <Link href={ROUTES.transferNew}>
+              <Button variant="primary">New transfer</Button>
+            </Link>
+          )
+        }
       />
-
-      {can(user.role, "transfer.request") && (
-        <div className="mb-5">
-          <RequestTransferForm stores={stores} defaultFromId={user.locationId} />
-        </div>
-      )}
 
       {transfers.length === 0 ? (
         <EmptyState

@@ -10,10 +10,10 @@ import { ROUTES } from "@/config/nav";
 import type { TransferDetail } from "@/types/domain";
 
 /**
- * The owner's screen: sign off on what is actually in the box and put it
- * on the road. Approval and dispatch are one press because they are one
- * decision, but they stay two database calls so each keeps its own
- * timestamp and its own name against it.
+ * The owner or manager's screen: sign off on what is actually in the box
+ * and put it on the road. Approval and dispatch are one press because
+ * they are one decision, but they stay two database calls so each keeps
+ * its own timestamp and its own name against it.
  */
 export function DispatchPanel({ transfer }: { transfer: TransferDetail }) {
   const [pending, start] = useTransition();
@@ -56,41 +56,9 @@ export function DispatchPanel({ transfer }: { transfer: TransferDetail }) {
   return (
     <div className="space-y-4">
       <Card>
-        <CardHeader className="flex items-center justify-between gap-3">
-          <span className="font-medium">In the box</span>
-          <span className="tnum font-mono text-sm">
-            {sent} of {requested} requested
-          </span>
-        </CardHeader>
-        <CardBody className="py-0">
-          <LineProgress lines={transfer.lines} mode="pick" />
-        </CardBody>
-      </Card>
-
-      {short > 0 && (
-        <Card>
-          <CardBody>
-            <p className="text-sm">
-              <span className="font-medium text-status-danger-fg">
-                {short} {short === 1 ? "piece" : "pieces"} could not be found.
-              </span>{" "}
-              {transfer.pickNote ? (
-                <span className="text-text-muted">“{transfer.pickNote}”</span>
-              ) : (
-                <span className="text-text-muted">No reason was recorded.</span>
-              )}
-            </p>
-            <p className="mt-1 text-2xs text-text-muted">
-              Those pieces stay on the shelf at {transfer.fromCode}. Nothing is written off.
-            </p>
-          </CardBody>
-        </Card>
-      )}
-
-      <Card>
         <CardHeader>
           <span className="font-medium">
-            {approved ? "Put it on the road" : "Approve and ship"}
+            {approved ? "Put it on the road" : "Approve to ship"}
           </span>
         </CardHeader>
         <CardBody className="space-y-3">
@@ -154,15 +122,43 @@ export function DispatchPanel({ transfer }: { transfer: TransferDetail }) {
                 onChange={(e) => setReason(e.target.value)}
                 placeholder="Zaheerabad already has these, hold them here"
               />
-              <Button
-                variant="danger"
-                disabled={pending || !reason.trim()}
-                onClick={reject}
-              >
+              <Button variant="danger" disabled={pending || !reason.trim()} onClick={reject}>
                 {pending ? "Sending back…" : "Confirm send back"}
               </Button>
             </div>
           )}
+        </CardBody>
+      </Card>
+
+      {short > 0 && (
+        <Card>
+          <CardBody>
+            <p className="text-sm">
+              <span className="font-medium text-status-danger-fg">
+                {short} {short === 1 ? "piece" : "pieces"} could not be found.
+              </span>{" "}
+              {transfer.pickNote ? (
+                <span className="text-text-muted">“{transfer.pickNote}”</span>
+              ) : (
+                <span className="text-text-muted">No reason was recorded.</span>
+              )}
+            </p>
+            <p className="mt-1 text-2xs text-text-muted">
+              Those pieces stay on the shelf at {transfer.fromCode}. Nothing is written off.
+            </p>
+          </CardBody>
+        </Card>
+      )}
+
+      <Card>
+        <CardHeader className="flex items-center justify-between gap-3">
+          <span className="font-medium">In the box</span>
+          <span className="tnum font-mono text-sm">
+            {sent} of {requested} requested
+          </span>
+        </CardHeader>
+        <CardBody className="py-0">
+          <LineProgress lines={transfer.lines} mode="pick" />
         </CardBody>
       </Card>
     </div>

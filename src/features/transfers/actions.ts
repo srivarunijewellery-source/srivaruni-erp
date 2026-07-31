@@ -63,6 +63,56 @@ export async function requestTransfer(formData: FormData): Promise<Result<string
   return ok(String(data));
 }
 
+const cartLineSchema = z.object({
+  itemId: uuid,
+  qty: z.number().int().positive(),
+});
+
+const createRequestSchema = z.object({
+  fromLocationId: uuid.describe("Choose where the stock is coming from."),
+  toLocationId: uuid.describe("Choose where it is going."),
+  reason: z.string().trim().min(1, "Say why the stock is moving."),
+  note: z.string().trim().optional(),
+  lines: z.array(cartLineSchema).min(1, "Select at least one item before creating the request."),
+});
+
+/**
+ * Creates the transfer and every line in one database transaction.
+ *
+ * The item selection happens entirely in the browser first -- nothing is
+ * written until this fires. That means no half-built request is ever
+ * visible on the transfers list, and a browser closed mid-selection loses
+ * nothing but an unsaved cart, not an orphaned document.
+ */
+export async function createTransferRequest(input: {
+  fromLocationId: string;
+  toLocationId: string;
+  reason: string;
+  note?: string;
+  lines: { itemId: string; qty: number }[];
+}): Promise<Result<string>> {
+  const parsed = createRequestSchema.safeParse(input);
+  if (!parsed.success) return err(parsed.error.issues[0]?.message ?? "Check the request.");
+
+  if (parsed.data.fromLocationId === parsed.data.toLocationId) {
+    return err("Source and destination must be different stores.");
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("create_transfer_request", {
+    p_from: parsed.data.fromLocationId,
+    p_to: parsed.data.toLocationId,
+    p_reason: parsed.data.reason,
+    p_note: parsed.data.note || null,
+    p_lines: parsed.data.lines.map((l) => ({ item_id: l.itemId, qty: l.qty })),
+  });
+
+  if (error) return err(toMessage(error));
+
+  revalidate();
+  return ok(String(data));
+}
+
 /* ------------------------------------------------------------- build lines */
 
 const lineSchema = z.object({

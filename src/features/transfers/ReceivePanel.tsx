@@ -36,28 +36,57 @@ export function ReceivePanel({ transfer }: { transfer: TransferDetail }) {
   return (
     <div className="space-y-4">
       <Card>
-        <CardBody>
-          <p className="text-sm">
-            Dispatched from {transfer.fromName} on {formatDateTime(transfer.dispatchedAt)}
-            {transfer.courier && <> by {transfer.courier}</>}
-            {transfer.docketNo && (
-              <>
-                {" "}
-                · docket <span className="font-mono">{transfer.docketNo}</span>
-              </>
-            )}
-            .
-          </p>
-          <p className="mt-1 text-2xs text-text-muted">
-            These {sent} {sent === 1 ? "piece is" : "pieces are"} in transit and count
-            towards no store. They land at {transfer.toCode} only when you confirm below.
-          </p>
+        <CardBody className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm">
+                Dispatched from {transfer.fromName} on {formatDateTime(transfer.dispatchedAt)}
+                {transfer.courier && <> by {transfer.courier}</>}
+                {transfer.docketNo && (
+                  <>
+                    {" "}
+                    · docket <span className="font-mono">{transfer.docketNo}</span>
+                  </>
+                )}
+                .
+              </p>
+              <p className="tnum mt-0.5 font-mono text-sm text-text-muted">
+                {untouched ? "—" : scanned} / {sent} scanned in
+              </p>
+            </div>
+            <Button variant="primary" size="lg" disabled={pending} onClick={post}>
+              {pending ? "Booking in…" : `Confirm receipt at ${transfer.toCode}`}
+            </Button>
+          </div>
+
+          {untouched ? (
+            <p className="text-sm text-text-muted">
+              Nothing scanned yet. Confirming now accepts the whole box as it was sent —
+              use that only for a box you have counted by hand.
+            </p>
+          ) : missing > 0 ? (
+            <p className="text-sm">
+              <span className="font-medium text-status-danger-fg">
+                {missing} {missing === 1 ? "piece is" : "pieces are"} unaccounted for.
+              </span>{" "}
+              Confirming now books what you scanned into {transfer.toCode} and logs the rest
+              as lost in transit, against this document, so it can be chased with the
+              courier. It will not be counted as stock anywhere.
+            </p>
+          ) : (
+            <p className="text-sm text-status-done-fg">
+              Everything that was sent has been scanned.
+            </p>
+          )}
+
           {transfer.pickNote && (
-            <p className="mt-2 text-sm">
+            <p className="text-sm">
               <span className="font-medium">Note from {transfer.fromCode}:</span>{" "}
               <span className="text-text-muted">“{transfer.pickNote}”</span>
             </p>
           )}
+
+          {error && <FieldError>{error}</FieldError>}
         </CardBody>
       </Card>
 
@@ -84,36 +113,6 @@ export function ReceivePanel({ transfer }: { transfer: TransferDetail }) {
         </CardHeader>
         <CardBody className="py-0">
           <LineProgress lines={transfer.lines} mode="receive" />
-        </CardBody>
-      </Card>
-
-      <Card>
-        <CardBody className="space-y-3">
-          {untouched ? (
-            <p className="text-sm text-text-muted">
-              Nothing scanned yet. Confirming now accepts the whole box as it was sent —
-              use that only for a box you have counted by hand.
-            </p>
-          ) : missing > 0 ? (
-            <p className="text-sm">
-              <span className="font-medium text-status-danger-fg">
-                {missing} {missing === 1 ? "piece is" : "pieces are"} unaccounted for.
-              </span>{" "}
-              Confirming now books what you scanned into {transfer.toCode} and logs the rest
-              as lost in transit, against this document, so it can be chased with the
-              courier. It will not be counted as stock anywhere.
-            </p>
-          ) : (
-            <p className="text-sm text-status-done-fg">
-              Everything that was sent has been scanned.
-            </p>
-          )}
-
-          {error && <FieldError>{error}</FieldError>}
-
-          <Button variant="primary" size="lg" disabled={pending} onClick={post}>
-            {pending ? "Booking in…" : `Confirm receipt at ${transfer.toCode}`}
-          </Button>
         </CardBody>
       </Card>
     </div>
