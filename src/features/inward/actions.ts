@@ -360,7 +360,10 @@ export async function updateInwardHeader(formData: FormData): Promise<Result> {
   // Vendor drives price mode and state, so the tax figures are stale now.
   // Ignore the failure: staff cannot compute costs, and for them there is
   // nothing to refresh.
-  await supabase.rpc("compute_inward_costs", { p_inward: v.inwardId });
+  const { error: computeError } = await supabase.rpc("compute_inward_costs", {
+    p_inward: v.inwardId,
+  });
+  if (computeError) return err(toMessage(computeError));
 
   revalidatePath(ROUTES.inwardDetail(v.inwardId));
   return ok(undefined);

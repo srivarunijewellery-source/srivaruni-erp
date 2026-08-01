@@ -161,7 +161,10 @@ export async function applyRatesFromTitles(
   }
 
   if (applied > 0) {
-    await supabase.rpc("compute_inward_costs", { p_inward: inwardId });
+    const { error: computeError } = await supabase.rpc("compute_inward_costs", {
+      p_inward: inwardId,
+    });
+    if (computeError) return err(toMessage(computeError));
     await revalidateInwardCosts(inwardId);
   }
 
@@ -261,7 +264,10 @@ export async function applyBandToDocument(
   }
 
   if (applied > 0) {
-    await supabase.rpc("compute_inward_costs", { p_inward: inwardId });
+    const { error: computeError } = await supabase.rpc("compute_inward_costs", {
+      p_inward: inwardId,
+    });
+    if (computeError) return err(toMessage(computeError));
     await revalidateInwardCosts(inwardId);
   }
 
@@ -304,14 +310,32 @@ export async function saveInwardDiscount(
     paise = Math.round(rupees * 100);
   }
 
-  const { error: wErr } = await supabase
+  // .select() so PostgREST reports the affected rows. Without it an
+  // update that RLS filtered out returns 200 with no error, and this
+  // action would report success having written nothing -- which is
+  // exactly what a non-owner editing a discount used to get.
+  const { data: updated, error: wErr } = await supabase
     .from("inwards")
     .update({ discount_kind: kind, discount_bps: bps, discount_paise: paise })
-    .eq("id", inwardId);
+    .eq("id", inwardId)
+    .select("id, status");
 
   if (wErr) return err(toMessage(wErr));
+  if (!updated || updated.length === 0) {
+    return err(
+      "That discount could not be saved. Only the owner can change pricing on a submitted or approved document.",
+    );
+  }
 
-  await supabase.rpc("compute_inward_costs", { p_inward: inwardId });
+  // compute_inward_costs requires owner and raises if it is not. Ignoring
+  // its result left the discount stored with every line cost still
+  // computed as though it did not exist -- a document whose header and
+  // lines disagree, reported as saved.
+  const { error: computeError } = await supabase.rpc("compute_inward_costs", {
+    p_inward: inwardId,
+  });
+  if (computeError) return err(toMessage(computeError));
+
   await revalidateInwardCosts(inwardId);
   return ok(undefined);
 }

@@ -133,7 +133,10 @@ export async function savePricingLine(formData: FormData): Promise<Result> {
     if (error) return err(toMessage(error));
   }
 
-  await supabase.rpc("compute_inward_costs", { p_inward: v.inwardId });
+  const { error: computeError } = await supabase.rpc("compute_inward_costs", {
+    p_inward: v.inwardId,
+  });
+  if (computeError) return err(toMessage(computeError));
 
   // Rate, MRP and selling all moved: refresh the product pages too, not
   // just this document.
@@ -163,11 +166,12 @@ export async function saveAdditionalCost(formData: FormData): Promise<Result> {
 
   // One row per cost type per inward: re-entering freight replaces it
   // rather than silently double-charging the document.
-  await supabase
+  const { error: delError } = await supabase
     .from("inward_additional_costs")
     .delete()
     .eq("inward_id", parsed.data.inwardId)
     .eq("cost_type", parsed.data.costType);
+  if (delError) return err(toMessage(delError));
 
   if (parsed.data.amountPaise > 0) {
     const { error } = await supabase.from("inward_additional_costs").insert({
@@ -179,7 +183,13 @@ export async function saveAdditionalCost(formData: FormData): Promise<Result> {
     if (error) return err(toMessage(error));
   }
 
-  await supabase.rpc("compute_inward_costs", { p_inward: parsed.data.inwardId });
+  // Same trap as the bill discount: this raises for a non-owner, and
+  // ignoring it left freight recorded against a document whose line
+  // costs never absorbed it. Landed cost would then be quietly wrong.
+  const { error: computeError } = await supabase.rpc("compute_inward_costs", {
+    p_inward: parsed.data.inwardId,
+  });
+  if (computeError) return err(toMessage(computeError));
 
   await revalidateInwardCosts(parsed.data.inwardId);
   return ok(undefined);
