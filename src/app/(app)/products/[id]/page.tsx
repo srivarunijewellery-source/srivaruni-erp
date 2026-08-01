@@ -5,6 +5,7 @@ import {
   getProduct,
   getProductMovements,
   getProductSource,
+  getCostBreakdown,
 } from "@/features/products/queries";
 import {
   listCategories,
@@ -16,6 +17,7 @@ import { can } from "@/config/roles";
 import { ROUTES } from "@/config/nav";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ProductPhotos } from "@/features/products/ProductPhotos";
+import { CostBreakdownCard } from "@/features/products/CostBreakdownCard";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { formatPaise } from "@/lib/money";
@@ -39,7 +41,7 @@ export default async function ProductDetailPage({
   const { id } = await params;
   const user = await requireUser();
 
-  const [product, categories, options, stores, movements, source] =
+  const [product, categories, options, stores, movements, source, breakdown] =
     await Promise.all([
       getProduct(id),
       listCategories(),
@@ -47,6 +49,9 @@ export default async function ProductDetailPage({
       listStores(),
       getProductMovements(id),
       getProductSource(id),
+      // Returns null for anyone but the owner: item_costs is owner-only
+      // at the RLS level, so the card simply does not render for staff.
+      getCostBreakdown(id),
     ]);
 
   if (!product) notFound();
@@ -80,6 +85,8 @@ export default async function ProductDetailPage({
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="space-y-4">
+          {breakdown && <CostBreakdownCard breakdown={breakdown} />}
+
           <ProductPhotos
             itemId={product.id}
             photos={product.photos.map((p) => ({

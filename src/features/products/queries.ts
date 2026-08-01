@@ -280,3 +280,88 @@ export async function getProductSource(itemId: string): Promise<ProductSource> {
     receivedAt: inw?.approved_at ?? null,
   };
 }
+
+export interface CostBreakdown {
+  inwardId: string;
+  docNo: string;
+  vendorName: string;
+  qty: number;
+  /** Vendor's gross rate per unit, before anything is applied. */
+  ratePaise: number;
+  /** This line's share of the bill-level discount, for the whole line. */
+  discountPaise: number;
+  taxablePaise: number;
+  taxPaise: number;
+  /** True when GST is reclaimable, so it is excluded from landed cost. */
+  itcEligible: boolean;
+  /** This line's share of freight, packing and the like, for the line. */
+  additionalPaise: number;
+  landedUnitCostPaise: number;
+}
+
+/**
+ * Where a product's landed cost actually came from.
+ *
+ * The product page used to show one net figure, which is impossible to
+ * argue with: a cost that looks wrong gives no clue whether the rate,
+ * the bill discount or the freight split is responsible. This returns
+ * the components so the arithmetic is visible.
+ */
+export async function getCostBreakdown(itemId: string): Promise<CostBreakdown | null> {
+  const supabase = await createClient();
+
+  // item_costs is owner-only at the RLS level, so a staff session gets
+  // nothing here and the caller renders no card at all.
+  const { data: cost } = await supabase
+    .from("item_costs")
+    .select("source_inward_id")
+    .eq("item_id", itemId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!cost?.source_inward_id) return null;
+
+  const { data: line } = await supabase
+    .from("inward_lines")
+    .select(
+      `qty,
+       inwards(id, doc_no, vendors(name)),
+       inward_line_costs(rate_paise, discount_paise, taxable_paise,
+                         cgst_paise, sgst_paise, igst_paise,
+                         allocated_addl_paise, landed_unit_cost_paise)`,
+    )
+    .eq("item_id", itemId)
+    .eq("inward_id", cost.source_inward_id)
+    .limit(1)
+    .maybeSingle();
+
+  if (!line) return null;
+
+  const inward = Array.isArray(line.inwards) ? line.inwards[0] : line.inwards;
+  const vendor = inward && (Array.isArray(inward.vendors) ? inward.vendors[0] : inward.vendors);
+  const c = Array.isArray(line.inward_line_costs)
+    ? line.inward_line_costs[0]
+    : line.inward_line_costs;
+  if (!c || !inward) return null;
+
+  const { data: header } = await supabase
+    .from("inward_header_costs")
+    .select("itc_eligible")
+    .eq("inward_id", cost.source_inward_id)
+    .maybeSingle();
+
+  return {
+    inwardId: inward.id,
+    docNo: inward.doc_no,
+    vendorName: vendor?.name ?? "Unknown vendor",
+    qty: Number(line.qty ?? 0),
+    ratePaise: Number(c.rate_paise ?? 0),
+    discountPaise: Number(c.discount_paise ?? 0),
+    taxablePaise: Number(c.taxable_paise ?? 0),
+    taxPaise: Number(c.cgst_paise ?? 0) + Number(c.sgst_paise ?? 0) + Number(c.igst_paise ?? 0),
+    itcEligible: Boolean(header?.itc_eligible),
+    additionalPaise: Number(c.allocated_addl_paise ?? 0),
+    landedUnitCostPaise: Number(c.landed_unit_cost_paise ?? 0),
+  };
+}
