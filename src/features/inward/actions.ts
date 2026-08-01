@@ -261,12 +261,42 @@ export async function updateInwardLineQty(formData: FormData): Promise<Result> {
   if (!parsed.success) return err(parsed.error.issues[0]?.message ?? "Check the quantity.");
 
   const supabase = await createClient();
-  const { error } = await supabase
+
+  // .select() so a write RLS filtered out is not reported as success.
+  const { data: updated, error } = await supabase
     .from("inward_lines")
     .update({ qty: parsed.data.qty })
-    .eq("id", parsed.data.lineId);
+    .eq("id", parsed.data.lineId)
+    .select("id");
 
   if (error) return err(toMessage(error));
+  if (!updated || updated.length === 0) {
+    return err("That quantity could not be saved. The document may no longer be a draft.");
+  }
+
+  // Quantity is an input to almost every derived number on the document:
+  //   - a percent bill discount is a share of rate x qty
+  //   - taxable value is (rate x qty) less that discount
+  //   - freight allocates by quantity or by value, both of which moved
+  //   - landed unit cost divides the line total BY qty
+  //
+  // Changing qty without recomputing left every one of those stale --
+  // the discount in particular kept its old rupee value against a new
+  // quantity, which is what made it look frozen until re-entered.
+  const { data: priced } = await supabase
+    .from("inward_line_costs")
+    .select("inward_line_id")
+    .eq("inward_line_id", parsed.data.lineId)
+    .limit(1);
+
+  if (priced && priced.length > 0) {
+    const { error: computeError } = await supabase.rpc("compute_inward_costs", {
+      p_inward: parsed.data.inwardId,
+    });
+    // Deliberately loud rather than best-effort: a silent failure here
+    // leaves cost and margin wrong on stock that is about to be posted.
+    if (computeError) return err(toMessage(computeError));
+  }
 
   revalidatePath(ROUTES.inwardDetail(parsed.data.inwardId));
   return ok(undefined);

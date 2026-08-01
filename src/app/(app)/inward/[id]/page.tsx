@@ -87,6 +87,11 @@ export default async function InwardDetailPage({
   return (
     <>
       <PageHeader
+        crumbs={[
+          { label: "Purchases", href: ROUTES.inward },
+          { label: "Material inward", href: ROUTES.inward },
+          { label: inward.docNo },
+        ]}
         title={inward.docNo}
         description={`${inward.vendorName} · ${inward.locationCode}`}
         action={
@@ -141,7 +146,12 @@ export default async function InwardDetailPage({
       </div>
 
       <div className="space-y-3">
+        {/* Keyed on status so approving drops you back to the document
+            view. Without this, editing state survives the revalidation
+            and the pricing panel re-renders in its locked state, which
+            reads as "already approved" fired at the wrong moment. */}
         <DocModeSwitch
+          key={inward.status}
           canEdit={isDraft || showPricing}
           editLabel={showPricing ? "Enter pricing" : "Edit lines"}
           document={

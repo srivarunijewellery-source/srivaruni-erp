@@ -56,6 +56,11 @@ export default async function ProductDetailPage({
   return (
     <>
       <PageHeader
+        crumbs={[
+          { label: "Inventory", href: ROUTES.products },
+          { label: "Products", href: ROUTES.products },
+          { label: product.name },
+        ]}
         title={product.name}
         description={`${product.barcode} · ${product.categoryName}`}
         action={
