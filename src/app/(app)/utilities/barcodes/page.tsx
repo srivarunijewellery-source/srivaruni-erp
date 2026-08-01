@@ -41,7 +41,11 @@ export default async function BarcodesPage({
         title="Barcode labels"
         description="100mm x 15mm flag tags. Barcode on one fold, name and price on the other."
       />
+      {/* key remounts the queue whenever the source document changes.
+          Without it, useState(initial) keeps the value from first mount
+          and picking a different delivery silently does nothing. */}
       <LabelQueue
+        key={inwardId ?? itemId ?? "blank"}
         initial={initial}
         settings={settings}
         canEditSettings={can(user.role, "pricing.manage")}

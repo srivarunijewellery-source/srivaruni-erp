@@ -56,6 +56,7 @@ export function LabelQueue({
   const router = useRouter();
   const [queue, setQueue] = useState<QueueLine[]>(initial);
   const [showSettings, setShowSettings] = useState(false);
+  const [pickedInward, setPickedInward] = useState(selectedInwardId);
   // Seeded from the saved settings row, so a refresh no longer resets it.
   const [geometry, setGeometry] = useState<LabelGeometry>(settings);
   const [query, setQuery] = useState("");
@@ -280,22 +281,33 @@ export function LabelQueue({
           <label htmlFor="inward-pick" className="block text-sm font-medium text-text">
             Load a whole inward document
           </label>
-          <select
-            id="inward-pick"
-            value={selectedInwardId}
-            onChange={(e) => {
-              const v = e.target.value;
-              router.push(v ? `${ROUTES.barcodes}?inwardId=${v}` : ROUTES.barcodes);
-            }}
-            className="h-9 w-full rounded-control border border-border bg-surface px-2 text-sm"
-          >
-            <option value="">Choose a delivery&hellip;</option>
-            {inwards.map((i) => (
-              <option key={i.id} value={i.id}>
-                {i.docNo} &mdash; {i.vendorName} ({i.totalQty} pcs)
-              </option>
-            ))}
-          </select>
+          <div className="flex flex-wrap items-end gap-2">
+            <select
+              id="inward-pick"
+              value={pickedInward}
+              onChange={(e) => setPickedInward(e.target.value)}
+              className="h-9 min-w-48 flex-1 rounded-control border border-border bg-surface px-2 text-sm"
+            >
+              <option value="">Choose a delivery&hellip;</option>
+              {inwards.map((i) => (
+                <option key={i.id} value={i.id}>
+                  {i.docNo} &mdash; {i.vendorName} ({i.totalQty} pcs)
+                </option>
+              ))}
+            </select>
+            <Button
+              variant="secondary"
+              disabled={!pickedInward || pickedInward === selectedInwardId}
+              onClick={() => router.push(`${ROUTES.barcodes}?inwardId=${pickedInward}`)}
+            >
+              Load
+            </Button>
+            {selectedInwardId && (
+              <Button variant="ghost" onClick={() => router.push(ROUTES.barcodes)}>
+                Clear
+              </Button>
+            )}
+          </div>
           <p className="text-2xs text-text-subtle">
             Queues every line at the quantity received. Replaces whatever is queued now.
           </p>

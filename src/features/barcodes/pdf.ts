@@ -154,7 +154,7 @@ export async function generateLabelsPdf(
       // a filled block is the one thing that always renders cleanly at
       // this size -- far more legible than a hairline rule, and it gives
       // the tag an actual identity from across a counter.
-      const bandH = mm(4.2);
+      const bandH = mm(5.4);
       const bandY = labelH - bandH;
       page.drawRectangle({
         x: foldX,
@@ -164,16 +164,33 @@ export async function generateLabelsPdf(
         color: rgb(0, 0, 0),
       });
 
-      const brand = APP.tagName.toUpperCase();
-      let brandSize = 6.4;
-      while (bold.widthOfTextAtSize(brand, brandSize) > rMaxW && brandSize > 3.6) {
-        brandSize -= 0.15;
-      }
-      const brandW = bold.widthOfTextAtSize(brand, brandSize);
-      page.drawText(brand, {
-        x: foldX + (rightW - brandW) / 2,
-        y: bandY + (bandH - brandSize) / 2 + 0.9,
-        size: brandSize,
+      // Two lines: the house name large enough to read across a counter,
+      // the category small underneath it. Both auto-shrink to the panel,
+      // so a narrower measured fold never clips the brand.
+      const brandTop = APP.tagBrandLine1;
+      const brandSub = APP.tagBrandLine2;
+
+      let topSize = 7.4;
+      while (bold.widthOfTextAtSize(brandTop, topSize) > rMaxW && topSize > 4) topSize -= 0.15;
+      let subSize = 4.1;
+      while (regular.widthOfTextAtSize(brandSub, subSize) > rMaxW && subSize > 2.8) subSize -= 0.1;
+
+      const topW = bold.widthOfTextAtSize(brandTop, topSize);
+      const subW = regular.widthOfTextAtSize(brandSub, subSize);
+      const blockH = topSize + subSize + 0.6;
+      const blockBottom = bandY + (bandH - blockH) / 2 + 0.6;
+
+      page.drawText(brandSub, {
+        x: foldX + (rightW - subW) / 2,
+        y: blockBottom,
+        size: subSize,
+        font: regular,
+        color: rgb(1, 1, 1),
+      });
+      page.drawText(brandTop, {
+        x: foldX + (rightW - topW) / 2,
+        y: blockBottom + subSize + 0.6,
+        size: topSize,
         font: bold,
         color: rgb(1, 1, 1),
       });
@@ -181,24 +198,32 @@ export async function generateLabelsPdf(
       // MRP sits on the baseline first and the name fills what is left,
       // so the price lands in the same spot on every tag no matter how
       // long the name runs. A price that moves gets misread at a counter.
-      const mrpNumSize = 10;
+      const mrpNumSize = 8.4;
       const mrpTop = pad + mrpNumSize;
 
       if (item.mrpPaise !== null) {
-        page.drawText("MRP", {
-          x: rx,
-          y: pad + 1.2,
-          size: 4.6,
-          font: regular,
-          color: rgb(0.35, 0.35, 0.35),
-        });
-        const mrpLabelW = regular.widthOfTextAtSize("MRP", 4.6);
-        page.drawText(formatMrp(item.mrpPaise), {
-          x: rx + mrpLabelW + 2.2,
+        // Right-aligned against the panel edge so the digits line up
+        // vertically across a strip of tags -- easier to scan down a rail
+        // than a left-aligned price that starts at a different x each time.
+        const mrpText = formatMrp(item.mrpPaise);
+        const numW = bold.widthOfTextAtSize(mrpText, mrpNumSize);
+        const labelSize = 4.4;
+        const labelW = regular.widthOfTextAtSize("MRP", labelSize);
+        const rightEdge = foldX + rightW - pad;
+
+        page.drawText(mrpText, {
+          x: rightEdge - numW,
           y: pad,
           size: mrpNumSize,
           font: bold,
           color: rgb(0, 0, 0),
+        });
+        page.drawText("MRP", {
+          x: rightEdge - numW - labelW - 2,
+          y: pad + 1,
+          size: labelSize,
+          font: regular,
+          color: rgb(0.35, 0.35, 0.35),
         });
       }
 

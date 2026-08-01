@@ -5,8 +5,12 @@
 export const APP = {
   name: "Sri Varuni",
   shortName: "SV",
-  /** Full trading name, as it should appear on price tags and documents. */
+  /** Full trading name, as it should appear on documents. */
   tagName: "Sri Varuni Fashion Jewellery",
+  /** Split for the two-line brand band on price tags: house name large,
+   *  category small beneath it. */
+  tagBrandLine1: "SRI VARUNI",
+  tagBrandLine2: "FASHION JEWELLERY",
   /** Base currency. All money in the database is BIGINT paise. */
   currency: "INR",
   locale: "en-IN",
