@@ -100,7 +100,7 @@ export async function getInward(id: string): Promise<InwardDetail | null> {
       `id, doc_no, status, vendor_id, vendor_invoice_no, vendor_invoice_date,
        created_at, submitted_at, approved_at, rejected_reason,
        vendors(name), locations(code),
-       inward_lines(id, qty, qty_short, line_no,
+       inward_lines(id, item_id, qty, qty_short, line_no,
                     items(barcode, name, categories(name),
                           item_photos(storage_path, is_primary, sort_order)))`,
     )
@@ -129,6 +129,7 @@ export async function getInward(id: string): Promise<InwardDetail | null> {
 
       return {
         id: l.id,
+        itemId: l.item_id,
         barcode: item?.barcode ?? "—",
         name: item?.name ?? "Unknown item",
         category: category?.name ?? "—",
@@ -164,6 +165,7 @@ interface RawItem {
 
 interface RawLine {
   id: string;
+  item_id: string;
   qty: number;
   qty_short: number;
   line_no: number | null;

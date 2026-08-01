@@ -209,6 +209,8 @@ export interface StockRow {
 
 export interface InwardLine {
   id: string;
+  /** The catalogue item, so a line can link straight to the product. */
+  itemId: string;
   barcode: string;
   name: string;
   category: string;

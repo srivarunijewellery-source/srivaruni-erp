@@ -15,14 +15,13 @@ import { QtyAdjuster } from "@/features/products/QtyAdjuster";
 import { can } from "@/config/roles";
 import { ROUTES } from "@/config/nav";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { ProductPhotos } from "@/features/products/ProductPhotos";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { formatPaise } from "@/lib/money";
 import { formatBps, marginBps } from "@/lib/pricing";
 import { Badge } from "@/components/ui/Badge";
-import { PhotoThumb } from "@/components/ui/PhotoThumb";
 import { ProductDetailCard } from "@/features/products/ProductDetailCard";
-import { itemPhotoUrl } from "@/lib/storage";
 import { formatDate } from "@/lib/format";
 
 const STATUS_TONE = {
@@ -76,29 +75,15 @@ export default async function ProductDetailPage({
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="space-y-4">
-          <Card>
-            <CardHeader>
-              <h2 className="font-medium">Photos</h2>
-            </CardHeader>
-            <CardBody>
-              {product.photos.length === 0 ? (
-                <p className="text-sm text-text-muted">
-                  No photos. Images are captured when the item is added to an inward.
-                </p>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {product.photos.map((p) => (
-                    <PhotoThumb
-                      key={p.id}
-                      src={itemPhotoUrl(p.path)}
-                      alt={product.name}
-                      size={88}
-                    />
-                  ))}
-                </div>
-              )}
-            </CardBody>
-          </Card>
+          <ProductPhotos
+            itemId={product.id}
+            photos={product.photos.map((p) => ({
+              id: p.id,
+              storagePath: p.path,
+              isPrimary: p.isPrimary,
+            }))}
+            canEdit={can(user.role, "catalog.manage")}
+          />
 
           <Card>
             <CardHeader>

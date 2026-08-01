@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { ROUTES } from "@/config/nav";
 import { Barcode } from "@/components/ui/Barcode";
 import { PhotoThumb } from "@/components/ui/PhotoThumb";
 import { itemPhotoUrl } from "@/lib/storage";
@@ -87,7 +89,17 @@ export function InwardDocTable({
                   <td className="px-2 py-1.5">
                     <Barcode code={l.barcode} />
                   </td>
-                  <td className="px-2 py-1.5 font-medium">{l.name}</td>
+                  <td className="px-2 py-1.5 font-medium">
+                    {/* Straight to the product, so a name typo or a
+                        missing photo can be fixed from the document you
+                        noticed it on rather than hunting the catalogue. */}
+                    <Link
+                      href={ROUTES.productDetail(l.itemId)}
+                      className="underline-offset-2 hover:underline"
+                    >
+                      {l.name}
+                    </Link>
+                  </td>
                   <td className="px-2 py-1.5 text-text-muted">{l.category}</td>
                   <td className="tnum px-2 py-1.5 text-right">
                     {l.qty}

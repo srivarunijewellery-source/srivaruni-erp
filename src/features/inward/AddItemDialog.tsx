@@ -5,7 +5,8 @@ import { createClient } from "@/lib/supabase/client";
 import { addInwardItem } from "./actions";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select, FieldError } from "@/components/ui/Field";
-import { STORAGE_BUCKETS, INWARD } from "@/config/app";
+import { downscale } from "@/lib/photos";
+import { STORAGE_BUCKETS } from "@/config/app";
 import { cn } from "@/lib/cn";
 import type { ItemFormOptions } from "@/types/domain";
 
@@ -261,31 +262,5 @@ function AttrSelect({
         ))}
       </Select>
     </div>
-  );
-}
-
-/**
- * Downscale before upload. A phone photo is 4-6MB; on shop-floor mobile
- * data that is the difference between an inward taking two minutes and
- * twenty. Quality is irrelevant at catalog thumbnail size.
- */
-async function downscale(file: File): Promise<Blob> {
-  const bitmap = await createImageBitmap(file);
-  const max = INWARD.photoMaxEdgePx;
-  const scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.round(bitmap.width * scale);
-  canvas.height = Math.round(bitmap.height * scale);
-
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return file;
-  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-
-  return new Promise<Blob>((resolve) =>
-    canvas.toBlob(
-      (blob) => resolve(blob ?? file),
-      "image/jpeg",
-      INWARD.photoQuality,
-    ),
   );
 }
