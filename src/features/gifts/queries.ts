@@ -60,18 +60,32 @@ export async function listGiftOffers(): Promise<GiftOffer[]> {
   });
 }
 
-/** What a bill of this size would earn, using the same function billing will call. */
-export async function previewGifts(billPaise: number): Promise<Array<{ name: string; itemName: string; qty: number }>> {
+export interface GiftAllocation {
+  name: string;
+  itemName: string;
+  awards: number;
+  itemQty: number;
+}
+
+/**
+ * What a bill of this size would actually earn, using the same function
+ * billing will call -- so the preview on the offers page is not a
+ * second, drifting implementation of the rule.
+ */
+export async function allocateGifts(billPaise: number): Promise<GiftAllocation[]> {
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("evaluate_gift_offers", {
+  const { data, error } = await supabase.rpc("allocate_gift_offers", {
     p_bill_paise: billPaise,
     p_location: null,
     p_on: null,
   });
   if (error) throw error;
-  return ((data ?? []) as Array<{ name: string; item_name: string; qty: number }>).map((r) => ({
+
+  type Row = { name: string; item_name: string; awards: number; item_qty: number };
+  return ((data ?? []) as Row[]).map((r) => ({
     name: r.name,
     itemName: r.item_name,
-    qty: Number(r.qty ?? 1),
+    awards: Number(r.awards ?? 0),
+    itemQty: Number(r.item_qty ?? 0),
   }));
 }

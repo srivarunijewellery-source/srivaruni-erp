@@ -82,7 +82,7 @@ export function GenerateForm() {
                   type="number"
                   min={0.01}
                   max={100}
-                  step={0.5}
+                  step="any"
                   defaultValue={20}
                   required
                 />

@@ -24,7 +24,7 @@ export function GiftOfferManager({
 }: {
   offers: GiftOffer[];
   canManage: boolean;
-  preview: Array<{ name: string; itemName: string; qty: number }>;
+  preview: Array<{ name: string; itemName: string; awards: number; itemQty: number }>;
   previewAtPaise: number;
   itemOptions?: unknown;
 }) {
@@ -79,11 +79,12 @@ export function GiftOfferManager({
           <CardBody>
             <p className="text-sm">
               <span className="font-medium">A bill of {formatPaise(previewAtPaise)} earns:</span>{" "}
-              {preview.map((p) => p.itemName).join(" + ")}
+              {preview.map((p) => `${p.itemQty} × ${p.itemName}`).join(" + ")}
             </p>
             <p className="mt-0.5 text-2xs text-text-muted">
-              Every offer the bill reaches is earned. A gift cannot be combined with a coupon
-              or a discount &mdash; a bill claims one of the three.
+              The bill is a budget that gifts spend, and an offer can be earned more than
+              once &mdash; so {formatPaise(previewAtPaise * 2)} would earn twice this. A gift
+              cannot be combined with a coupon or a discount; a bill claims one of the three.
             </p>
           </CardBody>
         </Card>
@@ -148,7 +149,7 @@ export function GiftOfferManager({
                 <div className="grid gap-3 sm:grid-cols-4">
                   <div>
                     <Label htmlFor="thresholdRupees">Bill reaches</Label>
-                    <Input id="thresholdRupees" name="thresholdRupees" type="number" min={1} step={100} defaultValue={5000} required />
+                    <Input id="thresholdRupees" name="thresholdRupees" type="number" min={1} step={1} defaultValue={5000} required />
                   </div>
                   <div>
                     <Label htmlFor="qty">How many</Label>
