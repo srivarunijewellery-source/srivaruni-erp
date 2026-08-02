@@ -28,6 +28,7 @@ export const ROUTES = {
   discountSettings: "/discounts/settings",
   barcodes: "/utilities/barcodes",
   logs: "/utilities/logs",
+  gifts: "/crm/gifts",
   coupons: "/coupons",
   couponNew: "/coupons/new",
   couponBatch: (id: string) => `/coupons/${id}`,
@@ -73,9 +74,20 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { href: ROUTES.products,    label: "Products" },
       { href: ROUTES.transfers,   label: "Transfers" },
       { href: ROUTES.transit,     label: "In transit" },
-      { href: ROUTES.customers,   label: "Customers" },
-      { href: ROUTES.coupons,     label: "Coupons" },
       { href: ROUTES.adjustments, label: "Adjustments" },
+    ],
+  },
+  {
+    // Everything customer-facing in one place: who they are, and every
+    // benefit that can be offered to them. Discounts moved out of
+    // Pricing, which is about what things cost us, not what we give away.
+    label: "CRM",
+    items: [
+      { href: ROUTES.customers,        label: "Customers" },
+      { href: ROUTES.coupons,          label: "Coupons" },
+      { href: ROUTES.gifts,            label: "Gift offers",       requires: "discount.manage" },
+      { href: ROUTES.discounts,        label: "Discounts",         requires: "discount.manage" },
+      { href: ROUTES.discountSettings, label: "Discount settings", requires: "discount.manage" },
     ],
   },
   {
@@ -84,8 +96,6 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { href: ROUTES.pricing,          label: "Price stock",      requires: "pricing.manage" },
       { href: ROUTES.pricingRules,     label: "Rules",            requires: "pricing.manage" },
       { href: ROUTES.pricingSettings,  label: "Pricing settings", requires: "pricing.manage" },
-      { href: ROUTES.discounts,        label: "Discounts",        requires: "discount.manage" },
-      { href: ROUTES.discountSettings, label: "Discount settings", requires: "discount.manage" },
     ],
   },
   {
