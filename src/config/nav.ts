@@ -32,6 +32,13 @@ export const ROUTES = {
   coupons: "/coupons",
   couponNew: "/coupons/new",
   couponBatch: (id: string) => `/coupons/${id}`,
+  staff: "/team/staff",
+  staffDetail: (id: string) => `/team/staff/${id}`,
+  attendance: "/team/attendance",
+  leave: "/team/leave",
+  performance: "/team/performance",
+  comms: "/comms",
+  commsSettings: "/comms/settings",
 } as const;
 
 export interface NavItem {
@@ -99,10 +106,25 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     ],
   },
   {
+    // Attendance sits beside the people it is about, and performance
+    // reads bills rather than living under Pricing, because the
+    // question it answers is "how is this person doing", not "what do
+    // we charge".
+    label: "Team",
+    items: [
+      { href: ROUTES.staff,       label: "Staff",       requires: "staff.view" },
+      { href: ROUTES.attendance,  label: "Attendance",  requires: "attendance.mark" },
+      { href: ROUTES.leave,       label: "Leave",       requires: "staff.view" },
+      { href: ROUTES.performance, label: "Performance", requires: "staff.manage" },
+    ],
+  },
+  {
     label: "Utilities",
     items: [
       { href: ROUTES.barcodes, label: "Barcode labels" },
       { href: ROUTES.logs, label: "Activity log" },
+      { href: ROUTES.comms,         label: "Messages",      requires: "comms.view" },
+      { href: ROUTES.commsSettings, label: "Comms settings", requires: "comms.manage" },
     ],
   },
 ] as const;

@@ -31,7 +31,13 @@ export type Capability =
   | "vendor.view"
   | "customer.manage"
   | "pricing.manage"
-  | "discount.manage";
+  | "discount.manage"
+  | "staff.view"
+  | "staff.manage"
+  | "attendance.mark"
+  | "leave.approve"
+  | "comms.view"
+  | "comms.manage";
 
 const RULES: Record<Capability, (r: Role) => boolean> = {
   // Creation is deliberately open. The control is at approval, so the
@@ -67,6 +73,21 @@ const RULES: Record<Capability, (r: Role) => boolean> = {
   // would be a second door into the same room.
   "pricing.manage": isOwner,
   "discount.manage": isOwner,
+
+  // A manager runs the shift, so they see the team and fill the
+  // register. Hiring, pay and targets stay with the owner -- and pay is
+  // additionally owner-only at the RLS level, so this is the softer of
+  // two locks, not the only one.
+  "staff.view": isManagerOrAbove,
+  "staff.manage": isOwner,
+  "attendance.mark": isManagerOrAbove,
+  "leave.approve": isManagerOrAbove,
+
+  // Managers need to see whether the message actually went out when a
+  // vendor says they never got the payment advice. Only the owner holds
+  // the credentials that send it.
+  "comms.view": isManagerOrAbove,
+  "comms.manage": isOwner,
 };
 
 /** Components ask can(role, "x"); they never compare roles directly. */
