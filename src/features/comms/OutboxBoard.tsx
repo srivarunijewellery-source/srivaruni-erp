@@ -70,13 +70,8 @@ export function OutboxBoard({
       setError(null);
       setNotice(null);
       const r = await runScheduledEvents();
-      if (r.ok) {
-        setNotice(
-          r.data === 0
-            ? "Nothing to queue — either already run today, or nothing is due."
-            : `Queued ${r.data} message${r.data === 1 ? "" : "s"}.`,
-        );
-      } else setError(r.error);
+      if (r.ok) setNotice(r.data);
+      else setError(r.error);
     });
   }
 

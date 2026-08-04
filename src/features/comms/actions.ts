@@ -135,14 +135,26 @@ export async function cancelMessage(id: string): Promise<Result> {
   return ok(undefined);
 }
 
-export async function runScheduledEvents(): Promise<Result<number>> {
+export async function runScheduledEvents(): Promise<Result<string>> {
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("queue_scheduled_events", {
     p_on: new Date().toISOString().slice(0, 10),
     p_force: true,
   });
   if (error) return err(toMessage(error));
-  await pokeDispatch();
+
+  const queuedCount = Number(data ?? 0);
+  const dispatched = await pokeDispatch();
   revalidatePath(ROUTES.comms);
-  return ok(Number(data ?? 0));
+
+  if (!dispatched.ok) {
+    return err(
+      `Queued ${queuedCount} event(s), but sending failed: ${dispatched.error}. They are safe in the outbox -- try Retry, or they will go out with tomorrow's cron.`,
+    );
+  }
+
+  return ok(
+    `Queued ${queuedCount} event(s). Sent ${dispatched.sent ?? 0}` +
+      (dispatched.failed ? `, ${dispatched.failed} failed (see the outbox for why).` : "."),
+  );
 }
