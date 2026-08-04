@@ -37,7 +37,9 @@ export type Capability =
   | "attendance.mark"
   | "leave.approve"
   | "comms.view"
-  | "comms.manage";
+  | "comms.manage"
+  | "accounts.view"
+  | "accounts.manage";
 
 const RULES: Record<Capability, (r: Role) => boolean> = {
   // Creation is deliberately open. The control is at approval, so the
@@ -88,6 +90,12 @@ const RULES: Record<Capability, (r: Role) => boolean> = {
   // the credentials that send it.
   "comms.view": isManagerOrAbove,
   "comms.manage": isOwner,
+
+  // The books show cost, margin and pay in aggregate. Every reason the
+  // cost tables are owner-only applies here, and RLS on journals
+  // enforces it regardless of what this says.
+  "accounts.view": isOwner,
+  "accounts.manage": isOwner,
 };
 
 /** Components ask can(role, "x"); they never compare roles directly. */

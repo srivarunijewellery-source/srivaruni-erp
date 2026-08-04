@@ -5,7 +5,6 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import {
   getAttendanceForDate,
-  listLocationOptions,
   listStaff,
   type AttendanceEntry,
 } from "@/features/staff/queries";
@@ -30,10 +29,9 @@ export default async function AttendancePage({
   const date =
     on && /^\d{4}-\d{2}-\d{2}$/.test(on) ? on : new Date().toISOString().slice(0, 10);
 
-  const [staff, existingMap, locations] = await Promise.all([
+  const [staff, existingMap] = await Promise.all([
     listStaff(false),
     getAttendanceForDate(date),
-    listLocationOptions(),
   ]);
 
   const existing: Record<string, AttendanceEntry> = {};
@@ -51,7 +49,7 @@ export default async function AttendancePage({
         staff={staff}
         date={date}
         existing={existing}
-        locations={locations}
+        canMark={can(user.role, "attendance.mark")}
       />
     </>
   );

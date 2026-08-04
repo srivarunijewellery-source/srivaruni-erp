@@ -124,3 +124,120 @@ inserts nothing.
   compensating stock-ledger entries. The ledger blocks DELETE by design,
   so the test sales were reversed rather than erased. Real billing
   starts at `00003`.
+
+---
+
+# Accounting module
+
+Double-entry books that fill themselves in from what the business
+already does. Applied to the live database and verified against real
+documents.
+
+## What posts itself
+
+| When this happens | The books get |
+|---|---|
+| Bill finalised | Dr Cash/Bank/Receivable · Cr Sales · Cr Output GST |
+| Bill cancelled | The mirror image of the above |
+| Inward approved | Dr Inventory · Dr Input GST · Cr Vendor payable |
+| Vendor payment | Dr Vendor payable · Cr Cash/Bank |
+| Credit note | Dr Vendor payable · Cr Inventory |
+| Expense recorded | Dr Expense category · Dr Input GST · Cr Cash/Bank/Payable |
+
+Which side cash lands on follows the payment account's own kind, and
+whether GST is an asset or part of the cost follows `itc_eligible` — a
+purchase with no claimable credit puts the tax into inventory, where it
+belongs, rather than inventing a receivable that will never be claimed.
+
+**Every auto-posting trigger swallows its own errors on purpose.** An
+accounting problem must never stop a sale or an approval. That is only
+an honest trade if the misses are visible, which is what
+`unposted_documents()` is for — it appears as a red banner on the
+journal and trial balance pages, and an empty list is the only proof
+the books are complete.
+
+## What is deliberately NOT posted
+
+**Cost of goods sold.** COGS needs the landed cost of the exact lots
+sold, which the billing module will resolve properly. Posting an average
+or a guess would be worse than posting nothing, because it would look
+right. Until billing lands, the P&L shows gross sales against operating
+costs — real, but not true margin. The P&L page says so on the page
+rather than leaving it to be discovered.
+
+## Guards
+
+- **Append-only.** Immutability triggers on `journals` and
+  `journal_lines`; correcting something posts a mirror-image entry.
+  Verified: an UPDATE is refused.
+- **Must balance.** A deferred constraint trigger checks debits equal
+  credits at commit — deferred because lines are inserted one at a time
+  and a single line never balances. Verified: an unbalanced entry aborts
+  the whole transaction and leaves zero rows behind.
+- **Owner-only.** RLS on journals, lines and expenses. The reporting
+  views are `security_invoker` so that RLS actually applies through
+  them instead of being bypassed by the view owner.
+
+## Tax
+
+`tax_rates` is effective-dated: changing a rate adds a row rather than
+editing one, so documents already issued keep the rate they were taxed
+at. Totals are constrained to an even number of basis points, because
+CGST and SGST are each exactly half and an odd total cannot split
+without losing a paisa per invoice.
+
+## Chart of accounts
+
+38 accounts for a GST-registered Indian retail jewellery business. The
+ones wired into auto-posting carry a `system_key`, so renaming "Sales"
+to something else does not break posting. Expense accounts are flagged
+`is_expense_category` and are exactly what the expense form offers —
+picking "Shop rent" IS the accounting decision, with no second list of
+category names to reconcile later.
+
+## Bug found while building
+
+The first version of the inward trigger read a `landed_costs` table that
+does not exist. Because these triggers catch their own exceptions, it
+would have posted nothing, silently, forever. Rewritten against the real
+`inward_header_costs`, which also surfaced `itc_eligible` — a flag a
+guess would have got wrong.
+
+---
+
+# Email templates
+
+Outgoing mail now uses a branded HTML shell (`src/lib/comms/email-template.ts`)
+rather than plain text. Written the way email has to be written, not the
+way a web page is: table layout, fully inline styles, literal hex
+colours. Outlook renders through Word's engine and drops modern CSS,
+Gmail strips `<style>` blocks, and CSS custom properties do not resolve
+in most clients — a token that fails to resolve is black text on a black
+background.
+
+The palette is copied from `globals.css` deliberately, not imported. If
+brand colours change, this file needs updating by hand.
+
+Itemised blocks (the invoice copy) render as a bordered monospaced panel
+so an invoice does not collapse into prose. Customer mail gets the
+fuller branded header; internal alerts get a plainer one, driven by a
+new `audience` column copied onto the outbox row at queue time so a
+later change to the event catalogue cannot restyle mail already sent.
+
+---
+
+# Attendance rework
+
+Marking is now one tap on the status itself. The dropdown needed three
+interactions per person — open, find, select — times everyone on shift,
+every morning. Six statuses sit on screen as a segmented control,
+"everyone present" is one tap in the header, and times collapse behind a
+link because most days nobody records them.
+
+Unsaved rows show a dot and Save stays disabled until something actually
+changes, so the page never asks for a save it does not need.
+
+The manager hierarchy was already enforced in the database
+(`bulk_mark_attendance` is manager-and-above, staff may only self-check-in
+for today). The UI now reflects it via `canMark` rather than offering
+controls that would be refused.

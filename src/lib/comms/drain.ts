@@ -82,6 +82,7 @@ export async function drainOutbox(
         toName: (row.to_name as string) ?? null,
         subject: (row.subject as string) ?? null,
         body: String(row.body ?? ""),
+        audience: (row.audience as "internal" | "customer") ?? "internal",
       };
 
       const result = await send(msg, cfg);

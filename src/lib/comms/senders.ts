@@ -8,6 +8,8 @@
  * `send()`, not building a second messaging system.
  */
 
+import { renderEmailHtml } from "./email-template";
+
 export interface OutgoingMessage {
   id: string;
   channel: "email" | "whatsapp" | "sms";
@@ -16,6 +18,9 @@ export interface OutgoingMessage {
   toName: string | null;
   subject: string | null;
   body: string;
+  /** Drives which email shell is used; customer mail gets the fuller
+   *  branded treatment, internal alerts a plainer one. */
+  audience?: "internal" | "customer";
 }
 
 export interface SenderConfig {
@@ -48,15 +53,6 @@ export async function send(
   }
 }
 
-/** Plain text becomes minimally styled HTML — no template engine, no CSS framework. */
-function toHtml(body: string): string {
-  const escaped = body
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-  return `<div style="font-family:ui-sans-serif,system-ui,sans-serif;font-size:14px;line-height:1.6;color:#191512;white-space:pre-wrap">${escaped}</div>`;
-}
-
 async function sendEmail(msg: OutgoingMessage, cfg: SenderConfig): Promise<SendResult> {
   if (!msg.toEmail) return { ok: false, error: "No email address on this message." };
   if (!cfg.fromEmail) return { ok: false, error: "No from address is configured." };
@@ -80,7 +76,12 @@ async function sendEmail(msg: OutgoingMessage, cfg: SenderConfig): Promise<SendR
           to: [msg.toEmail],
           subject: msg.subject ?? "(no subject)",
           text: msg.body,
-          html: toHtml(msg.body),
+          html: renderEmailHtml({
+            subject: msg.subject ?? "",
+            body: msg.body,
+            brandName: cfg.fromName ?? undefined,
+            audience: msg.audience ?? "internal",
+          }),
           ...(cfg.replyTo ? { reply_to: cfg.replyTo } : {}),
         }),
       });

@@ -39,6 +39,12 @@ export const ROUTES = {
   performance: "/team/performance",
   comms: "/comms",
   commsSettings: "/comms/settings",
+  expenses: "/accounts/expenses",
+  journals: "/accounts/journals",
+  trialBalance: "/accounts/trial-balance",
+  pnl: "/accounts/pnl",
+  accounts: "/accounts/chart",
+  taxRates: "/accounts/tax",
 } as const;
 
 export interface NavItem {
@@ -103,6 +109,19 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { href: ROUTES.pricing,          label: "Price stock",      requires: "pricing.manage" },
       { href: ROUTES.pricingRules,     label: "Rules",            requires: "pricing.manage" },
       { href: ROUTES.pricingSettings,  label: "Pricing settings", requires: "pricing.manage" },
+    ],
+  },
+  {
+    // Expenses first: it is the one page used daily. The rest are
+    // read-mostly and get reached when a question comes up.
+    label: "Accounts",
+    items: [
+      { href: ROUTES.expenses,     label: "Expenses",          requires: "accounts.manage" },
+      { href: ROUTES.journals,     label: "Journal",           requires: "accounts.view" },
+      { href: ROUTES.trialBalance, label: "Trial balance",     requires: "accounts.view" },
+      { href: ROUTES.pnl,          label: "Profit and loss",   requires: "accounts.view" },
+      { href: ROUTES.accounts,     label: "Chart of accounts", requires: "accounts.manage" },
+      { href: ROUTES.taxRates,     label: "Tax rates",         requires: "accounts.manage" },
     ],
   },
   {
