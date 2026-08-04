@@ -5,6 +5,7 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { ROUTES } from "@/config/nav";
 import { err, ok, toMessage, type Result } from "@/lib/result";
+import { pokeDispatchBestEffort } from "@/lib/comms/poke";
 
 const allocationSchema = z.object({
   inward_id: z.string().uuid(),
@@ -55,6 +56,7 @@ export async function recordPayment(input: unknown): Promise<Result<string>> {
   });
 
   if (error) return err(toMessage(error));
+  await pokeDispatchBestEffort();
 
   revalidatePath(ROUTES.payments);
   revalidatePath(ROUTES.vendors);

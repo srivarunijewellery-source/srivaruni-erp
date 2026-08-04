@@ -7,6 +7,7 @@ import { ROUTES } from "@/config/nav";
 import { err, ok, toMessage, type Result } from "@/lib/result";
 import { listPickableStock } from "./queries";
 import type { PickableItem } from "@/types/domain";
+import { pokeDispatchBestEffort } from "@/lib/comms/poke";
 
 /** What a scan gives back, so the counter updates without a round trip. */
 export interface ScanResult {
@@ -280,6 +281,7 @@ export async function confirmPick(formData: FormData): Promise<Result> {
     p_note: parsed.data.note || null,
   });
   if (error) return err(toMessage(error));
+  await pokeDispatchBestEffort();
 
   revalidate(parsed.data.transferId);
   return ok(undefined);
@@ -296,6 +298,7 @@ export async function approveTransfer(formData: FormData): Promise<Result> {
     p_transfer: parsed.data.transferId,
   });
   if (error) return err(toMessage(error));
+  await pokeDispatchBestEffort();
 
   revalidate(parsed.data.transferId);
   return ok(undefined);
@@ -322,6 +325,7 @@ export async function dispatchTransfer(formData: FormData): Promise<Result> {
     p_docket: parsed.data.docket || null,
   });
   if (error) return err(toMessage(error));
+  await pokeDispatchBestEffort();
 
   revalidate(parsed.data.transferId);
   return ok(undefined);
@@ -338,6 +342,7 @@ export async function receiveTransfer(formData: FormData): Promise<Result> {
     p_transfer: parsed.data.transferId,
   });
   if (error) return err(toMessage(error));
+  await pokeDispatchBestEffort();
 
   revalidate(parsed.data.transferId);
   return ok(undefined);
@@ -363,6 +368,7 @@ export async function rejectTransfer(formData: FormData): Promise<Result> {
     p_reason: parsed.data.reason,
   });
   if (error) return err(toMessage(error));
+  await pokeDispatchBestEffort();
 
   revalidate(parsed.data.transferId);
   return ok(undefined);

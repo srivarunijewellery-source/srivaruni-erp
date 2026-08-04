@@ -5,6 +5,7 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { ROUTES } from "@/config/nav";
 import { err, ok, toMessage, type Result } from "@/lib/result";
+import { pokeDispatchBestEffort } from "@/lib/comms/poke";
 
 /**
  * Write side for inward.
@@ -27,6 +28,7 @@ export async function submitInward(formData: FormData): Promise<Result> {
   });
 
   if (error) return err(toMessage(error));
+  await pokeDispatchBestEffort();
 
   revalidatePath(ROUTES.inward);
   return ok(undefined);
@@ -42,6 +44,7 @@ export async function approveInward(formData: FormData): Promise<Result> {
   });
 
   if (error) return err(toMessage(error));
+  await pokeDispatchBestEffort();
 
   revalidatePath(ROUTES.inward);
   revalidatePath(ROUTES.stock);
@@ -66,6 +69,7 @@ export async function rejectInward(formData: FormData): Promise<Result> {
   });
 
   if (error) return err(toMessage(error));
+  await pokeDispatchBestEffort();
 
   revalidatePath(ROUTES.inward);
   return ok(undefined);

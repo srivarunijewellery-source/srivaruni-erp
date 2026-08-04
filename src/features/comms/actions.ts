@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { ROUTES } from "@/config/nav";
 import { err, ok, toMessage, type Result } from "@/lib/result";
+import { pokeDispatch } from "@/lib/comms/poke";
 
 const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim() || null;
 const bool = (fd: FormData, k: string) => {
@@ -104,7 +105,7 @@ export async function sendTestMessage(formData: FormData): Promise<Result<string
 
   // Queuing is not sending. Kick the dispatcher so the test is a real
   // round trip to the provider rather than a row appearing in a table.
-  const dispatched = await dispatchNow();
+  const dispatched = await pokeDispatch();
 
   revalidatePath(ROUTES.comms);
   revalidatePath(ROUTES.commsSettings);
@@ -121,7 +122,7 @@ export async function retryMessage(id: string): Promise<Result> {
   const supabase = await createClient();
   const { error } = await supabase.rpc("retry_message", { p_id: id });
   if (error) return err(toMessage(error));
-  await dispatchNow();
+  await pokeDispatch();
   revalidatePath(ROUTES.comms);
   return ok(undefined);
 }
@@ -141,33 +142,7 @@ export async function runScheduledEvents(): Promise<Result<number>> {
     p_force: true,
   });
   if (error) return err(toMessage(error));
-  await dispatchNow();
+  await pokeDispatch();
   revalidatePath(ROUTES.comms);
   return ok(Number(data ?? 0));
-}
-
-/**
- * Asks the dispatch route to drain the queue now. The route is the only
- * place credentials are read, so the app never handles them; this is
- * just a doorbell.
- */
-async function dispatchNow(): Promise<Result> {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return err("CRON_SECRET is not set, so the sender cannot be triggered.");
-
-  const base =
-    process.env.NEXT_PUBLIC_SITE_URL ??
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
-
-  try {
-    const res = await fetch(`${base}/api/comms/dispatch`, {
-      method: "POST",
-      headers: { authorization: `Bearer ${secret}` },
-      cache: "no-store",
-    });
-    if (!res.ok) return err(`Sender returned ${res.status}.`);
-    return ok(undefined);
-  } catch (e) {
-    return err(toMessage(e, "Could not reach the sender."));
-  }
 }

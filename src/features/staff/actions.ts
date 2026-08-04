@@ -5,6 +5,7 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { ROUTES } from "@/config/nav";
 import { err, ok, toMessage, type Result } from "@/lib/result";
+import { pokeDispatchBestEffort } from "@/lib/comms/poke";
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -121,6 +122,7 @@ export async function requestLeave(formData: FormData): Promise<Result> {
     p_reason: String(formData.get("reason") ?? "") || null,
   });
   if (error) return err(toMessage(error));
+  await pokeDispatchBestEffort();
 
   revalidatePath(ROUTES.leave);
   return ok(undefined);
@@ -138,6 +140,7 @@ export async function decideLeave(formData: FormData): Promise<Result> {
     p_note: String(formData.get("note") ?? "") || null,
   });
   if (error) return err(toMessage(error));
+  await pokeDispatchBestEffort();
 
   revalidatePath(ROUTES.leave);
   revalidatePath(ROUTES.attendance);

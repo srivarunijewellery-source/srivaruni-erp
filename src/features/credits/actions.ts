@@ -5,6 +5,7 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { ROUTES } from "@/config/nav";
 import { err, ok, toMessage, type Result } from "@/lib/result";
+import { pokeDispatchBestEffort } from "@/lib/comms/poke";
 
 /**
  * Vendor credit notes.
@@ -56,6 +57,7 @@ export async function saveCreditNote(input: {
     .single();
 
   if (nErr || !note) return err(toMessage(nErr));
+  await pokeDispatchBestEffort();
 
   if (v.inwardId) {
     const { error: aErr } = await supabase

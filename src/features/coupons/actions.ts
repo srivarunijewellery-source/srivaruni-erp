@@ -5,6 +5,7 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { ROUTES } from "@/config/nav";
 import { err, ok, toMessage, type Result } from "@/lib/result";
+import { pokeDispatchBestEffort } from "@/lib/comms/poke";
 
 const generateSchema = z
   .object({
@@ -64,6 +65,7 @@ async function couponRpc(
   const supabase = await createClient();
   const { error } = await supabase.rpc(fn, args);
   if (error) return err(toMessage(error));
+  if (fn === "assign_coupon") await pokeDispatchBestEffort();
   revalidatePath(ROUTES.coupons);
   revalidatePath(ROUTES.couponBatch(batchId));
   return ok(undefined);
