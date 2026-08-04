@@ -44,7 +44,7 @@ export default async function TransferDetailPage({
   // Requests are now built before they exist (see /transfers/new), so a
   // request that has reached this page already has its lines. This section
   // only covers adding a forgotten item to one still sitting at "requested".
-  const canAddMore = transfer.status === "requested" && can(user.role, "transfer.request");
+  const canAddMore = transfer.status === "requested" && can(user, "transfer.request");
   const [pickable, filterOptions] = canAddMore
     ? await Promise.all([
         listPickableStock(transfer.fromLocationId, { query: q, category }),
@@ -82,17 +82,17 @@ export default async function TransferDetailPage({
       {/* Whatever the next legal action is, it comes first -- not after a
           screen of metadata someone has to scroll past to find it. */}
       <div className="mb-4">
-        {transfer.status === "requested" && can(user.role, "transfer.pick") && (
+        {transfer.status === "requested" && can(user, "transfer.pick") && (
           <PickPanel transfer={transfer} />
         )}
         {transfer.status === "picking" &&
-          (can(user.role, "transfer.pick") ? (
+          (can(user, "transfer.pick") ? (
             <PickPanel transfer={transfer} />
           ) : (
             <ReadOnly transfer={transfer} mode="pick" />
           ))}
         {transfer.status === "picked" &&
-          (can(user.role, "transfer.approve") ? (
+          (can(user, "transfer.approve") ? (
             <ApprovalPanel transfer={transfer} />
           ) : (
             <ReadOnly
@@ -102,7 +102,7 @@ export default async function TransferDetailPage({
             />
           ))}
         {transfer.status === "approved" &&
-          (can(user.role, "transfer.dispatch") ? (
+          (can(user, "transfer.dispatch") ? (
             <ShippingPanel transfer={transfer} />
           ) : (
             <ReadOnly
@@ -112,7 +112,7 @@ export default async function TransferDetailPage({
             />
           ))}
         {transfer.status === "dispatched" &&
-          (can(user.role, "transfer.receive") ? (
+          (can(user, "transfer.receive") ? (
             <ReceivePanel transfer={transfer} />
           ) : (
             <ReadOnly

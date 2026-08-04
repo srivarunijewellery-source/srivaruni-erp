@@ -30,7 +30,7 @@ export default async function CustomersPage({
         title="Customers"
         description="Identified by phone number, so the same person coming back lands on the same record."
         action={
-          can(user.role, "customer.manage") && (
+          can(user, "customer.manage") && (
             <Link href={`${ROUTES.customers}/new`}>
               <Button variant="primary">Add customer</Button>
             </Link>

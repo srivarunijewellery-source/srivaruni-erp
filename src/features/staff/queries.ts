@@ -23,6 +23,8 @@ export interface StaffMember {
   notes: string | null;
   active: boolean;
   hasLogin: boolean;
+  roleId: string | null;
+  roleName: string;
 }
 
 /**
@@ -32,7 +34,8 @@ export interface StaffMember {
  */
 const STAFF_COLUMNS = `id, name, role, phone, email, employee_code, home_location_id,
    dob, joined_on, exited_on, address, emergency_name, emergency_phone, notes,
-   active, auth_user_id, locations:home_location_id(code)`;
+   active, auth_user_id, role_id, locations:home_location_id(code),
+   roles:role_id(name)`;
 
 type StaffRow = {
   id: string;
@@ -51,7 +54,9 @@ type StaffRow = {
   notes: string | null;
   active: boolean;
   auth_user_id: string | null;
+  role_id: string | null;
   locations: { code: string } | { code: string }[] | null;
+  roles: { name: string } | { name: string }[] | null;
 };
 
 function toStaff(r: StaffRow): StaffMember {
@@ -74,6 +79,10 @@ function toStaff(r: StaffRow): StaffMember {
     notes: r.notes,
     active: Boolean(r.active),
     hasLogin: Boolean(r.auth_user_id),
+    roleId: r.role_id,
+    roleName:
+      (Array.isArray(r.roles) ? r.roles[0]?.name : r.roles?.name) ??
+      r.role.charAt(0).toUpperCase() + r.role.slice(1),
   };
 }
 

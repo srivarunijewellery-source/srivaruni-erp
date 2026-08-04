@@ -23,7 +23,7 @@ export default async function CouponsPage() {
         title="Coupons"
         description="Terms live on the batch; each coupon is one numbered instance of it."
         action={
-          can(user.role, "discount.manage") && (
+          can(user, "discount.manage") && (
             <Link href={ROUTES.couponNew}>
               <Button variant="primary">Generate coupons</Button>
             </Link>

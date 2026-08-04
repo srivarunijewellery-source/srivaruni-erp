@@ -39,12 +39,17 @@ export const ROUTES = {
   performance: "/team/performance",
   comms: "/comms",
   commsSettings: "/comms/settings",
+  whatsapp: "/comms/whatsapp",
+  roles: "/team/roles",
+  pos: "/pos",
   expenses: "/accounts/expenses",
   journals: "/accounts/journals",
   trialBalance: "/accounts/trial-balance",
   pnl: "/accounts/pnl",
   accounts: "/accounts/chart",
   taxRates: "/accounts/tax",
+  gst: "/accounts/gst",
+  accountStatement: (id: string) => `/accounts/statement/${id}`,
 } as const;
 
 export interface NavItem {
@@ -112,6 +117,10 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     ],
   },
   {
+    label: "Counter",
+    items: [{ href: ROUTES.pos, label: "Billing", requires: "pos.sell" }],
+  },
+  {
     // Expenses first: it is the one page used daily. The rest are
     // read-mostly and get reached when a question comes up.
     label: "Accounts",
@@ -120,6 +129,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { href: ROUTES.journals,     label: "Journal",           requires: "accounts.view" },
       { href: ROUTES.trialBalance, label: "Trial balance",     requires: "accounts.view" },
       { href: ROUTES.pnl,          label: "Profit and loss",   requires: "accounts.view" },
+      { href: ROUTES.gst,          label: "GST summary",       requires: "accounts.view" },
       { href: ROUTES.accounts,     label: "Chart of accounts", requires: "accounts.manage" },
       { href: ROUTES.taxRates,     label: "Tax rates",         requires: "accounts.manage" },
     ],
@@ -135,6 +145,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { href: ROUTES.attendance,  label: "Attendance",  requires: "attendance.mark" },
       { href: ROUTES.leave,       label: "Leave",       requires: "staff.view" },
       { href: ROUTES.performance, label: "Performance", requires: "staff.manage" },
+      { href: ROUTES.roles,       label: "Roles",       requires: "roles.manage" },
     ],
   },
   {
@@ -144,6 +155,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { href: ROUTES.logs, label: "Activity log" },
       { href: ROUTES.comms,         label: "Messages",      requires: "comms.view" },
       { href: ROUTES.commsSettings, label: "Comms settings", requires: "comms.manage" },
+      { href: ROUTES.whatsapp,      label: "WhatsApp",       requires: "comms.manage" },
     ],
   },
 ] as const;

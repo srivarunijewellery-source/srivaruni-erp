@@ -49,7 +49,7 @@ export default async function InwardPage() {
         title="Inward"
         description="Goods received. Nothing becomes sellable until it is priced and approved."
         action={
-          can(user.role, "inward.create") && (
+          can(user, "inward.create") && (
             <Link href={ROUTES.inwardNew}>
               <Button variant="primary">Record goods received</Button>
             </Link>

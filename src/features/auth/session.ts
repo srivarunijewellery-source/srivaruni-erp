@@ -49,9 +49,20 @@ export const resolveSession = cache(async (): Promise<SessionResult> => {
     };
   }
 
+  // Permissions come from the database rather than being inferred from
+  // the role name, so a role edited in the admin screen takes effect on
+  // the next request instead of at the next deploy.
+  const { data: permRows } = await supabase.rpc("my_permissions");
+  const permissions = new Set<string>(
+    ((permRows ?? []) as Array<{ permission_key: string }>).map((r) => r.permission_key),
+  );
+
   return {
     status: "ok",
     user: {
+      permissions,
+      roleName: row.role_name ?? row.role,
+      roleKey: row.role_key ?? row.role,
       staffId: row.staff_id,
       authUserId: row.auth_user_id,
       name: row.name,

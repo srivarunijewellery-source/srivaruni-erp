@@ -18,7 +18,7 @@ export default async function DashboardPage() {
   const awaitingApproval = transfers.filter((t) => t.status === "requested");
   const inTransit = transfers.filter((t) => t.status === "dispatched");
 
-  const queue = can(user.role, "inward.approve") ? awaitingPricing : [];
+  const queue = can(user, "inward.approve") ? awaitingPricing : [];
 
   return (
     <>
@@ -37,7 +37,7 @@ export default async function DashboardPage() {
         <Stat label="In transit" value={inTransit.length} href={ROUTES.transfers} />
       </div>
 
-      {can(user.role, "inward.approve") && (
+      {can(user, "inward.approve") && (
         <Card className="mt-6">
           <CardHeader>
             <h2 className="font-medium">Your approval queue</h2>

@@ -32,7 +32,7 @@ export default async function CouponBatchPage({
 
   const all = await listCoupons(id);
   const coupons = status ? all.filter((c) => c.status === status) : all;
-  const canVoid = can(user.role, "discount.manage");
+  const canVoid = can(user, "discount.manage");
 
   const filters = [
     ["", `All ${batch.total}`],

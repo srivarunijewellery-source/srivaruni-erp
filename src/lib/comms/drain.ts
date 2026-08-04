@@ -51,7 +51,9 @@ export async function drainOutbox(
       const { data: cfgRow, error: cfgError } = await supabase
         .from("comms_settings")
         .select(`email_provider, from_email, from_name, reply_to, resend_api_key,
-                 whatsapp_provider, whatsapp_api_url, whatsapp_api_key, whatsapp_from`)
+                 whatsapp_provider, whatsapp_api_url, whatsapp_api_key, whatsapp_from,
+                 wa_phone_number_id, wa_business_account_id, wa_access_token,
+                 wa_api_version`)
         .maybeSingle();
 
       if (cfgError || !cfgRow) {
@@ -68,6 +70,10 @@ export async function drainOutbox(
         whatsappApiUrl: cfgRow.whatsapp_api_url,
         whatsappApiKey: cfgRow.whatsapp_api_key,
         whatsappFrom: cfgRow.whatsapp_from,
+        waPhoneNumberId: cfgRow.wa_phone_number_id,
+        waBusinessAccountId: cfgRow.wa_business_account_id,
+        waAccessToken: cfgRow.wa_access_token,
+        waApiVersion: cfgRow.wa_api_version,
       };
     }
 
@@ -83,6 +89,9 @@ export async function drainOutbox(
         subject: (row.subject as string) ?? null,
         body: String(row.body ?? ""),
         audience: (row.audience as "internal" | "customer") ?? "internal",
+        templateName: (row.template_name as string) ?? null,
+        templateLang: (row.template_lang as string) ?? null,
+        templateVars: (row.template_vars as string[]) ?? null,
       };
 
       const result = await send(msg, cfg);

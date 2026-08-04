@@ -48,7 +48,7 @@ export function AppNav({ user }: { user: CurrentUser }) {
   useEffect(() => setOpen(null), [pathname]);
 
   const visible = (items: readonly NavItem[]) =>
-    items.filter((i) => !i.requires || can(user.role, i.requires));
+    items.filter((i) => !i.requires || can(user, i.requires));
 
   const isActive = (href: string) =>
     href === ROUTES.dashboard ? pathname === href : pathname.startsWith(href);
@@ -130,7 +130,7 @@ export function AppNav({ user }: { user: CurrentUser }) {
           <div className="hidden text-right sm:block">
             <p className="text-sm font-medium leading-tight">{user.name}</p>
             <p className="font-mono text-2xs uppercase tracking-wide text-text-subtle">
-              {user.role}
+              {user.roleName}
               {user.locationCode ? ` · ${user.locationCode}` : ""}
             </p>
           </div>

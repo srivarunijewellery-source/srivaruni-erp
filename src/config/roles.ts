@@ -39,7 +39,15 @@ export type Capability =
   | "comms.view"
   | "comms.manage"
   | "accounts.view"
-  | "accounts.manage";
+  | "accounts.manage"
+  | "roles.manage"
+  | "pos.sell"
+  | "pos.discount"
+  | "pos.coupon"
+  | "pos.hold"
+  | "pos.cancel_bill"
+  | "pos.register_open"
+  | "pos.register_close";
 
 const RULES: Record<Capability, (r: Role) => boolean> = {
   // Creation is deliberately open. The control is at approval, so the
@@ -96,9 +104,48 @@ const RULES: Record<Capability, (r: Role) => boolean> = {
   // enforces it regardless of what this says.
   "accounts.view": isOwner,
   "accounts.manage": isOwner,
+  "roles.manage": isOwner,
+
+  // Counter. Fallback only — in practice these come from the role a
+  // person is assigned, which is the whole point of the roles screen.
+  "pos.sell": isManagerOrAbove,
+  "pos.discount": isManagerOrAbove,
+  "pos.coupon": isManagerOrAbove,
+  "pos.hold": isManagerOrAbove,
+  "pos.cancel_bill": isManagerOrAbove,
+  "pos.register_open": isManagerOrAbove,
+  "pos.register_close": isManagerOrAbove,
 };
 
-/** Components ask can(role, "x"); they never compare roles directly. */
-export function can(role: Role | null | undefined, capability: Capability): boolean {
-  return role ? RULES[capability](role) : false;
+/**
+ * The permission check the whole interface uses.
+ *
+ * Reads the permission set resolved from the database at session time,
+ * so a role edited in the admin screen changes what people see on their
+ * next request rather than at the next deploy.
+ *
+ * RULES above is now only a FALLBACK, for a staff row that has no role
+ * assigned yet -- which is possible for anyone created before roles
+ * existed. Without it those users would see an empty app.
+ *
+ * Still not the security boundary. Every rule here is also enforced by
+ * RLS and by explicit checks inside each SECURITY DEFINER function. If
+ * the two disagree the database wins and the user sees an error, which
+ * is the correct direction to fail.
+ */
+export function can(
+  user: { role?: Role | null; permissions?: ReadonlySet<string> } | Role | null | undefined,
+  capability: Capability,
+): boolean {
+  if (!user) return false;
+
+  // Called with a bare role string (older call sites, and the login
+  // screen which has no full user yet).
+  if (typeof user === "string") return RULES[capability]?.(user) ?? false;
+
+  if (user.permissions && user.permissions.size > 0) {
+    return user.permissions.has(capability);
+  }
+
+  return user.role ? (RULES[capability]?.(user.role) ?? false) : false;
 }

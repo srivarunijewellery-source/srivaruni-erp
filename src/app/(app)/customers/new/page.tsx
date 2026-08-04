@@ -10,7 +10,7 @@ export const metadata: Metadata = { title: "New customer" };
 
 export default async function NewCustomerPage() {
   const user = await requireUser();
-  if (!can(user.role, "customer.manage")) redirect(ROUTES.customers);
+  if (!can(user, "customer.manage")) redirect(ROUTES.customers);
 
   return (
     <>

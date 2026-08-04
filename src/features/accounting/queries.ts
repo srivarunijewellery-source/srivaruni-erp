@@ -313,3 +313,66 @@ export async function listPaymentAccounts(): Promise<
   if (error) return [];
   return (data ?? []).map((r) => ({ id: r.id, name: r.name, kind: String(r.kind) }));
 }
+
+export interface GstRow {
+  label: string;
+  taxablePaise: number;
+  taxPaise: number;
+}
+
+export async function getGstSummary(from: string, to: string): Promise<GstRow[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("gst_summary", { p_from: from, p_to: to });
+  if (error) throw error;
+
+  type Row = { label: string; taxable_paise: number; tax_paise: number };
+  return ((data ?? []) as Row[]).map((r) => ({
+    label: r.label,
+    taxablePaise: Number(r.taxable_paise ?? 0),
+    taxPaise: Number(r.tax_paise ?? 0),
+  }));
+}
+
+export interface StatementRow {
+  entryId: string;
+  entryNo: string;
+  entryDate: string;
+  narration: string | null;
+  note: string | null;
+  debitPaise: number;
+  creditPaise: number;
+  runningPaise: number;
+  counterpart: string | null;
+}
+
+export async function getAccountStatement(
+  accountId: string,
+  from?: string,
+  to?: string,
+): Promise<StatementRow[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("account_statement", {
+    p_account: accountId,
+    p_from: from ?? null,
+    p_to: to ?? null,
+  });
+  if (error) throw error;
+
+  type Row = {
+    entry_id: string; entry_no: string; entry_date: string;
+    narration: string | null; note: string | null;
+    debit_paise: number; credit_paise: number; running_paise: number;
+    counterpart: string | null;
+  };
+  return ((data ?? []) as Row[]).map((r) => ({
+    entryId: r.entry_id,
+    entryNo: r.entry_no,
+    entryDate: r.entry_date,
+    narration: r.narration,
+    note: r.note,
+    debitPaise: Number(r.debit_paise ?? 0),
+    creditPaise: Number(r.credit_paise ?? 0),
+    runningPaise: Number(r.running_paise ?? 0),
+    counterpart: r.counterpart,
+  }));
+}

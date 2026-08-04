@@ -17,6 +17,9 @@ import {
   listLeave,
 } from "@/features/staff/queries";
 import { PayPanel } from "@/features/staff/PerformancePanels";
+import { LoginPanel } from "@/features/staff/LoginPanel";
+import { RolePanel } from "@/features/staff/RolePanel";
+import { listRoles } from "@/features/roles/queries";
 
 export const metadata: Metadata = { title: "Team member" };
 
@@ -35,7 +38,7 @@ export default async function StaffDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const user = await requireUser();
-  if (!can(user.role, "staff.view")) {
+  if (!can(user, "staff.view")) {
     return <EmptyState title="The team pages are for managers and the owner" />;
   }
 
@@ -48,11 +51,12 @@ export default async function StaffDetailPage({
   const fromIso = from.toISOString().slice(0, 10);
   const toIso = new Date().toISOString().slice(0, 10);
 
-  const [history, leave, compensation, targets] = await Promise.all([
+  const [history, leave, compensation, targets, roles] = await Promise.all([
     getAttendanceHistory(id, fromIso, toIso),
     listLeave("all", id),
     getCompensation(id),
     getTargets(id),
+    can(user, "roles.manage") ? listRoles() : Promise.resolve([]),
   ]);
 
   return (
@@ -98,6 +102,17 @@ export default async function StaffDetailPage({
             {member.notes && <Fact label="Notes" value={member.notes} />}
           </CardBody>
         </Card>
+
+        {isOwner(user.role) && <LoginPanel member={member} />}
+
+        {can(user, "roles.manage") && (
+          <RolePanel
+            staffId={member.id}
+            currentRoleId={member.roleId}
+            currentRoleName={member.roleName}
+            roles={roles}
+          />
+        )}
 
         <PayPanel
           staffId={member.id}

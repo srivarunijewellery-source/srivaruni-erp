@@ -251,3 +251,97 @@ export async function getUnreachableStaff(): Promise<Array<{ name: string; role:
     .filter((s) => !s.email || s.email.trim() === "")
     .map((s) => ({ name: s.name, role: s.role }));
 }
+
+export interface WhatsappTemplate {
+  id: string;
+  metaId: string | null;
+  name: string;
+  language: string;
+  category: string;
+  status: string;
+  bodyText: string | null;
+  footerText: string | null;
+  variableCount: number;
+  rejectionReason: string | null;
+  syncedAt: string | null;
+}
+
+export async function listWhatsappTemplates(): Promise<WhatsappTemplate[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("whatsapp_templates")
+    .select(`id, meta_id, name, language, category, status, body_text,
+             footer_text, variable_count, rejection_reason, synced_at`)
+    .order("status")
+    .order("name");
+  if (error) return [];
+
+  return (data ?? []).map((r) => ({
+    id: r.id,
+    metaId: r.meta_id,
+    name: r.name,
+    language: r.language,
+    category: r.category,
+    status: r.status,
+    bodyText: r.body_text,
+    footerText: r.footer_text,
+    variableCount: Number(r.variable_count ?? 0),
+    rejectionReason: r.rejection_reason,
+    syncedAt: r.synced_at,
+  }));
+}
+
+export interface EventTemplateMap {
+  eventKey: string;
+  templateId: string | null;
+  variableMap: string[];
+}
+
+export async function listEventTemplateMaps(): Promise<EventTemplateMap[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("whatsapp_event_templates")
+    .select("event_key, template_id, variable_map");
+  if (error) return [];
+
+  return (data ?? []).map((r) => ({
+    eventKey: r.event_key,
+    templateId: r.template_id,
+    variableMap: r.variable_map ?? [],
+  }));
+}
+
+export interface WhatsappConnection {
+  phoneNumberId: string | null;
+  businessAccountId: string | null;
+  hasToken: boolean;
+  apiVersion: string;
+  verifiedName: string | null;
+  displayNumber: string | null;
+  qualityRating: string | null;
+  lastSyncedAt: string | null;
+  enabled: boolean;
+}
+
+export async function getWhatsappConnection(): Promise<WhatsappConnection | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("comms_settings")
+    .select(`wa_phone_number_id, wa_business_account_id, wa_access_token,
+             wa_api_version, wa_verified_name, wa_display_number,
+             wa_quality_rating, wa_last_synced_at, whatsapp_enabled`)
+    .maybeSingle();
+  if (error || !data) return null;
+
+  return {
+    phoneNumberId: data.wa_phone_number_id,
+    businessAccountId: data.wa_business_account_id,
+    hasToken: Boolean(data.wa_access_token),
+    apiVersion: data.wa_api_version ?? "v21.0",
+    verifiedName: data.wa_verified_name,
+    displayNumber: data.wa_display_number,
+    qualityRating: data.wa_quality_rating,
+    lastSyncedAt: data.wa_last_synced_at,
+    enabled: Boolean(data.whatsapp_enabled),
+  };
+}

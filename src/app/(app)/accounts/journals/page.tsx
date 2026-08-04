@@ -3,18 +3,25 @@ import { requireUser } from "@/features/auth/session";
 import { can } from "@/config/roles";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { getUnposted, listJournals } from "@/features/accounting/queries";
+import { getUnposted, listAccounts, listJournals } from "@/features/accounting/queries";
 import { JournalList, UnpostedWarning } from "@/features/accounting/AccountingViews";
+import { DemoDataPanel } from "@/features/accounting/DemoDataPanel";
+import { ManualJournalForm } from "@/features/accounting/ManualJournalForm";
 
 export const metadata: Metadata = { title: "Journal" };
 
 export default async function JournalsPage() {
   const user = await requireUser();
-  if (!can(user.role, "accounts.view")) {
+  if (!can(user, "accounts.view")) {
     return <EmptyState title="The books are owner-only" />;
   }
 
-  const [entries, unposted] = await Promise.all([listJournals(), getUnposted()]);
+  const [entries, unposted, accounts] = await Promise.all([
+    listJournals(),
+    getUnposted(),
+    listAccounts(),
+  ]);
+
 
   return (
     <>
@@ -24,7 +31,9 @@ export default async function JournalsPage() {
       />
       <div className="space-y-4">
         <UnpostedWarning rows={unposted} />
-        <JournalList entries={entries} />
+        <ManualJournalForm accounts={accounts} />
+        <DemoDataPanel />
+        <JournalList entries={entries} accounts={accounts} />
       </div>
     </>
   );

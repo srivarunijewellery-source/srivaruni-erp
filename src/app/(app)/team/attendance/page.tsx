@@ -21,7 +21,7 @@ export default async function AttendancePage({
   searchParams: Promise<{ on?: string }>;
 }) {
   const user = await requireUser();
-  if (!can(user.role, "attendance.mark")) {
+  if (!can(user, "attendance.mark")) {
     return <EmptyState title="Only a manager or the owner can fill the register" />;
   }
 
@@ -49,7 +49,7 @@ export default async function AttendancePage({
         staff={staff}
         date={date}
         existing={existing}
-        canMark={can(user.role, "attendance.mark")}
+        canMark={can(user, "attendance.mark")}
       />
     </>
   );

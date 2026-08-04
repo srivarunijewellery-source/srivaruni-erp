@@ -65,7 +65,7 @@ export default async function TransfersPage() {
         title="Transfers"
         description="Anyone can raise a request. Stock only moves once it is approved, and lands only when the receiving store confirms."
         action={
-          can(user.role, "transfer.request") && (
+          can(user, "transfer.request") && (
             <Link href={ROUTES.transferNew}>
               <Button variant="primary">New transfer</Button>
             </Link>

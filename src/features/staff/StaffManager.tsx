@@ -58,7 +58,7 @@ export function StaffManager({
             <div className="flex gap-2">
               <Link
                 href={`${ROUTES.staff}?inactive=${showInactive ? "0" : "1"}`}
-                className="rounded-control border border-border px-3 py-2 text-sm hover:bg-surface-sunken"
+                className="inline-flex h-[var(--control-height)] items-center rounded-control border border-border bg-surface px-3 text-sm shadow-[var(--control-shadow)] transition-colors hover:border-border-strong hover:bg-surface-sunken"
               >
                 {showInactive ? "Hide past staff" : "Show past staff"}
               </Link>

@@ -12,7 +12,7 @@ export default async function LeavePage() {
 
   const [requests, staff] = await Promise.all([
     listLeave("all"),
-    can(user.role, "staff.view") ? listStaff(false) : Promise.resolve([]),
+    can(user, "staff.view") ? listStaff(false) : Promise.resolve([]),
   ]);
 
   return (
@@ -24,7 +24,7 @@ export default async function LeavePage() {
       <LeaveBoard
         requests={requests}
         staff={staff.length > 0 ? staff : []}
-        canDecide={can(user.role, "leave.approve")}
+        canDecide={can(user, "leave.approve")}
         currentStaffId={user.staffId}
       />
     </>

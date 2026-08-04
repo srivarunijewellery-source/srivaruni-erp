@@ -20,12 +20,22 @@
  * unstyled for a large share of recipients.
  */
 
-const BRAND = "#7c2d3a";
-const INK = "#191512";
-const MUTED = "#6b6259";
-const LINE = "#e6e0d8";
-const PAPER = "#faf7f2";
-const CARD = "#ffffff";
+/* Copied from globals.css, not imported — see the note above. The first
+   version guessed at these and drifted: BRAND was #7c2d3a against the
+   real token #6b1d2b, so every email was a slightly different red from
+   the app. Kept literal and kept in sync by hand. */
+const BRAND       = "#6b1d2b";  /* --color-brand, the oxblood accent */
+const BRAND_DEEP  = "#4d141e";  /* darker foot of the gradient        */
+const BRAND_TINT  = "#f7ecee";  /* --color-brand-subtle               */
+const INK         = "#191512";  /* --color-neutral-900                */
+const BODY        = "#3d3734";  /* --color-neutral-700, softer than ink
+                                   for long text -- pure near-black on
+                                   white is harsh at reading size      */
+const MUTED       = "#756c67";  /* --color-neutral-500                */
+const LINE        = "#ddd8d5";  /* --color-neutral-200                */
+const PAPER       = "#f5f3f2";  /* --color-neutral-50, the page behind */
+const SUNKEN      = "#fbfaf9";  /* --color-neutral-25, itemised blocks */
+const CARD        = "#ffffff";
 
 function escapeHtml(value: string): string {
   return value
@@ -55,12 +65,12 @@ function renderBody(body: string): string {
         lines.length > 1 && lines.filter((l) => /\s{2,}|×/.test(l)).length >= lines.length - 1;
 
       if (looksTabular) {
-        return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 20px 0;background:${PAPER};border:1px solid ${LINE};border-radius:6px;">
+        return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 20px 0;background:${SUNKEN};border:1px solid ${LINE};border-radius:8px;">
   <tr><td style="padding:14px 16px;font-family:'SFMono-Regular',Consolas,monospace;font-size:13px;line-height:1.7;color:${INK};white-space:pre-wrap;">${escapeHtml(block)}</td></tr>
 </table>`;
       }
 
-      return `<p style="margin:0 0 16px 0;font-size:15px;line-height:1.65;color:${INK};">${escapeHtml(
+      return `<p style="margin:0 0 16px 0;font-size:15px;line-height:1.7;color:${BODY};">${escapeHtml(
         block,
       ).replace(/\n/g, "<br />")}</p>`;
     })
@@ -104,16 +114,16 @@ export function renderEmailHtml({
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:${PAPER};">
 <tr><td align="center" style="padding:28px 12px;">
 
-  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:600px;max-width:100%;background:${CARD};border:1px solid ${LINE};border-radius:10px;overflow:hidden;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:600px;max-width:100%;background:${CARD};border:1px solid ${LINE};border-radius:12px;overflow:hidden;">
 
     <tr>
-      <td style="background:${BRAND};padding:${isCustomer ? "24px 28px" : "18px 28px"};">
+      <td style="background:${BRAND};background-image:linear-gradient(135deg, ${BRAND} 0%, ${BRAND_DEEP} 100%);padding:${isCustomer ? "26px 28px" : "18px 28px"};">
         <div style="font-family:Georgia,'Times New Roman',serif;font-size:${
           isCustomer ? "21px" : "17px"
         };letter-spacing:0.3px;color:#ffffff;">${escapeHtml(brandName)}</div>
         ${
           isCustomer
-            ? `<div style="margin-top:4px;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#f0d9dd;letter-spacing:1.2px;text-transform:uppercase;">Imitation Jewellery</div>`
+            ? `<div style="margin-top:5px;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:${BRAND_TINT};letter-spacing:1.6px;text-transform:uppercase;opacity:0.85;">Imitation Jewellery</div>`
             : ""
         }
       </td>
@@ -121,9 +131,10 @@ export function renderEmailHtml({
 
     <tr>
       <td style="padding:28px;font-family:Arial,Helvetica,sans-serif;">
-        <h1 style="margin:0 0 18px 0;font-size:18px;line-height:1.35;font-weight:600;color:${INK};">${escapeHtml(
+        <h1 style="margin:0 0 6px 0;font-size:18px;line-height:1.35;font-weight:600;color:${INK};">${escapeHtml(
           subject,
         )}</h1>
+        <div style="width:34px;height:2px;background:${BRAND};margin:0 0 18px 0;"></div>
         ${renderBody(body)}
       </td>
     </tr>

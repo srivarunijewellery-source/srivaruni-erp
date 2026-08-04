@@ -28,7 +28,7 @@ export default async function GiftsPage() {
       />
       <GiftOfferManager
         offers={offers}
-        canManage={can(user.role, "discount.manage")}
+        canManage={can(user, "discount.manage")}
         preview={preview}
         previewAtPaise={sumOfThresholds}
       />

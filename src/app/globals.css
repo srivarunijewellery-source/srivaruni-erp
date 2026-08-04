@@ -79,6 +79,17 @@
   --radius-control: 0.375rem;
   --radius-card:    0.625rem;
 
+  /* --- controls ----------------------------------------------------- */
+  /* Form controls were reading small and system-default. These give one
+     place to tune the whole set: every input, select, date and time box
+     shares this height so a row of mixed controls lines up instead of
+     stepping up and down. */
+  --control-height:      2.375rem;
+  --control-height-sm:   2rem;
+  --control-px:          0.75rem;
+  --control-ring:        0 0 0 3px rgb(107 29 43 / 0.12);
+  --control-shadow:      0 1px 1px 0 rgb(25 21 18 / 0.04);
+
   /* --- elevation --------------------------------------------------- */
   --shadow-card:   0 1px 2px 0 rgb(25 21 18 / 0.05);
   --shadow-raised: 0 4px 12px -2px rgb(25 21 18 / 0.10);
@@ -105,6 +116,77 @@
     outline: 2px solid var(--color-brand);
     outline-offset: 2px;
   }
+
+  /* ------------------------------------------------------------------
+     NATIVE CONTROL NORMALISATION
+
+     Left alone, <select> renders the operating system's own widget --
+     which is where the "Windows 10" look came from -- and date/time
+     inputs render a tiny grey picker glyph that does not match anything
+     else on the page. Browsers do not let these be styled through
+     normal classes, so they are handled here once, at the base layer,
+     and every control in the app inherits it.
+     ------------------------------------------------------------------ */
+
+  select {
+    appearance: none;
+    -webkit-appearance: none;
+    /* Chevron drawn as an inline SVG rather than an icon component,
+       because a background image is the only thing a native select
+       will render reliably across browsers. Colour is neutral-500. */
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' fill='none' stroke='%23756c67' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.625rem center;
+    /* Room for the chevron so long option text never runs under it. */
+    padding-right: 2.25rem;
+  }
+
+  select:disabled {
+    /* Without this the chevron stays full strength on a disabled box
+       and the control reads as still interactive. */
+    opacity: 0.5;
+  }
+
+  /* The calendar and clock glyphs. Sized up from the browser default,
+     tinted to match body text, and given a hit area big enough to
+     actually tap on a phone. */
+  input[type="date"]::-webkit-calendar-picker-indicator,
+  input[type="time"]::-webkit-calendar-picker-indicator,
+  input[type="month"]::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    opacity: 0.55;
+    padding: 0.25rem;
+    margin-right: -0.25rem;
+    border-radius: 0.25rem;
+    transition: opacity 0.12s ease, background-color 0.12s ease;
+  }
+
+  input[type="date"]::-webkit-calendar-picker-indicator:hover,
+  input[type="time"]::-webkit-calendar-picker-indicator:hover,
+  input[type="month"]::-webkit-calendar-picker-indicator:hover {
+    opacity: 1;
+    background-color: var(--color-neutral-100);
+  }
+
+  /* Safari and iOS shrink date fields to their content and vertically
+     mis-centre them, which is why they looked smaller than the inputs
+     beside them. */
+  input[type="date"],
+  input[type="time"],
+  input[type="month"] {
+    min-height: var(--control-height);
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  /* The spinner on number inputs steals horizontal space and is almost
+     never used -- quantities get typed or scanned. */
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {

@@ -9,6 +9,7 @@
  */
 
 import { renderEmailHtml } from "./email-template";
+import { sendTemplateMessage } from "./whatsapp";
 
 export interface OutgoingMessage {
   id: string;
@@ -21,6 +22,10 @@ export interface OutgoingMessage {
   /** Drives which email shell is used; customer mail gets the fuller
    *  branded treatment, internal alerts a plainer one. */
   audience?: "internal" | "customer";
+  /** Resolved at queue time — the sender never touches our event model. */
+  templateName?: string | null;
+  templateLang?: string | null;
+  templateVars?: string[] | null;
 }
 
 export interface SenderConfig {
@@ -33,6 +38,11 @@ export interface SenderConfig {
   whatsappApiUrl: string | null;
   whatsappApiKey: string | null;
   whatsappFrom: string | null;
+  /** Meta Cloud API, direct. Preferred over the generic BSP fields. */
+  waPhoneNumberId?: string | null;
+  waBusinessAccountId?: string | null;
+  waAccessToken?: string | null;
+  waApiVersion?: string | null;
 }
 
 export type SendResult =
@@ -120,19 +130,51 @@ async function sendEmail(msg: OutgoingMessage, cfg: SenderConfig): Promise<SendR
 
 async function sendWhatsapp(msg: OutgoingMessage, cfg: SenderConfig): Promise<SendResult> {
   if (!msg.toPhone) return { ok: false, error: "No phone number on this message." };
+
+  // Meta Cloud API, direct. The generic BSP path below is kept only for
+  // a deployment still pointed at one.
+  if (cfg.waAccessToken && cfg.waPhoneNumberId) {
+    if (!msg.templateName) {
+      // Business-initiated messages MUST use an approved template.
+      // queue_event skips events without one, so reaching here means
+      // the mapping was removed after the message was queued.
+      return {
+        ok: false,
+        error:
+          "No approved WhatsApp template is mapped to this event, so Meta would reject it.",
+      };
+    }
+
+    const res = await sendTemplateMessage(
+      {
+        phoneNumberId: cfg.waPhoneNumberId,
+        businessAccountId: cfg.waBusinessAccountId ?? "",
+        accessToken: cfg.waAccessToken,
+        apiVersion: cfg.waApiVersion ?? "v21.0",
+      },
+      {
+        to: msg.toPhone,
+        templateName: msg.templateName,
+        language: msg.templateLang ?? "en",
+        variables: msg.templateVars ?? [],
+      },
+    );
+
+    if (!res.ok) {
+      return { ok: false, error: res.error ?? "Meta refused the message.", httpStatus: res.code };
+    }
+    return { ok: true, providerId: res.data?.messages?.[0]?.id ?? null };
+  }
+
+  // Legacy BSP path.
   if (!cfg.whatsappApiUrl || !cfg.whatsappApiKey) {
     return {
       ok: false,
       error:
-        "WhatsApp is switched on but has no provider URL or key. Add them in comms settings.",
+        "WhatsApp is on but not configured. Add the Meta phone number ID and token in comms settings.",
     };
   }
 
-  // Generic BSP shape (Interakt, AiSensy, Gupshup all accept a variant
-  // of this). Meta's Cloud API additionally requires a pre-approved
-  // template name, which is why the settings page warns about approval
-  // lead time. Left generic deliberately: the provider is not chosen
-  // yet, and guessing one would be worse than one clear place to adapt.
   try {
     const res = await fetch(cfg.whatsappApiUrl, {
       method: "POST",

@@ -10,7 +10,7 @@ export const metadata: Metadata = { title: "Generate coupons" };
 
 export default async function NewCouponsPage() {
   const user = await requireUser();
-  if (!can(user.role, "discount.manage")) redirect(ROUTES.coupons);
+  if (!can(user, "discount.manage")) redirect(ROUTES.coupons);
 
   return (
     <>

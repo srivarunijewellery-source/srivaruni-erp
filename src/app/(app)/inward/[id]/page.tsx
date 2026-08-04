@@ -41,7 +41,7 @@ export default async function InwardDetailPage({
   const inward = await getInward(id);
   if (!inward) notFound();
 
-  const isOwner = can(user.role, "inward.approve");
+  const isOwner = can(user, "inward.approve");
   const isDraft = inward.status === "draft";
 
   // Pricing stays available AFTER approval too, so the owner can correct

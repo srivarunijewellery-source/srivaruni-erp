@@ -14,7 +14,7 @@ export const metadata: Metadata = { title: "Pricing settings" };
 
 export default async function PricingSettingsPage() {
   const user = await requireUser();
-  if (!can(user.role, "pricing.manage")) {
+  if (!can(user, "pricing.manage")) {
     return <EmptyState title="Pricing is owner-only" />;
   }
 

@@ -48,7 +48,7 @@ export default async function BarcodesPage({
         key={inwardId ?? itemId ?? "blank"}
         initial={initial}
         settings={settings}
-        canEditSettings={can(user.role, "pricing.manage")}
+        canEditSettings={can(user, "pricing.manage")}
         inwards={inwards.map((i) => ({
           id: i.id,
           docNo: i.docNo,

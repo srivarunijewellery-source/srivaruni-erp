@@ -12,7 +12,7 @@ export const metadata: Metadata = { title: "Discount settings" };
 
 export default async function DiscountSettingsPage() {
   const user = await requireUser();
-  if (!can(user.role, "discount.manage")) {
+  if (!can(user, "discount.manage")) {
     return <EmptyState title="Discounts are owner-only" />;
   }
 

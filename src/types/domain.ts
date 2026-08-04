@@ -31,6 +31,13 @@ export interface CurrentUser {
   role: Role;
   locationId: string | null;
   locationCode: string | null;
+  /** Resolved from the database at session time, not inferred from
+   *  the role name. Empty for a user with no role assigned yet. */
+  permissions: ReadonlySet<string>;
+  /** Display name of the assigned role, e.g. "Cashier". Falls back to
+   *  the tier for anyone not yet on a named role. */
+  roleName: string;
+  roleKey: string;
 }
 
 export interface StoreLocation {

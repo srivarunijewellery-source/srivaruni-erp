@@ -241,3 +241,58 @@ The manager hierarchy was already enforced in the database
 (`bulk_mark_attendance` is manager-and-above, staff may only self-check-in
 for today). The UI now reflects it via `canMark` rather than offering
 controls that would be refused.
+
+---
+
+# Reporting, backfill and demo data
+
+## GST summary (`/accounts/gst`)
+
+Output tax, input credit, net payable for a period. Read from the
+**posted books**, not from bills and invoices directly, so it reconciles
+with the trial balance by construction — a document that never posted is
+missing here *and* flagged, rather than inflating one report and not the
+other. It is a working summary for checking against the portal, not a
+filed return.
+
+## Account statement (`/accounts/statement/[id]`)
+
+Drill-down from any trial balance row: every line that touched the
+account, with a running balance and the counterpart account, so a line
+reads as "Sale BOD/26/00042 → Cash" rather than a bare number.
+
+## Backfill (`backfill_accounting()`)
+
+Inwards, payments and credit notes approved *before* the accounting
+module existed are real history with no entries behind them — input GST
+credit reads as zero and the P&L shows sales with no purchase cost.
+The button on the GST page posts them. Safe to re-run: each branch skips
+what is already posted.
+
+Run on this database: **22 documents posted, 0 unposted remaining.**
+Input credit went from ₹0.00 to ₹2,708.79 and net GST payable from
+₹75,402.85 to ₹72,694.06.
+
+## Demo billing data
+
+`seed_demo_bills(months)` generates believable sales — Sundays busier,
+random items and sellers, spread across stores. Seeded here: **701 bills
+over 3 months, ₹25,88,865 revenue, 701 journal entries posted (1:1, none
+missed).**
+
+**One deliberate difference from a real sale: demo bills do NOT move
+stock.** A real bill writes to `stock_ledger`, which is append-only and
+blocks deletes — demo sales would permanently distort on-hand counts for
+actual inventory in actual shops. Books and reports are fully exercised;
+inventory is left alone.
+
+`clear_demo_data()` removes all of it, including posted entries. It is
+the one operation allowed to erase rather than reverse, and it refuses
+to touch anything not tagged `DEMO`. **Clear it before real billing goes
+live**, or the books mix invented sales with actual ones. Both controls
+are on the journal page under "Demo data".
+
+## Verified state after all of the above
+
+- 723 journal entries, debits = credits exactly, ₹27,40,266.79 posted
+- 0 unposted documents

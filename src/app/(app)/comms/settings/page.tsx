@@ -17,7 +17,7 @@ export const metadata: Metadata = { title: "Comms settings" };
 
 export default async function CommsSettingsPage() {
   const user = await requireUser();
-  if (!can(user.role, "comms.manage")) {
+  if (!can(user, "comms.manage")) {
     return <EmptyState title="Communication settings are owner-only" />;
   }
 
@@ -37,7 +37,7 @@ export default async function CommsSettingsPage() {
         action={
           <Link
             href={ROUTES.comms}
-            className="rounded-control border border-border px-3 py-2 text-sm hover:bg-surface-sunken"
+            className="inline-flex h-[var(--control-height)] items-center rounded-control border border-border bg-surface px-3 text-sm shadow-[var(--control-shadow)] transition-colors hover:border-border-strong hover:bg-surface-sunken"
           >
             Back to messages
           </Link>

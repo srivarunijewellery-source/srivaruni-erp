@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
@@ -11,12 +12,14 @@ import { formatPaise } from "@/lib/money";
 import { formatDate } from "@/lib/format";
 import { ROUTES } from "@/config/nav";
 import { reverseJournal } from "./actions";
+import { JournalAmend } from "./JournalAmend";
 import type {
   JournalRow,
   PnlRow,
   TrialBalanceRow,
   UnpostedRow,
   AccountKind,
+  LedgerAccount,
 } from "./queries";
 
 const KIND_LABEL: Record<AccountKind, string> = {
@@ -121,13 +124,15 @@ export function TrialBalanceTable({ rows }: { rows: TrialBalanceRow[] }) {
             <CardBody className="p-0">
               <ul className="divide-y divide-border">
                 {group.map((r) => (
-                  <li
-                    key={r.accountId}
-                    className="flex items-center gap-3 px-4 py-2 text-sm"
-                  >
-                    <span className="w-14 font-mono text-2xs text-text-muted">{r.code}</span>
-                    <span className="flex-1 truncate">{r.name}</span>
-                    <span className="font-mono">{formatPaise(r.balancePaise)}</span>
+                  <li key={r.accountId}>
+                    <Link
+                      href={ROUTES.accountStatement(r.accountId)}
+                      className="flex items-center gap-3 px-4 py-2 text-sm hover:bg-surface-sunken"
+                    >
+                      <span className="w-14 font-mono text-2xs text-text-muted">{r.code}</span>
+                      <span className="flex-1 truncate">{r.name}</span>
+                      <span className="font-mono">{formatPaise(r.balancePaise)}</span>
+                    </Link>
                   </li>
                 ))}
               </ul>
@@ -251,10 +256,17 @@ export function PnlReport({
   );
 }
 
-export function JournalList({ entries }: { entries: JournalRow[] }) {
+export function JournalList({
+  entries,
+  accounts,
+}: {
+  entries: JournalRow[];
+  accounts: LedgerAccount[];
+}) {
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [reversing, setReversing] = useState<JournalRow | null>(null);
+  const [amending, setAmending] = useState<JournalRow | null>(null);
 
   function submit(formData: FormData) {
     start(async () => {
@@ -323,15 +335,28 @@ export function JournalList({ entries }: { entries: JournalRow[] }) {
                 <span className="font-mono text-sm">{formatPaise(j.amountPaise)}</span>
 
                 {!j.isReversed && !j.reversesId && (
-                  <Button size="sm" variant="ghost" onClick={() => setReversing(j)}>
-                    Reverse
-                  </Button>
+                  <div className="flex gap-1">
+                    <Button size="sm" variant="secondary" onClick={() => setAmending(j)}>
+                      Edit
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setReversing(j)}>
+                      Reverse
+                    </Button>
+                  </div>
                 )}
               </li>
             ))}
           </ul>
         </CardBody>
       </Card>
+
+      {amending && (
+        <JournalAmend
+          entry={amending}
+          accounts={accounts}
+          onClose={() => setAmending(null)}
+        />
+      )}
 
       <p className="px-1 text-2xs text-text-muted">
         The books are append-only. Correcting something posts a mirror-image entry

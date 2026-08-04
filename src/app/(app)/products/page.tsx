@@ -27,7 +27,7 @@ export default async function ProductsPage({
   // Pricing columns are owner-only. The database enforces the same rule:
   // item_costs is owner-only via RLS, and items_pricing_guard rejects a
   // price change from anyone else.
-  const canEditPricing = can(user.role, "inward.viewCost");
+  const canEditPricing = can(user, "inward.viewCost");
 
   return (
     <>

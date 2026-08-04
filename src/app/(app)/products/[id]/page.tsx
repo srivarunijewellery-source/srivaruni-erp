@@ -56,7 +56,7 @@ export default async function ProductDetailPage({
 
   if (!product) notFound();
 
-  const canEditPricing = can(user.role, "inward.viewCost");
+  const canEditPricing = can(user, "inward.viewCost");
 
   return (
     <>
@@ -94,7 +94,7 @@ export default async function ProductDetailPage({
               storagePath: p.path,
               isPrimary: p.isPrimary,
             }))}
-            canEdit={can(user.role, "catalog.manage")}
+            canEdit={can(user, "catalog.manage")}
           />
 
           <Card>

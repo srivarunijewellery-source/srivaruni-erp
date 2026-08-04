@@ -7,7 +7,7 @@ import { can } from "@/config/roles";
  *  RLS would return nothing to anyone else regardless. */
 export async function GET(request: NextRequest) {
   const user = await getCurrentUser();
-  if (!user || !can(user.role, "inward.viewCost")) {
+  if (!user || !can(user, "inward.viewCost")) {
     return NextResponse.json([], { status: 403 });
   }
 

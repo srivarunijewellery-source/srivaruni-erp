@@ -17,7 +17,7 @@ export const metadata: Metadata = { title: "Expenses" };
 
 export default async function ExpensesPage() {
   const user = await requireUser();
-  if (!can(user.role, "accounts.manage")) {
+  if (!can(user, "accounts.manage")) {
     return <EmptyState title="Expenses are owner-only" />;
   }
 

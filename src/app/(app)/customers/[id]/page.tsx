@@ -27,7 +27,7 @@ export default async function CustomerDetailPage({
 
   const coupons = await listCustomerCoupons(customer.id);
 
-  const editing = edit === "1" && can(user.role, "customer.manage");
+  const editing = edit === "1" && can(user, "customer.manage");
 
   return (
     <>
@@ -36,7 +36,7 @@ export default async function CustomerDetailPage({
         description={customer.name ? customer.phone : "No name on file"}
         action={
           <div className="flex items-center gap-2">
-            {!editing && can(user.role, "customer.manage") && (
+            {!editing && can(user, "customer.manage") && (
               <Link href={`${ROUTES.customerDetail(customer.id)}?edit=1`}>
                 <Button size="sm" variant="secondary">
                   Edit

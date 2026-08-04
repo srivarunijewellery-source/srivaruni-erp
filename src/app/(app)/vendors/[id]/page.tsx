@@ -30,7 +30,7 @@ export default async function VendorDetailPage({
   const { id } = await params;
   const user = await requireUser();
 
-  if (!can(user.role, "vendor.view")) {
+  if (!can(user, "vendor.view")) {
     return <EmptyState title="Vendors are not available to your role" />;
   }
 
@@ -75,7 +75,7 @@ export default async function VendorDetailPage({
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="lg:col-span-1">
           <VendorDetailCard vendor={vendor} />
-          {can(user.role, "pricing.manage") && (
+          {can(user, "pricing.manage") && (
             <VendorPricingCard
               vendorId={vendor.id}
               pricingMode={vendor.pricingMode}
@@ -86,13 +86,13 @@ export default async function VendorDetailPage({
           )}
 
           {/* Credits are money owed, so the same gate as payments. */}
-          {can(user.role, "inward.viewCost") && (
+          {can(user, "inward.viewCost") && (
             <div className="mt-4">
               <SettlementPanel vendorId={vendor.id} settlement={settlement} />
             </div>
           )}
 
-          {can(user.role, "inward.viewCost") && (
+          {can(user, "inward.viewCost") && (
             <div className="mt-4">
               <CreditNotesCard
                 vendorId={vendor.id}

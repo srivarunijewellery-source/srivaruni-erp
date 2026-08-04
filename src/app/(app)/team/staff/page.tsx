@@ -14,7 +14,7 @@ export default async function StaffPage({
   searchParams: Promise<{ inactive?: string }>;
 }) {
   const user = await requireUser();
-  if (!can(user.role, "staff.view")) {
+  if (!can(user, "staff.view")) {
     return <EmptyState title="The team pages are for managers and the owner" />;
   }
 
@@ -35,7 +35,7 @@ export default async function StaffPage({
       <StaffManager
         staff={staff}
         locations={locations}
-        canManage={can(user.role, "staff.manage")}
+        canManage={can(user, "staff.manage")}
         showInactive={showInactive}
       />
     </>

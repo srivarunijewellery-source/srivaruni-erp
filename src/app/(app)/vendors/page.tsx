@@ -11,7 +11,7 @@ export const metadata: Metadata = { title: "Vendors" };
 export default async function VendorsPage() {
   const user = await requireUser();
 
-  if (!can(user.role, "vendor.view")) {
+  if (!can(user, "vendor.view")) {
     return (
       <EmptyState
         title="Vendors are not available to your role"

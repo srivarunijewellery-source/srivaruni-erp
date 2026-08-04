@@ -14,7 +14,7 @@ export default async function PerformancePage({
   searchParams: Promise<{ month?: string }>;
 }) {
   const user = await requireUser();
-  if (!can(user.role, "staff.manage")) {
+  if (!can(user, "staff.manage")) {
     return <EmptyState title="Performance is owner-only" />;
   }
 

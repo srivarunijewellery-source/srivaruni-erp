@@ -10,7 +10,7 @@ export const metadata: Metadata = { title: "Trial balance" };
 
 export default async function TrialBalancePage() {
   const user = await requireUser();
-  if (!can(user.role, "accounts.view")) {
+  if (!can(user, "accounts.view")) {
     return <EmptyState title="The books are owner-only" />;
   }
 
