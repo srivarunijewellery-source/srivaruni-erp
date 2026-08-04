@@ -9,14 +9,22 @@ export const maxDuration = 60;
 /**
  * Drains the message outbox.
  *
- * Runs from Vercel Cron on a schedule and is also poked directly after
- * a test send or a retry, so the operator sees a real result instead of
- * waiting for the next tick.
+ * Called on a schedule and also poked directly after a test send or a
+ * retry, so the operator sees a real result instead of waiting for the
+ * next tick.
+ *
+ * Two schedules hit this route:
+ *   - Vercel Cron, once a day (`?scheduled=1`), for the birthday /
+ *     anniversary / overdue-transit job -- see vercel.json.
+ *   - GitHub Actions, every 5 minutes, for draining the outbox itself
+ *     -- see .github/workflows/dispatch-messages.yml. This lives
+ *     outside Vercel because the Hobby plan caps cron at once a day,
+ *     which is far too slow for "the owner needs to know an inward is
+ *     waiting for approval."
  *
  * Authorisation is a shared secret, not a user session, because there
- * is no user. Vercel Cron sends `Authorization: Bearer $CRON_SECRET`
- * automatically, which is why the same header shape is used for the
- * manual pokes.
+ * is no user. Both callers send `Authorization: Bearer $CRON_SECRET`,
+ * which is why the same header shape is used for the manual pokes.
  */
 async function handle(request: Request) {
   const secret = process.env.CRON_SECRET;
