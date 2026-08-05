@@ -119,3 +119,77 @@ export async function listRecentBills(limit = 50): Promise<RecentBill[]> {
     paymentMode: r.payment_mode,
   }));
 }
+
+export interface SalespersonRow {
+  staffId: string;
+  staffName: string;
+  locationCode: string | null;
+  linesSold: number;
+  pieces: number;
+  soldPaise: number;
+  billsTouched: number;
+}
+
+/**
+ * Credit by LINE, falling back to the bill's seller — so a ticket split
+ * between two people counts for both, which is the whole reason the
+ * per-line column exists.
+ */
+export async function getSalespersonReport(
+  from: string,
+  to: string,
+): Promise<SalespersonRow[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("salesperson_report", {
+    p_from: from,
+    p_to: to,
+    p_location: null,
+  });
+  if (error) return [];
+
+  type Row = Record<string, unknown>;
+  return ((data ?? []) as Row[]).map((r) => ({
+    staffId: String(r.staff_id),
+    staffName: String(r.staff_name ?? ""),
+    locationCode: r.location_code ? String(r.location_code) : null,
+    linesSold: Number(r.lines_sold ?? 0),
+    pieces: Number(r.pieces ?? 0),
+    soldPaise: Number(r.sold_paise ?? 0),
+    billsTouched: Number(r.bills_touched ?? 0),
+  }));
+}
+
+export interface BillLineDetail {
+  id: string;
+  itemName: string;
+  qty: number;
+  lineTotalPaise: number;
+  soldById: string | null;
+  soldByName: string | null;
+}
+
+export async function getBillLines(billId: string): Promise<BillLineDetail[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("bill_lines")
+    .select("id, qty, line_total_paise, sold_by, items:item_id(name), staff:sold_by(name)")
+    .eq("bill_id", billId)
+    .order("line_no");
+  if (error) return [];
+
+  type Row = {
+    id: string; qty: number; line_total_paise: number; sold_by: string | null;
+    items: { name: string } | { name: string }[] | null;
+    staff: { name: string } | { name: string }[] | null;
+  };
+  const one = <T,>(v: T | T[] | null): T | null => (Array.isArray(v) ? (v[0] ?? null) : v);
+
+  return ((data ?? []) as unknown as Row[]).map((r) => ({
+    id: r.id,
+    itemName: one(r.items)?.name ?? "Item",
+    qty: Number(r.qty ?? 0),
+    lineTotalPaise: Number(r.line_total_paise ?? 0),
+    soldById: r.sold_by,
+    soldByName: one(r.staff)?.name ?? null,
+  }));
+}

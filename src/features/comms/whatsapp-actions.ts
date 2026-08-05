@@ -10,6 +10,8 @@ import {
   editTemplate,
   fetchPhoneNumber,
   fetchTemplates,
+  normalisePhone,
+  sendTemplateMessage,
   submitTemplate,
   type MetaConfig,
 } from "@/lib/comms/whatsapp";
@@ -340,5 +342,74 @@ export async function draftTemplateForEvent(
     variableMap: draft.variableMap,
     // Meta names allow lowercase, digits and underscores only.
     name: eventKey.replace(/[^a-z0-9]/g, "_"),
+  });
+}
+
+export interface TestSendResult {
+  ok: boolean;
+  httpStatus: number | null;
+  error: string | null;
+  request: {
+    to: string;
+    templateName: string;
+    language: string;
+    variables: string[];
+  };
+  /** Meta's raw JSON body, exactly as returned — the whole point of this
+   *  tool is to see the wire response, not a summary of it. */
+  raw: unknown;
+}
+
+/**
+ * Sends one template message directly to one number and hands back
+ * exactly what Meta said.
+ *
+ * Deliberately bypasses the outbox and the event matrix entirely — this
+ * answers "does this template, to this number, actually work", not
+ * "does the queue work". Routing it through the normal machinery would
+ * mean a misconfigured recipient rule looks identical to Meta rejecting
+ * the template itself.
+ */
+export async function sendTestTemplate(
+  templateId: string,
+  toPhone: string,
+  variables: string[],
+): Promise<Result<TestSendResult>> {
+  const loaded = await loadConfig();
+  if (!loaded.ok) return err(loaded.error);
+
+  const supabase = await createClient();
+  const { data: tpl, error: tplError } = await supabase
+    .from("whatsapp_templates")
+    .select("name, language, status, variable_count")
+    .eq("id", templateId)
+    .maybeSingle();
+
+  if (tplError || !tpl) return err("No such template.");
+  if (tpl.status !== "APPROVED") {
+    return err(`That template is ${tpl.status}, not approved — Meta will refuse it.`);
+  }
+  if (variables.length !== tpl.variable_count) {
+    return err(
+      `This template expects ${tpl.variable_count} value(s); ${variables.length} given.`,
+    );
+  }
+  if (!toPhone.trim()) return err("Enter a phone number to send to.");
+
+  const request = {
+    to: normalisePhone(toPhone),
+    templateName: tpl.name,
+    language: tpl.language,
+    variables,
+  };
+
+  const res = await sendTemplateMessage(loaded.cfg, request);
+
+  return ok({
+    ok: res.ok,
+    httpStatus: res.httpStatus ?? null,
+    error: res.ok ? null : (res.error ?? "Unknown error."),
+    request,
+    raw: res.raw,
   });
 }

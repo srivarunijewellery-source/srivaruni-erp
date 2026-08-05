@@ -6,8 +6,10 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import {
   getRegisterStatus,
   getSalesSummary,
+  getSalespersonReport,
   listRecentBills,
 } from "@/features/pos/dashboard-queries";
+import { listSellers } from "@/features/pos/queries";
 import { SalesDashboard } from "@/features/pos/SalesDashboard";
 
 export const metadata: Metadata = { title: "Sales" };
@@ -29,11 +31,13 @@ export default async function SalesPage({
   const start = from && DATE.test(from) ? from : today;
   const end = to && DATE.test(to) ? to : today;
 
-  const [branches, registers, recent] = await Promise.all([
+  const [branches, registers, recent, sellers] = await Promise.all([
     getSalesSummary(start, end),
     getRegisterStatus(),
     listRecentBills(50),
+    getSalespersonReport(start, end),
   ]);
+  const staffList = await listSellers(user.locationId ?? "");
 
   return (
     <>
@@ -45,6 +49,8 @@ export default async function SalesPage({
         branches={branches}
         registers={registers}
         recent={recent}
+        sellers={sellers}
+        staffList={staffList}
         from={start}
         to={end}
       />

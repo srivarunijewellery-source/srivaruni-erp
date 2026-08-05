@@ -5,16 +5,22 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { createClient } from "@/lib/supabase/server";
 import {
-  getOpenSession,
   getPosCatalog,
+  listBranches,
   listHeldBills,
+  listOpenSessions,
+  listSellers,
 } from "@/features/pos/queries";
 import { PosScreen } from "@/features/pos/PosScreen";
-import { RegisterPanel } from "@/features/pos/RegisterPanel";
+import { RegisterGate } from "@/features/pos/RegisterGate";
 
 export const metadata: Metadata = { title: "Counter" };
 
-export default async function PosPage() {
+export default async function PosPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ branch?: string; session?: string }>;
+}) {
   const user = await requireUser();
   if (!can(user, "pos.sell")) {
     return (
@@ -25,59 +31,123 @@ export default async function PosPage() {
     );
   }
 
-  if (!user.locationId) {
+  const { branch, session: sessionParam } = await searchParams;
+
+  // A manager or the owner may work any branch; everyone else is pinned
+  // to their own. Reading the branch from a query parameter without this
+  // check would let a cashier bill against another store.
+  const canChooseBranch = can(user, "pos.register_close") || can(user, "staff.manage");
+  const branches = canChooseBranch ? await listBranches() : [];
+
+  const locationId =
+    canChooseBranch && branch && branches.some((b) => b.id === branch)
+      ? branch
+      : user.locationId;
+
+  if (!locationId) {
     return (
       <EmptyState
-        title="No home store is set for you"
-        hint="A bill has to belong to a store. Ask the owner to set yours."
+        title="No branch is set for you"
+        hint="A bill has to belong to a branch. Ask the owner to set your home store."
       />
     );
   }
 
   const supabase = await createClient();
-  const [catalog, session, holds, locRes, bizRes] = await Promise.all([
-    getPosCatalog(user.locationId),
-    getOpenSession(user.locationId),
-    listHeldBills(user.locationId),
-    supabase.from("locations").select("name").eq("id", user.locationId).maybeSingle(),
-    supabase.from("business_settings").select("legal_name, gstin").maybeSingle(),
+  const [sessions, locRes] = await Promise.all([
+    listOpenSessions(locationId),
+    supabase.from("locations").select("name").eq("id", locationId).maybeSingle(),
   ]);
 
   const locationName = locRes.data?.name ?? "Counter";
 
+  // Which counter this person is billing on. With several open, they
+  // pick; with one, it is chosen for them.
+  const session =
+    sessions.find((s) => s.id === sessionParam) ??
+    (sessions.length === 1 ? sessions[0] : undefined);
+
+  // THE GATE. Nothing can be sold until a register is open and chosen,
+  // because a sale outside a session belongs to no day and no drawer --
+  // it would never appear in a close, and the cash would never
+  // reconcile.
+  if (!session) {
+    return (
+      <>
+        <PageHeader title="Counter" description={locationName} />
+        <RegisterGate
+          locationId={locationId}
+          locationName={locationName}
+          sessions={sessions}
+          branches={branches}
+          canChooseBranch={canChooseBranch}
+          canOpen={can(user, "pos.register_open")}
+        />
+      </>
+    );
+  }
+
+  const [catalog, holds, sellers, bizRes] = await Promise.all([
+    getPosCatalog(locationId),
+    listHeldBills(locationId),
+    listSellers(locationId),
+    supabase
+      .from("business_settings")
+      .select("legal_name, gstin, invoice_terms, invoice_footer, home_state")
+      .maybeSingle(),
+  ]);
+
+  const [branchRes, bankRes] = await Promise.all([
+    supabase
+      .from("locations")
+      .select("address, phone, gstin")
+      .eq("id", locationId)
+      .maybeSingle(),
+    supabase
+      .from("bank_accounts")
+      .select("upi_id")
+      .eq("show_on_invoice", true)
+      .eq("active", true)
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
   return (
     <>
-      <PageHeader title="Counter" description={locationName} />
+      <PageHeader
+        title="Counter"
+        description={`${locationName} · ${session.terminal}`}
+      />
 
-      <div className="space-y-4">
-        <PosScreen
-          locationId={user.locationId}
-          locationName={locationName}
-          sessionId={session?.id ?? null}
-          initialCatalog={catalog}
-          heldBills={holds}
-          staffName={user.name}
-          shopName={bizRes.data?.legal_name ?? "Sri Varuni Fashion Jewellery"}
-          gstin={bizRes.data?.gstin ?? null}
-          permissions={{
-            canDiscount: can(user, "pos.discount"),
-            canCoupon: can(user, "pos.coupon"),
-            canHold: can(user, "pos.hold"),
-          }}
-        />
-
-        {session && (
-          <RegisterPanel
-            locationId={user.locationId}
-            locationName={locationName}
-            sessionId={session.id}
-            openedAt={session.openedAt}
-            floatPaise={session.openingFloatPaise}
-            canOpen={can(user, "pos.register_open")}
-            canClose={can(user, "pos.register_close")}
-          />
-        )}
-      </div>
+      <PosScreen
+        locationId={locationId}
+        locationName={locationName}
+        sessionId={session.id}
+        terminal={session.terminal}
+        openingFloatPaise={session.openingFloatPaise}
+        initialCatalog={catalog}
+        heldBills={holds}
+        sellers={sellers}
+        branches={branches}
+        canChooseBranch={canChooseBranch}
+        staffName={user.name}
+        shopName={bizRes.data?.legal_name ?? "Sri Varuni Fashion Jewellery"}
+        // A branch may hold its own GSTIN when registered in another
+        // state; it takes precedence over the company's.
+        gstin={branchRes.data?.gstin ?? bizRes.data?.gstin ?? null}
+        branchAddress={branchRes.data?.address ?? null}
+        branchPhone={branchRes.data?.phone ?? null}
+        invoiceTerms={bizRes.data?.invoice_terms ?? null}
+        invoiceFooter={bizRes.data?.invoice_footer ?? null}
+        upiId={bankRes.data?.upi_id ?? null}
+        homeState={bizRes.data?.home_state ?? "Telangana"}
+        canCloseRegister={can(user, "pos.register_close")}
+        permissions={{
+          canDiscount: can(user, "pos.discount"),
+          canCoupon: can(user, "pos.coupon"),
+          canHold: can(user, "pos.hold"),
+        }}
+      />
     </>
   );
 }

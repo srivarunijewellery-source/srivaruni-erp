@@ -119,3 +119,12 @@ export function CopyIcon({ className, size }: IconProps) {
     </svg>
   );
 }
+
+export function PersonIcon({ className, size }: IconProps) {
+  return (
+    <svg {...SVG_PROPS} className={base(className, size)}>
+      <circle cx="10" cy="7" r="3" />
+      <path d="M4.5 16.5a5.5 5.5 0 0 1 11 0" />
+    </svg>
+  );
+}

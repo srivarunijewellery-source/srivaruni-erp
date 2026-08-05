@@ -34,7 +34,13 @@ export interface CatalogItem {
 export interface QueuedSale {
   client_uuid: string;
   location_id: string;
-  lines: Array<{ item_id: string; qty: number; unit_price_paise: number; discount_paise: number }>;
+  lines: Array<{
+    item_id: string;
+    qty: number;
+    unit_price_paise: number;
+    discount_paise: number;
+    sold_by?: string | null;
+  }>;
   payments: Array<{
     method: string;
     amount_paise: number;
@@ -42,6 +48,7 @@ export interface QueuedSale {
     account_id?: string | null;
   }>;
   customer_id: string | null;
+  sold_by?: string | null;
   coupon_id: string | null;
   manual_discount_paise: number;
   rung_at: string;

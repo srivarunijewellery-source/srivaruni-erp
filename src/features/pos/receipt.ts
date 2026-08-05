@@ -17,22 +17,37 @@ export interface ReceiptLine {
   qty: number;
   unitPaise: number;
   totalPaise: number;
+  hsn?: string | null;
 }
 
 export interface ReceiptData {
   shopName: string;
   gstin: string | null;
   locationName: string;
+  branchAddress?: string | null;
+  branchPhone?: string | null;
   billNo: string;
   dateText: string;
+  /** Everyone credited on this invoice, already joined into one line.
+   *  The cashier is deliberately not printed -- the customer has no use
+   *  for who operated the till, only for who served them. */
   staffName: string;
   customerName: string | null;
   customerPhone: string | null;
+  customerGstin?: string | null;
   lines: ReceiptLine[];
   grossPaise: number;
   discountPaise: number;
+  /** Tax split, so the slip is a usable tax invoice rather than a till roll. */
+  taxablePaise?: number;
+  cgstPaise?: number;
+  sgstPaise?: number;
+  igstPaise?: number;
   totalPaise: number;
   payments: Array<{ method: string; amount_paise: number; reference?: string }>;
+  terms?: string | null;
+  footer?: string | null;
+  upiId?: string | null;
 }
 
 const FRAME_ID = "sv-receipt-frame";
@@ -60,19 +75,54 @@ function wrap(text: string, width = 22): string[] {
   return out.length > 0 ? out : [text];
 }
 
+/** Amount in words — Indian convention, because a tax invoice is
+ *  expected to carry it and customers do check it. */
+function inWords(paise: number): string {
+  const ones = ["", "one", "two", "three", "four", "five", "six", "seven", "eight",
+    "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen",
+    "seventeen", "eighteen", "nineteen"];
+  const tens = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy",
+    "eighty", "ninety"];
+
+  const two = (n: number): string =>
+    n < 20 ? (ones[n] ?? "") : `${tens[Math.floor(n / 10)] ?? ""}${n % 10 ? " " + (ones[n % 10] ?? "") : ""}`;
+
+  const rupees = Math.floor(paise / 100);
+  if (rupees === 0) return "zero";
+
+  const parts: string[] = [];
+  const crore = Math.floor(rupees / 10000000);
+  const lakh = Math.floor((rupees % 10000000) / 100000);
+  const thousand = Math.floor((rupees % 100000) / 1000);
+  const hundred = Math.floor((rupees % 1000) / 100);
+  const rest = rupees % 100;
+
+  if (crore) parts.push(`${two(crore)} crore`);
+  if (lakh) parts.push(`${two(lakh)} lakh`);
+  if (thousand) parts.push(`${two(thousand)} thousand`);
+  if (hundred) parts.push(`${ones[hundred]} hundred`);
+  if (rest) parts.push(two(rest));
+
+  return parts.join(" ");
+}
+
 export function receiptHtml(d: ReceiptData): string {
+  const hasSplit =
+    (d.cgstPaise ?? 0) > 0 || (d.sgstPaise ?? 0) > 0 || (d.igstPaise ?? 0) > 0;
+
   const rows = d.lines
-    .map((l) => {
-      const names = wrap(l.name);
+    .map((l, i) => {
+      const names = wrap(l.name, 20);
       const first = names[0] ?? l.name;
       const rest = names.slice(1);
       return `
 <tr>
-  <td colspan="3" class="nm">${esc(first)}</td>
-</tr>${rest.map((r) => `<tr><td colspan="3" class="nm">${esc(r)}</td></tr>`).join("")}
+  <td class="n">${i + 1}</td>
+  <td colspan="2" class="nm">${esc(first)}</td>
+</tr>${rest.map((r) => `<tr><td></td><td colspan="2" class="nm">${esc(r)}</td></tr>`).join("")}
 <tr>
-  <td class="q">${l.qty} × ${rupees(l.unitPaise)}</td>
   <td></td>
+  <td class="q">${l.qty} &times; ${rupees(l.unitPaise)}</td>
   <td class="amt">${rupees(l.totalPaise)}</td>
 </tr>`;
     })
@@ -82,7 +132,7 @@ export function receiptHtml(d: ReceiptData): string {
     .map(
       (p) =>
         `<tr><td colspan="2">${esc(p.method.toUpperCase())}${
-          p.reference ? ` ${esc(p.reference)}` : ""
+          p.reference ? ` <span class="q">${esc(p.reference)}</span>` : ""
         }</td><td class="amt">${rupees(p.amount_paise)}</td></tr>`,
     )
     .join("");
@@ -101,50 +151,58 @@ export function receiptHtml(d: ReceiptData): string {
   }
   .c { text-align: center; }
   .b { font-weight: bold; }
-  .big { font-size: 14px; }
-  hr { border: none; border-top: 1px dashed #000; margin: 2mm 0; }
+  .big { font-size: 15px; letter-spacing: 0.5px; }
+  .sm { font-size: 9.5px; }
+  hr { border: none; border-top: 1px dashed #000; margin: 1.8mm 0; }
+  .solid { border-top: 1px solid #000; }
   table { width: 100%; border-collapse: collapse; }
   td { vertical-align: top; padding: 0; }
+  .n { width: 5mm; font-size: 9.5px; }
   .nm { word-break: break-word; }
-  .q { font-size: 10px; }
+  .q { font-size: 9.5px; }
   .amt { text-align: right; white-space: nowrap; }
-  .tot td { font-size: 13px; font-weight: bold; padding-top: 1mm; }
+  .tot td { font-size: 14px; font-weight: bold; padding: 1mm 0; }
+  .head { padding: 1mm 0; }
 </style></head>
 <body>
   <div class="c b big">${esc(d.shopName)}</div>
-  <div class="c">${esc(d.locationName)}</div>
-  ${d.gstin ? `<div class="c">GSTIN ${esc(d.gstin)}</div>` : ""}
+  <div class="c sm">${esc(d.locationName)}</div>
+  ${d.branchAddress ? `<div class="c sm">${esc(d.branchAddress)}</div>` : ""}
+  ${d.branchPhone ? `<div class="c sm">Ph ${esc(d.branchPhone)}</div>` : ""}
+  ${d.gstin ? `<div class="c sm">GSTIN ${esc(d.gstin)}</div>` : ""}
+  <hr class="solid" />
+  <div class="c b">TAX INVOICE</div>
   <hr />
-  <table>
-    <tr><td>Bill</td><td></td><td class="amt">${esc(d.billNo)}</td></tr>
-    <tr><td>Date</td><td></td><td class="amt">${esc(d.dateText)}</td></tr>
-    <tr><td>Served by</td><td></td><td class="amt">${esc(d.staffName)}</td></tr>
-    ${
-      d.customerName || d.customerPhone
-        ? `<tr><td>Customer</td><td></td><td class="amt">${esc(
-            d.customerName ?? d.customerPhone ?? "",
-          )}</td></tr>`
-        : ""
-    }
+  <table class="sm">
+    <tr><td>Invoice</td><td class="amt b">${esc(d.billNo)}</td></tr>
+    <tr><td>Date</td><td class="amt">${esc(d.dateText)}</td></tr>
+    <tr><td>Salesman</td><td class="amt">${esc(d.staffName)}</td></tr>
+    ${d.customerName ? `<tr><td>Customer</td><td class="amt">${esc(d.customerName)}</td></tr>` : ""}
+    ${d.customerPhone ? `<tr><td>Phone</td><td class="amt">${esc(d.customerPhone)}</td></tr>` : ""}
+    ${d.customerGstin ? `<tr><td>Cust GSTIN</td><td class="amt">${esc(d.customerGstin)}</td></tr>` : ""}
   </table>
   <hr />
   <table>${rows}</table>
-  <hr />
+  <hr class="solid" />
   <table>
     <tr><td colspan="2">Subtotal</td><td class="amt">${rupees(d.grossPaise)}</td></tr>
-    ${
-      d.discountPaise > 0
-        ? `<tr><td colspan="2">Discount</td><td class="amt">-${rupees(d.discountPaise)}</td></tr>`
-        : ""
-    }
+    ${d.discountPaise > 0
+      ? `<tr><td colspan="2">Discount</td><td class="amt">-${rupees(d.discountPaise)}</td></tr>` : ""}
+    ${hasSplit ? `<tr><td colspan="2" class="q">Taxable value</td><td class="amt q">${rupees(d.taxablePaise ?? 0)}</td></tr>` : ""}
+    ${(d.cgstPaise ?? 0) > 0 ? `<tr><td colspan="2" class="q">CGST</td><td class="amt q">${rupees(d.cgstPaise ?? 0)}</td></tr>` : ""}
+    ${(d.sgstPaise ?? 0) > 0 ? `<tr><td colspan="2" class="q">SGST</td><td class="amt q">${rupees(d.sgstPaise ?? 0)}</td></tr>` : ""}
+    ${(d.igstPaise ?? 0) > 0 ? `<tr><td colspan="2" class="q">IGST</td><td class="amt q">${rupees(d.igstPaise ?? 0)}</td></tr>` : ""}
     <tr class="tot"><td colspan="2">TOTAL</td><td class="amt">${rupees(d.totalPaise)}</td></tr>
   </table>
+  <div class="sm">Rupees ${esc(inWords(d.totalPaise))} only</div>
   <hr />
-  <table>${pays}</table>
+  <table class="sm">${pays}</table>
+  ${d.upiId ? `<hr /><div class="c sm">UPI ${esc(d.upiId)}</div>` : ""}
   <hr />
-  <div class="c">Prices are inclusive of GST</div>
-  <div class="c">Thank you, do visit again</div>
-  <div class="c" style="margin-top:3mm">.</div>
+  ${d.terms ? `<div class="sm">${esc(d.terms)}</div><hr />` : ""}
+  <div class="c">${esc(d.footer ?? "Thank you, do visit again")}</div>
+  <div class="c sm">Prices are inclusive of GST</div>
+  <div class="c" style="margin-top:4mm">.</div>
 </body></html>`;
 }
 

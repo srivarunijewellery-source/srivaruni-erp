@@ -11,6 +11,8 @@ export interface SaleLine {
   qty: number;
   unit_price_paise: number;
   discount_paise: number;
+  /** Credited seller for this line. Falls back to the bill's seller. */
+  sold_by?: string | null;
 }
 
 export interface SalePayment {
@@ -26,6 +28,7 @@ export interface FinaliseInput {
   lines: SaleLine[];
   payments: SalePayment[];
   customer_id?: string | null;
+  sold_by?: string | null;
   coupon_id?: string | null;
   manual_discount_paise?: number;
   rung_at?: string;
@@ -51,7 +54,7 @@ export async function finaliseSale(input: FinaliseInput): Promise<Result<string>
     p_lines: input.lines,
     p_payments: input.payments,
     p_customer: input.customer_id ?? null,
-    p_sold_by: null,
+    p_sold_by: input.sold_by ?? null,
     p_coupon: input.coupon_id ?? null,
     p_manual_discount_paise: input.manual_discount_paise ?? 0,
     p_rung_at: input.rung_at ?? new Date().toISOString(),

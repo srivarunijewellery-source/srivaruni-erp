@@ -60,8 +60,17 @@ export function CustomerPanel({
   const [hits, setHits] = useState<CustomerHit[]>([]);
   const [extras, setExtras] = useState<Extras | null>(null);
   const [adding, setAdding] = useState(false);
-  const [newName, setNewName] = useState("");
   const [addError, setAddError] = useState<string | null>(null);
+  const [draft, setDraft] = useState({
+    name: "",
+    email: "",
+    city: "",
+    state: "",
+    gstin: "",
+    dob: "",
+    anniversary: "",
+  });
+  const [more, setMore] = useState(false);
 
   useEffect(() => {
     if (!customer) {
@@ -132,20 +141,113 @@ export function CustomerPanel({
 
           {adding && (
             <div className="space-y-2 rounded-control border border-border p-2.5">
-              <div>
-                <Label htmlFor="newPhone">Phone</Label>
-                <Input id="newPhone" value={term} onChange={(e) => setTerm(e.target.value)} />
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div>
+                  <Label htmlFor="newPhone">Phone</Label>
+                  <Input
+                    id="newPhone"
+                    value={term}
+                    onChange={(e) => setTerm(e.target.value)}
+                    placeholder="98765 43210"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="newName">Name</Label>
+                  <Input
+                    id="newName"
+                    value={draft.name}
+                    onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                  />
+                </div>
               </div>
-              <div>
-                <Label htmlFor="newName">Name</Label>
-                <Input
-                  id="newName"
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  placeholder="Optional"
-                />
-              </div>
+
+              <p className="text-2xs text-text-muted">
+                +91 is added automatically if you leave it off — WhatsApp will not
+                deliver to a bare ten-digit number, and it fails silently rather than
+                telling you.
+              </p>
+
+              {!more ? (
+                <button
+                  type="button"
+                  onClick={() => setMore(true)}
+                  className="text-2xs text-brand hover:underline"
+                >
+                  Add more details
+                </button>
+              ) : (
+                <div className="space-y-2 border-t border-border pt-2">
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <div>
+                      <Label htmlFor="newEmail">Email</Label>
+                      <Input
+                        id="newEmail"
+                        type="email"
+                        value={draft.email}
+                        onChange={(e) => setDraft({ ...draft, email: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="newCity">City</Label>
+                      <Input
+                        id="newCity"
+                        value={draft.city}
+                        onChange={(e) => setDraft({ ...draft, city: e.target.value })}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="newState">State</Label>
+                    <Input
+                      id="newState"
+                      value={draft.state}
+                      onChange={(e) => setDraft({ ...draft, state: e.target.value })}
+                      placeholder="Telangana"
+                    />
+                    <p className="mt-1 text-2xs text-text-muted">
+                      Decides CGST + SGST versus IGST on their invoices. Leave blank for a
+                      local walk-in.
+                    </p>
+                  </div>
+
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <div>
+                      <Label htmlFor="newDob">Birthday</Label>
+                      <Input
+                        id="newDob"
+                        type="date"
+                        value={draft.dob}
+                        onChange={(e) => setDraft({ ...draft, dob: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="newAnniv">Anniversary</Label>
+                      <Input
+                        id="newAnniv"
+                        type="date"
+                        value={draft.anniversary}
+                        onChange={(e) =>
+                          setDraft({ ...draft, anniversary: e.target.value })
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="newGstin">GSTIN</Label>
+                    <Input
+                      id="newGstin"
+                      value={draft.gstin}
+                      onChange={(e) => setDraft({ ...draft, gstin: e.target.value })}
+                      placeholder="For a business buyer"
+                    />
+                  </div>
+                </div>
+              )}
+
               {addError && <p className="text-2xs text-status-danger-fg">{addError}</p>}
+
               <div className="flex gap-2">
                 <Button
                   size="sm"
@@ -153,12 +255,21 @@ export function CustomerPanel({
                   onClick={() =>
                     start(async () => {
                       setAddError(null);
-                      const r = await quickAddCustomer(term, newName);
+                      const r = await quickAddCustomer({ ...draft, phone: term });
                       if (r.ok) {
                         onPick(r.data);
                         setAdding(false);
+                        setMore(false);
                         setTerm("");
-                        setNewName("");
+                        setDraft({
+                          name: "",
+                          email: "",
+                          city: "",
+                          state: "",
+                          gstin: "",
+                          dob: "",
+                          anniversary: "",
+                        });
                         setHits([]);
                       } else setAddError(r.error);
                     })

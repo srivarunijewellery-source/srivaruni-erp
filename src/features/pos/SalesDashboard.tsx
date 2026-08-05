@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -9,7 +10,14 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { formatPaise } from "@/lib/money";
 import { formatDate } from "@/lib/format";
 import { ROUTES } from "@/config/nav";
-import type { BranchSales, RecentBill, RegisterStatus } from "./dashboard-queries";
+import { BillSellerEditor } from "./BillSellerEditor";
+import type { Seller } from "./queries";
+import type {
+  BranchSales,
+  RecentBill,
+  RegisterStatus,
+  SalespersonRow,
+} from "./dashboard-queries";
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 
@@ -17,16 +25,21 @@ export function SalesDashboard({
   branches,
   registers,
   recent,
+  sellers,
+  staffList,
   from,
   to,
 }: {
   branches: BranchSales[];
   registers: RegisterStatus[];
   recent: RecentBill[];
+  sellers: SalespersonRow[];
+  staffList: Seller[];
   from: string;
   to: string;
 }) {
   const router = useRouter();
+  const [editing, setEditing] = useState<{ id: string; no: string } | null>(null);
 
   function go(f: string, t: string) {
     router.push(`${ROUTES.sales}?from=${f}&to=${t}`);
@@ -193,6 +206,39 @@ export function SalesDashboard({
         </CardBody>
       </Card>
 
+      {/* ------------------------------------------------- salespeople */}
+      <Card>
+        <CardHeader className="flex items-center justify-between gap-2">
+          <span className="font-medium">Who sold what</span>
+          <span className="text-2xs text-text-muted">credited per line</span>
+        </CardHeader>
+        <CardBody className="p-0">
+          {sellers.length === 0 ? (
+            <p className="px-4 py-6 text-sm text-text-muted">No sales in this period.</p>
+          ) : (
+            <ul className="divide-y divide-border">
+              {sellers.map((s) => (
+                <li key={s.staffId} className="flex flex-wrap items-center gap-3 px-4 py-3">
+                  <div className="min-w-36 flex-1">
+                    <p className="text-sm font-medium">{s.staffName}</p>
+                    <p className="text-2xs text-text-muted">
+                      {s.pieces} pieces across {s.billsTouched} bill
+                      {s.billsTouched === 1 ? "" : "s"}
+                      {s.locationCode ? ` · ${s.locationCode}` : ""}
+                    </p>
+                  </div>
+                  <span className="font-mono text-sm">{formatPaise(s.soldPaise)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="border-t border-border px-4 py-2.5 text-2xs text-text-muted">
+            A bill split between two people counts for both, so these add up to the
+            revenue above rather than double-counting it.
+          </p>
+        </CardBody>
+      </Card>
+
       {/* ------------------------------------------------------- bills */}
       <Card>
         <CardHeader className="font-medium">Recent bills</CardHeader>
@@ -226,12 +272,30 @@ export function SalesDashboard({
                   >
                     {formatPaise(r.totalPaise)}
                   </span>
+                  {r.status === "final" && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setEditing({ id: r.id, no: r.billNo })}
+                    >
+                      Salesman
+                    </Button>
+                  )}
                 </li>
               ))}
             </ul>
           )}
         </CardBody>
       </Card>
+
+      {editing && (
+        <BillSellerEditor
+          billId={editing.id}
+          billNo={editing.no}
+          sellers={staffList}
+          onClose={() => setEditing(null)}
+        />
+      )}
 
       <p className="px-1 text-2xs text-text-muted">
         These are revenue figures, not profit. Cost of goods is not posted yet — it needs

@@ -27,6 +27,11 @@ export interface MetaResult<T> {
   error?: string;
   /** Meta's own numeric code — worth surfacing, its messages are specific. */
   code?: number;
+  /** The exact HTTP status Meta returned. */
+  httpStatus?: number;
+  /** The full parsed JSON body, success or failure — for anything that
+   *  needs to show the actual wire response rather than a summary. */
+  raw?: unknown;
 }
 
 async function call<T>(
@@ -59,10 +64,12 @@ async function call<T>(
           payload?.error?.message ??
           `Meta returned ${res.status}.`,
         code: payload?.error?.code,
+        httpStatus: res.status,
+        raw: payload,
       };
     }
 
-    return { ok: true, data: payload as T };
+    return { ok: true, data: payload as T, httpStatus: res.status, raw: payload };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Network error." };
   }

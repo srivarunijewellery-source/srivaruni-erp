@@ -18,6 +18,7 @@ import {
   syncWhatsappTemplates,
   testWhatsappConnection,
 } from "./whatsapp-actions";
+import { TestSendPanel } from "./TestSendPanel";
 import type {
   EventGroup,
   EventRow,
@@ -250,6 +251,8 @@ export function WhatsappConsole({
 
       {notice && <p className="text-sm text-status-done-fg">{notice}</p>}
       <FieldError>{error}</FieldError>
+
+      <TestSendPanel templates={templates} />
 
       <Card>
         <CardHeader className="flex flex-wrap items-center justify-between gap-2">

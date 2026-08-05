@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Field";
+import { Input, Label, Select } from "@/components/ui/Field";
 import { Badge } from "@/components/ui/Badge";
 import { formatPaise } from "@/lib/money";
 import {
@@ -25,10 +25,12 @@ import {
   lookupCustomerExtras,
   type FinaliseInput,
 } from "./actions";
+import { PersonIcon } from "@/components/ui/Icon";
 import { PaymentPanel } from "./PaymentPanel";
+import { CloseRegisterPanel } from "./CloseRegisterPanel";
 import { CustomerPanel } from "./CustomerPanel";
 import { printReceipt, reprintLast, type ReceiptData } from "./receipt";
-import type { CustomerHit, HeldBill, PosCatalogItem } from "./queries";
+import type { Branch, CustomerHit, HeldBill, PosCatalogItem, Seller } from "./queries";
 
 export interface CartLine {
   itemId: string;
@@ -42,6 +44,8 @@ export interface CartLine {
   stockAtAdd: number;
   discountMode?: "rs" | "pct";
   discountInput?: string;
+  /** Null means "whoever is on the bill" — resolved at save. */
+  soldBy?: string | null;
 }
 
 export interface Permissions {
@@ -59,22 +63,47 @@ export function PosScreen({
   locationId,
   locationName,
   sessionId,
+  terminal,
+  openingFloatPaise,
   initialCatalog,
   heldBills,
+  sellers,
+  branches,
+  canChooseBranch,
+  canCloseRegister,
   permissions,
   staffName,
   shopName,
   gstin,
+  branchAddress,
+  branchPhone,
+  invoiceTerms,
+  invoiceFooter,
+  upiId,
+  homeState,
 }: {
   locationId: string;
   locationName: string;
-  sessionId: string | null;
+  sessionId: string;
+  terminal: string;
+  openingFloatPaise: number;
   initialCatalog: PosCatalogItem[];
   heldBills: HeldBill[];
+  sellers: Seller[];
+  branches: Branch[];
+  canChooseBranch: boolean;
+  canCloseRegister: boolean;
   permissions: Permissions;
   staffName: string;
   shopName: string;
   gstin: string | null;
+  branchAddress: string | null;
+  branchPhone: string | null;
+  invoiceTerms: string | null;
+  invoiceFooter: string | null;
+  upiId: string | null;
+  /** Compared against the customer's state to decide the tax split. */
+  homeState: string;
 }) {
   const [pending, start] = useTransition();
   const [online, setOnline] = useState(true);
@@ -97,6 +126,13 @@ export function PosScreen({
   } | null>(null);
   const [manualDiscount, setManualDiscount] = useState("");
   const [manualMode, setManualMode] = useState<"rs" | "pct">("rs");
+  // The SALESMAN, which is not the cashier. The person at the keyboard
+  // is usually ringing up someone else's sale, so defaulting to the
+  // signed-in user silently credits the till operator for the whole
+  // floor's work. It starts empty and has to be chosen.
+  const [billSeller, setBillSeller] = useState<string>("");
+  // Which line's salesman picker is open.
+  const [sellerFor, setSellerFor] = useState<string | null>(null);
   const [showPay, setShowPay] = useState(false);
   const [printAfter, setPrintAfter] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -107,6 +143,7 @@ export function PosScreen({
   const [lastReceipt, setLastReceipt] = useState<ReceiptData | null>(null);
 
   const scanRef = useRef<HTMLInputElement>(null);
+  const [showClose, setShowClose] = useState(false);
 
   /* ------------------------------------------------ connectivity + cache */
 
@@ -155,6 +192,7 @@ export function PosScreen({
       lines: s.lines,
       payments: s.payments,
       customer_id: s.customer_id,
+      sold_by: s.sold_by,
       coupon_id: s.coupon_id,
       manual_discount_paise: s.manual_discount_paise,
       rung_at: s.rung_at,
@@ -332,15 +370,52 @@ export function PosScreen({
       qty: l.qty,
       unit_price_paise: l.unitPaise,
       discount_paise: l.discountPaise,
+      sold_by: l.soldBy ?? billSeller ?? null,
     }));
+
+    // Tax is worked out the same way the server does, so the printed
+    // slip matches the posted invoice to the paisa. Prices are
+    // GST-inclusive, so tax is backed out rather than added on.
+    const spread = totals.manual + totals.couponPaise;
+    const base = totals.gross - totals.lineDisc;
+    const taxable = cart.reduce((sum, l) => {
+      const lineNet = l.unitPaise * l.qty - l.discountPaise;
+      const share = base > 0 ? Math.round((spread * lineNet) / base) : 0;
+      const finalNet = lineNet - share;
+      return sum + Math.round((finalNet * 100) / (100 + l.gstRate));
+    }, 0);
+    const taxTotal = totals.net - taxable;
+    const half = Math.floor(taxTotal / 2);
+
+    // Out-of-state supply is IGST at the full rate; anything else splits
+    // into CGST and SGST. A customer with no state recorded is treated
+    // as local, which is the safe default at a walk-in counter.
+    const isInterstate = Boolean(
+      customer?.state &&
+        customer.state.trim().toLowerCase() !== homeState.trim().toLowerCase(),
+    );
 
     const receipt: ReceiptData = {
       shopName,
       gstin,
       locationName,
+      branchAddress,
+      branchPhone,
       billNo: "—",
       dateText: new Date().toLocaleString("en-IN"),
-      staffName,
+      // One field listing everyone credited on this invoice. The bill's
+      // salesman first, then anyone who took a line, de-duplicated --
+      // the customer wants to know who served them, not the mechanics
+      // of how credit was split internally.
+      staffName: Array.from(
+        new Set([
+          billSeller,
+          ...cart.map((l) => l.soldBy).filter((x): x is string => Boolean(x)),
+        ]),
+      )
+        .map((id) => sellers.find((x) => x.id === id)?.name)
+        .filter((n): n is string => Boolean(n))
+        .join(", "),
       customerName: customer?.name ?? null,
       customerPhone: customer?.phone ?? null,
       lines: cart.map((l) => ({
@@ -351,8 +426,16 @@ export function PosScreen({
       })),
       grossPaise: totals.gross,
       discountPaise: totals.lineDisc + totals.manual + totals.couponPaise,
+      taxablePaise: taxable,
+      cgstPaise: isInterstate ? 0 : half,
+      // The odd paisa goes to SGST so the halves add back exactly.
+      sgstPaise: isInterstate ? 0 : taxTotal - half,
+      igstPaise: isInterstate ? taxTotal : 0,
       totalPaise: totals.net,
       payments,
+      terms: invoiceTerms,
+      footer: invoiceFooter,
+      upiId,
     };
 
     start(async () => {
@@ -365,6 +448,7 @@ export function PosScreen({
         lines,
         payments,
         customer_id: customer?.id ?? null,
+        sold_by: billSeller || null,
         coupon_id: coupon?.id ?? null,
         manual_discount_paise: totals.manual,
         rung_at: rungAt,
@@ -379,6 +463,7 @@ export function PosScreen({
         await queueSale({
           ...input,
           customer_id: input.customer_id ?? null,
+          sold_by: input.sold_by ?? null,
           coupon_id: input.coupon_id ?? null,
           manual_discount_paise: input.manual_discount_paise ?? 0,
           rung_at: rungAt,
@@ -491,8 +576,38 @@ export function PosScreen({
               stock copy {staleMinutes} min old
             </span>
           )}
-          <span className="ml-auto text-2xs text-text-muted">
-            {locationName} · {staffName}
+          <span className="ml-auto flex items-center gap-2">
+            {canChooseBranch && branches.length > 1 ? (
+              <Select
+                aria-label="Branch"
+                value={locationId}
+                onChange={(e) => {
+                  // Changing branch means a different register and a
+                  // different catalogue, so the cart cannot come along.
+                  if (
+                    cart.length === 0 ||
+                    window.confirm("Switching branch will clear the cart. Continue?")
+                  ) {
+                    window.location.href = `/pos?branch=${e.target.value}`;
+                  }
+                }}
+                className="h-8 w-40 py-0 text-2xs"
+              >
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.code} — {b.name}
+                  </option>
+                ))}
+              </Select>
+            ) : (
+              <span className="text-2xs text-text-muted">{locationName}</span>
+            )}
+            <span className="text-2xs text-text-muted">{terminal}</span>
+            {canCloseRegister && (
+              <Button size="sm" variant="ghost" onClick={() => setShowClose(true)}>
+                Close register
+              </Button>
+            )}
           </span>
         </div>
 
@@ -609,9 +724,81 @@ export function PosScreen({
                     {formatPaise(l.unitPaise * l.qty - l.discountPaise)}
                   </span>
 
+                  {/* One tap opens the list. A dropdown on every row made
+                      the cart unreadable, but the credit has to be
+                      reachable without hunting for a hidden toggle. */}
+                  <button
+                    type="button"
+                    title={
+                      l.soldBy
+                        ? `Sold by ${sellers.find((x) => x.id === l.soldBy)?.name}`
+                        : "Same as the bill's salesman"
+                    }
+                    onClick={() => setSellerFor(sellerFor === l.itemId ? null : l.itemId)}
+                    className={`flex h-7 items-center gap-1 rounded-full border px-2 text-2xs transition-colors ${
+                      l.soldBy
+                        ? "border-brand bg-brand-subtle text-brand"
+                        : "border-border text-text-subtle hover:bg-surface-sunken"
+                    }`}
+                  >
+                    <PersonIcon size="size-3.5" />
+                    {l.soldBy
+                      ? (sellers.find((x) => x.id === l.soldBy)?.name ?? "").split(" ")[0]
+                      : "—"}
+                  </button>
+
                   <Button size="sm" variant="ghost" onClick={() => setQty(l.itemId, 0)}>
                     ×
                   </Button>
+
+                  {sellerFor === l.itemId && (
+                    <div className="w-full rounded-control border border-border bg-surface-sunken p-2">
+                      <p className="mb-1.5 text-2xs text-text-muted">
+                        Who sold {l.name}?
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCart((prev) =>
+                              prev.map((x) =>
+                                x.itemId === l.itemId ? { ...x, soldBy: null } : x,
+                              ),
+                            );
+                            setSellerFor(null);
+                          }}
+                          className={`rounded-control px-2.5 py-1 text-2xs ${
+                            !l.soldBy
+                              ? "bg-brand text-brand-fg"
+                              : "border border-border hover:bg-surface"
+                          }`}
+                        >
+                          Same as bill
+                        </button>
+                        {sellers.map((sp) => (
+                          <button
+                            key={sp.id}
+                            type="button"
+                            onClick={() => {
+                              setCart((prev) =>
+                                prev.map((x) =>
+                                  x.itemId === l.itemId ? { ...x, soldBy: sp.id } : x,
+                                ),
+                              );
+                              setSellerFor(null);
+                            }}
+                            className={`rounded-control px-2.5 py-1 text-2xs ${
+                              l.soldBy === sp.id
+                                ? "bg-brand text-brand-fg"
+                                : "border border-border hover:bg-surface"
+                            }`}
+                          >
+                            {sp.name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>
@@ -656,6 +843,27 @@ export function PosScreen({
         />
 
         <div className="rounded-card border border-border bg-surface p-3">
+          <div className="mb-3 space-y-1.5 border-b border-border pb-3">
+            <Label htmlFor="seller">Salesman</Label>
+            <Select
+              id="seller"
+              value={billSeller}
+              onChange={(e) => setBillSeller(e.target.value)}
+            >
+              <option value="">Choose who sold this</option>
+              {sellers.map((sp) => (
+                <option key={sp.id} value={sp.id}>
+                  {sp.name}
+                  {sp.isHere ? "" : " (other branch)"}
+                </option>
+              ))}
+            </Select>
+            <p className="text-2xs text-text-muted">
+              Billed by {staffName}. Every line goes to this person unless you tap the
+              badge beside it.
+            </p>
+          </div>
+
           <div className="space-y-1.5 text-sm">
             <Row label={`Items (${totals.count})`} value={formatPaise(totals.gross)} />
             {totals.lineDisc > 0 && (
@@ -717,10 +925,10 @@ export function PosScreen({
           <div className="mt-3 space-y-2">
             <Button
               className="w-full"
-              disabled={cart.length === 0 || pending}
+              disabled={cart.length === 0 || pending || !billSeller}
               onClick={() => setShowPay(true)}
             >
-              Take payment
+              {billSeller ? "Take payment" : "Choose a salesman first"}
             </Button>
             <div className="flex gap-2">
               {permissions.canHold && (
@@ -782,6 +990,16 @@ export function PosScreen({
           </div>
         )}
       </div>
+
+      {showClose && (
+        <CloseRegisterPanel
+          sessionId={sessionId}
+          terminal={terminal}
+          openingFloatPaise={openingFloatPaise}
+          unsent={queue.length}
+          onClose={() => setShowClose(false)}
+        />
+      )}
 
       {showPay && (
         <PaymentPanel
