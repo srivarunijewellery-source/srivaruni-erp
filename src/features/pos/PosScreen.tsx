@@ -86,7 +86,15 @@ export function PosScreen({
   const [scan, setScan] = useState("");
   const [search, setSearch] = useState("");
   const [customer, setCustomer] = useState<CustomerHit | null>(null);
-  const [coupon, setCoupon] = useState<{ id: string; code: string; value: string } | null>(null);
+  const [coupon, setCoupon] = useState<{
+    id: string;
+    code: string;
+    value: string;
+    kind: string;
+    discountBps: number;
+    discountPaise: number;
+    minPurchasePaise: number;
+  } | null>(null);
   const [manualDiscount, setManualDiscount] = useState("");
   const [manualMode, setManualMode] = useState<"rs" | "pct">("rs");
   const [showPay, setShowPay] = useState(false);
@@ -243,13 +251,36 @@ export function PosScreen({
     const lineDisc = cart.reduce((s, l) => s + l.discountPaise, 0);
     const manualN = Number(manualDiscount) || 0;
     const afterLines = gross - lineDisc;
-    const manual =
+    const manual = Math.min(
       manualMode === "pct"
         ? Math.round((afterLines * Math.min(manualN, 100)) / 100)
-        : Math.round(manualN * 100);
-    const net = Math.max(0, gross - lineDisc - manual);
-    return { gross, lineDisc, manual, net, count: cart.reduce((s, l) => s + l.qty, 0) };
-  }, [cart, manualDiscount, manualMode]);
+        : Math.round(manualN * 100),
+      afterLines,
+    );
+
+    // Same order the server uses: lines, then bill discount, then
+    // coupon. Computing the coupon on the pre-discount figure here
+    // would quote a total the server then refuses.
+    const afterManual = afterLines - manual;
+    let couponPaise = 0;
+    if (coupon && afterManual >= coupon.minPurchasePaise) {
+      couponPaise =
+        coupon.kind === "percent"
+          ? Math.round((afterManual * coupon.discountBps) / 10000)
+          : coupon.discountPaise;
+      couponPaise = Math.min(couponPaise, afterManual);
+    }
+
+    const net = Math.max(0, afterManual - couponPaise);
+    return {
+      gross,
+      lineDisc,
+      manual,
+      couponPaise,
+      net,
+      count: cart.reduce((s, l) => s + l.qty, 0),
+    };
+  }, [cart, manualDiscount, manualMode, coupon]);
 
   function setQty(itemId: string, qty: number) {
     setCart((prev) =>
@@ -319,7 +350,7 @@ export function PosScreen({
         totalPaise: l.unitPaise * l.qty - l.discountPaise,
       })),
       grossPaise: totals.gross,
-      discountPaise: totals.lineDisc + totals.manual,
+      discountPaise: totals.lineDisc + totals.manual + totals.couponPaise,
       totalPaise: totals.net,
       payments,
     };
@@ -657,7 +688,16 @@ export function PosScreen({
                 )}
               </>
             )}
-            {coupon && <Row label={`Coupon ${coupon.code}`} value={coupon.value} />}
+            {coupon && (
+              <Row
+                label={`Coupon ${coupon.code}`}
+                value={
+                  totals.couponPaise > 0
+                    ? `− ${formatPaise(totals.couponPaise)}`
+                    : `needs ${formatPaise(coupon.minPurchasePaise)}`
+                }
+              />
+            )}
             <div className="mt-2 flex items-center justify-between border-t border-border pt-2">
               <span className="font-medium">To pay</span>
               <span className="font-mono text-xl">{formatPaise(totals.net)}</span>

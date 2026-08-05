@@ -42,6 +42,7 @@ export const ROUTES = {
   whatsapp: "/comms/whatsapp",
   roles: "/team/roles",
   pos: "/pos",
+  sales: "/sales",
   expenses: "/accounts/expenses",
   journals: "/accounts/journals",
   trialBalance: "/accounts/trial-balance",
@@ -118,7 +119,10 @@ export const NAV_GROUPS: readonly NavGroup[] = [
   },
   {
     label: "Counter",
-    items: [{ href: ROUTES.pos, label: "Billing", requires: "pos.sell" }],
+    items: [
+      { href: ROUTES.pos,   label: "Billing", requires: "pos.sell" },
+      { href: ROUTES.sales, label: "Sales",   requires: "stock.view" },
+    ],
   },
   {
     // Expenses first: it is the one page used daily. The rest are

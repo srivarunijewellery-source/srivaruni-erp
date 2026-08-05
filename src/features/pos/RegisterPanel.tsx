@@ -29,6 +29,7 @@ export function RegisterPanel({
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [openFloat, setOpenFloat] = useState("");
+  const [terminal, setTerminal] = useState("Counter 1");
   const [counted, setCounted] = useState("");
   const [note, setNote] = useState("");
   const [closing, setClosing] = useState(false);
@@ -37,7 +38,7 @@ export function RegisterPanel({
   function doOpen() {
     start(async () => {
       setError(null);
-      const r = await openRegister(locationId, Number(openFloat) || 0);
+      const r = await openRegister(locationId, Number(openFloat) || 0, terminal);
       if (r.ok) router.refresh();
       else setError(r.error);
     });
@@ -62,11 +63,21 @@ export function RegisterPanel({
         <CardHeader className="font-medium">Open the register</CardHeader>
         <CardBody className="space-y-3">
           <p className="text-sm text-text-muted">
-            {locationName} has no register open. Sales can still be rung up, but they
+            Name the counter if this branch runs more than one at a time — each keeps its
+            own drawer and is counted separately. {locationName} has no register open. Sales can still be rung up, but they
             will not be attached to a day, so the drawer cannot be reconciled at close.
           </p>
           {canOpen ? (
             <div className="flex flex-wrap items-end gap-2">
+              <div>
+                <Label htmlFor="terminal">Counter</Label>
+                <Input
+                  id="terminal"
+                  value={terminal}
+                  onChange={(e) => setTerminal(e.target.value)}
+                  className="w-36"
+                />
+              </div>
               <div>
                 <Label htmlFor="float">Opening cash ₹</Label>
                 <Input

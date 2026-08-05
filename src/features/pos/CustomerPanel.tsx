@@ -5,13 +5,24 @@ import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Field";
 import { Badge } from "@/components/ui/Badge";
 import { formatPaise } from "@/lib/money";
-import { searchCustomersAction } from "./customer-actions";
+import { quickAddCustomer, searchCustomersAction } from "./customer-actions";
 import type { CustomerHit } from "./queries";
+
+export interface PickedCoupon {
+  id: string;
+  code: string;
+  value: string;
+  kind: string;
+  discountBps: number;
+  discountPaise: number;
+  minPurchasePaise: number;
+}
 
 interface Extras {
   history: Array<{ bill_no: string; bill_date: string; total_paise: number; items: number }>;
   coupons: Array<{
-    coupon_id: string; code: string; value: string;
+    coupon_id: string; code: string; value: string; kind: string;
+    discount_bps: number; discount_paise: number;
     min_purchase_paise: number; valid_to: string | null;
   }>;
 }
@@ -36,8 +47,8 @@ export function CustomerPanel({
   customer: CustomerHit | null;
   onPick: (c: CustomerHit) => void;
   onClear: () => void;
-  coupon: { id: string; code: string; value: string } | null;
-  onCoupon: (c: { id: string; code: string; value: string } | null) => void;
+  coupon: PickedCoupon | null;
+  onCoupon: (c: PickedCoupon | null) => void;
   canCoupon: boolean;
   loadExtras: (id: string) => Promise<
     { ok: true; data: Extras } | { ok: false; error: string }
@@ -48,6 +59,9 @@ export function CustomerPanel({
   const [term, setTerm] = useState("");
   const [hits, setHits] = useState<CustomerHit[]>([]);
   const [extras, setExtras] = useState<Extras | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [addError, setAddError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!customer) {
@@ -107,6 +121,58 @@ export function CustomerPanel({
               ))}
             </ul>
           )}
+          {/* A new face at the counter is the common case, not an edge
+              case -- sending someone to another screen to create the
+              customer loses the cart. */}
+          {!adding && term.trim().length >= 3 && hits.length === 0 && (
+            <Button size="sm" variant="secondary" onClick={() => setAdding(true)}>
+              Add &ldquo;{term.trim()}&rdquo; as a new customer
+            </Button>
+          )}
+
+          {adding && (
+            <div className="space-y-2 rounded-control border border-border p-2.5">
+              <div>
+                <Label htmlFor="newPhone">Phone</Label>
+                <Input id="newPhone" value={term} onChange={(e) => setTerm(e.target.value)} />
+              </div>
+              <div>
+                <Label htmlFor="newName">Name</Label>
+                <Input
+                  id="newName"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="Optional"
+                />
+              </div>
+              {addError && <p className="text-2xs text-status-danger-fg">{addError}</p>}
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  disabled={pending}
+                  onClick={() =>
+                    start(async () => {
+                      setAddError(null);
+                      const r = await quickAddCustomer(term, newName);
+                      if (r.ok) {
+                        onPick(r.data);
+                        setAdding(false);
+                        setTerm("");
+                        setNewName("");
+                        setHits([]);
+                      } else setAddError(r.error);
+                    })
+                  }
+                >
+                  {pending ? "Adding…" : "Add and use"}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setAdding(false)}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+
           <p className="text-2xs text-text-muted">
             Optional. A bill without a customer is a walk-in sale.
           </p>
@@ -143,7 +209,19 @@ export function CustomerPanel({
                           : undefined
                       }
                       onClick={() =>
-                        onCoupon(on ? null : { id: c.coupon_id, code: c.code, value: c.value })
+                        onCoupon(
+                          on
+                            ? null
+                            : {
+                                id: c.coupon_id,
+                                code: c.code,
+                                value: c.value,
+                                kind: c.kind,
+                                discountBps: c.discount_bps,
+                                discountPaise: c.discount_paise,
+                                minPurchasePaise: c.min_purchase_paise,
+                              },
+                        )
                       }
                       className={`rounded-control px-2.5 py-1 text-2xs transition-colors disabled:opacity-40 ${
                         on

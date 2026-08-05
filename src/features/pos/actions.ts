@@ -147,11 +147,13 @@ export async function resumeHold(billId: string): Promise<
 export async function openRegister(
   locationId: string,
   floatRupees: number,
+  terminal: string,
 ): Promise<Result<string>> {
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("open_register", {
     p_location: locationId,
     p_float_paise: Math.round((floatRupees || 0) * 100),
+    p_terminal: terminal || "Counter 1",
   });
   if (error) return err(toMessage(error));
   revalidatePath(ROUTES.pos);
@@ -179,7 +181,11 @@ export async function closeRegister(
 export async function lookupCustomerExtras(customerId: string): Promise<
   Result<{
     history: Array<{ bill_no: string; bill_date: string; total_paise: number; items: number }>;
-    coupons: Array<{ coupon_id: string; code: string; value: string; min_purchase_paise: number; valid_to: string | null }>;
+    coupons: Array<{
+      coupon_id: string; code: string; value: string; kind: string;
+      discount_bps: number; discount_paise: number;
+      min_purchase_paise: number; valid_to: string | null;
+    }>;
   }>
 > {
   const supabase = await createClient();
@@ -201,6 +207,9 @@ export async function lookupCustomerExtras(customerId: string): Promise<
       coupon_id: String(r.coupon_id),
       code: String(r.code),
       value: String(r.value),
+      kind: String(r.kind ?? "amount"),
+      discount_bps: Number(r.discount_bps ?? 0),
+      discount_paise: Number(r.discount_paise ?? 0),
       min_purchase_paise: Number(r.min_purchase_paise ?? 0),
       valid_to: r.valid_to ? String(r.valid_to) : null,
     })),

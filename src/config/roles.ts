@@ -47,7 +47,8 @@ export type Capability =
   | "pos.hold"
   | "pos.cancel_bill"
   | "pos.register_open"
-  | "pos.register_close";
+  | "pos.register_close"
+  | "stock.view";
 
 const RULES: Record<Capability, (r: Role) => boolean> = {
   // Creation is deliberately open. The control is at approval, so the
@@ -115,6 +116,7 @@ const RULES: Record<Capability, (r: Role) => boolean> = {
   "pos.cancel_bill": isManagerOrAbove,
   "pos.register_open": isManagerOrAbove,
   "pos.register_close": isManagerOrAbove,
+  "stock.view": () => true,
 };
 
 /**
