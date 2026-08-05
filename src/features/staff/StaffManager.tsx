@@ -21,11 +21,13 @@ const ROLE_TONE = {
 export function StaffManager({
   staff,
   locations,
+  roles,
   canManage,
   showInactive,
 }: {
   staff: StaffMember[];
   locations: Array<{ id: string; code: string; name: string }>;
+  roles: Array<{ id: string; name: string; tier: string; active: boolean }>;
   canManage: boolean;
   showInactive: boolean;
 }) {
@@ -81,6 +83,7 @@ export function StaffManager({
                 key={editing?.id ?? "new"}
                 member={editing}
                 locations={locations}
+                roles={roles}
                 pending={pending}
                 onSubmit={submit}
               />
@@ -159,11 +162,13 @@ export function StaffManager({
 function StaffForm({
   member,
   locations,
+  roles,
   pending,
   onSubmit,
 }: {
   member: StaffMember | null;
   locations: Array<{ id: string; code: string; name: string }>;
+  roles: Array<{ id: string; name: string; tier: string; active: boolean }>;
   pending: boolean;
   onSubmit: (fd: FormData) => void;
 }) {
@@ -177,11 +182,23 @@ function StaffForm({
           <Input id="name" name="name" required defaultValue={member?.name ?? ""} />
         </div>
         <div>
-          <Label htmlFor="role">Role</Label>
-          <Select id="role" name="role" defaultValue={member?.role ?? "staff"}>
-            <option value="staff">Staff</option>
-            <option value="manager">Manager</option>
-            <option value="owner">Owner</option>
+          <Label htmlFor="roleId">Role</Label>
+          <Select
+            id="roleId"
+            name="roleId"
+            defaultValue={member?.roleId ?? ""}
+            required
+          >
+            <option value="" disabled>
+              Pick a role
+            </option>
+            {roles
+              .filter((r) => r.active)
+              .map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name}
+                </option>
+              ))}
           </Select>
         </div>
         <div>
@@ -259,6 +276,11 @@ function StaffForm({
         <Label htmlFor="notes">Notes</Label>
         <Input id="notes" name="notes" defaultValue={member?.notes ?? ""} />
       </div>
+
+      <p className="text-2xs text-text-muted">
+        The role decides what this person can reach. Change what a role is allowed to do
+        under Team &rarr; Roles; it applies to everyone on that role at once.
+      </p>
 
       <label className="flex items-center gap-2 text-sm">
         <input

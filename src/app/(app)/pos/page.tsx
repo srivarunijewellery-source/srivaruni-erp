@@ -50,18 +50,6 @@ export default async function PosPage() {
       <PageHeader title="Counter" description={locationName} />
 
       <div className="space-y-4">
-        {!session && (
-          <RegisterPanel
-            locationId={user.locationId}
-            locationName={locationName}
-            sessionId={null}
-            openedAt={null}
-            floatPaise={0}
-            canOpen={can(user, "pos.register_open")}
-            canClose={can(user, "pos.register_close")}
-          />
-        )}
-
         <PosScreen
           locationId={user.locationId}
           locationName={locationName}

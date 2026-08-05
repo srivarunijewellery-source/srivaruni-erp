@@ -35,6 +35,8 @@ export interface ReceiptData {
   payments: Array<{ method: string; amount_paise: number; reference?: string }>;
 }
 
+const FRAME_ID = "sv-receipt-frame";
+
 const rupees = (paise: number) => (paise / 100).toFixed(2);
 
 function esc(s: string): string {
@@ -147,20 +149,60 @@ export function receiptHtml(d: ReceiptData): string {
 }
 
 export function printReceipt(d: ReceiptData): void {
-  const w = window.open("", "_blank", "width=380,height=640");
-  if (!w) {
-    // Popup blocked. Silent failure here would mean a counter that
-    // quietly stops printing, so say so.
-    alert("The receipt window was blocked. Allow popups for this site to print.");
+  // A hidden iframe, not window.open.
+  //
+  // window.open is treated as a popup and gets blocked unless the click
+  // is still on the stack -- and finalising a sale awaits a server
+  // action first, so by print time the browser no longer counts it as
+  // user-initiated. That is why printing worked sometimes and not
+  // others. An iframe has no such restriction.
+  const existing = document.getElementById(FRAME_ID);
+  if (existing) existing.remove();
+
+  const frame = document.createElement("iframe");
+  frame.id = FRAME_ID;
+  // Off-screen rather than display:none — a hidden iframe is not
+  // guaranteed to lay out, and an unlaid-out document prints blank.
+  frame.setAttribute(
+    "style",
+    "position:fixed;right:0;bottom:0;width:80mm;height:0;border:0;visibility:hidden;",
+  );
+  document.body.appendChild(frame);
+
+  const doc = frame.contentWindow?.document;
+  if (!doc) {
+    console.error("[receipt] could not open a print frame");
     return;
   }
-  w.document.write(receiptHtml(d));
-  w.document.close();
-  w.focus();
-  // Give the layout a moment before the print dialog, or the first
-  // receipt of a session can print blank.
-  setTimeout(() => {
-    w.print();
-    w.close();
-  }, 250);
+
+  doc.open();
+  doc.write(receiptHtml(d));
+  doc.close();
+
+  const fire = () => {
+    try {
+      frame.contentWindow?.focus();
+      frame.contentWindow?.print();
+    } catch (e) {
+      console.error("[receipt] print failed", e);
+    }
+    // Left in the DOM briefly: removing it immediately can cancel the
+    // job in some browsers before the dialog has taken the content.
+    window.setTimeout(() => frame.remove(), 60_000);
+  };
+
+  // Wait for the frame document to settle, or the first receipt of a
+  // session prints blank.
+  if (frame.contentWindow?.document.readyState === "complete") {
+    window.setTimeout(fire, 150);
+  } else {
+    frame.onload = () => window.setTimeout(fire, 150);
+    window.setTimeout(fire, 800); // fallback if onload never fires
+  }
+}
+
+/** Lets the counter re-print without ringing the sale again. */
+export function reprintLast(d: ReceiptData | null): void {
+  if (!d) return;
+  printReceipt(d);
 }

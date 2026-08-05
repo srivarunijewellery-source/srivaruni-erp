@@ -27,7 +27,7 @@ import {
 } from "./actions";
 import { PaymentPanel } from "./PaymentPanel";
 import { CustomerPanel } from "./CustomerPanel";
-import { printReceipt, type ReceiptData } from "./receipt";
+import { printReceipt, reprintLast, type ReceiptData } from "./receipt";
 import type { CustomerHit, HeldBill, PosCatalogItem } from "./queries";
 
 export interface CartLine {
@@ -40,6 +40,8 @@ export interface CartLine {
   gstRate: number;
   /** From the cached catalogue at the time it was added. */
   stockAtAdd: number;
+  discountMode?: "rs" | "pct";
+  discountInput?: string;
 }
 
 export interface Permissions {
@@ -86,11 +88,15 @@ export function PosScreen({
   const [customer, setCustomer] = useState<CustomerHit | null>(null);
   const [coupon, setCoupon] = useState<{ id: string; code: string; value: string } | null>(null);
   const [manualDiscount, setManualDiscount] = useState("");
+  const [manualMode, setManualMode] = useState<"rs" | "pct">("rs");
   const [showPay, setShowPay] = useState(false);
   const [printAfter, setPrintAfter] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [holds, setHolds] = useState<HeldBill[]>(heldBills);
+  // Kept so the counter can re-print without ringing the sale again —
+  // the printer jams, or the customer asks for a second copy.
+  const [lastReceipt, setLastReceipt] = useState<ReceiptData | null>(null);
 
   const scanRef = useRef<HTMLInputElement>(null);
 
@@ -235,10 +241,15 @@ export function PosScreen({
   const totals = useMemo(() => {
     const gross = cart.reduce((s, l) => s + l.unitPaise * l.qty, 0);
     const lineDisc = cart.reduce((s, l) => s + l.discountPaise, 0);
-    const manual = Math.round((Number(manualDiscount) || 0) * 100);
+    const manualN = Number(manualDiscount) || 0;
+    const afterLines = gross - lineDisc;
+    const manual =
+      manualMode === "pct"
+        ? Math.round((afterLines * Math.min(manualN, 100)) / 100)
+        : Math.round(manualN * 100);
     const net = Math.max(0, gross - lineDisc - manual);
     return { gross, lineDisc, manual, net, count: cart.reduce((s, l) => s + l.qty, 0) };
-  }, [cart, manualDiscount]);
+  }, [cart, manualDiscount, manualMode]);
 
   function setQty(itemId: string, qty: number) {
     setCart((prev) =>
@@ -248,14 +259,25 @@ export function PosScreen({
     );
   }
 
-  function setLineDiscount(itemId: string, rupees: string) {
-    const paise = Math.round((Number(rupees) || 0) * 100);
+  /**
+   * Discounts are entered as a rupee amount or a percentage.
+   *
+   * Percent is what actually gets asked for at the counter ("give them
+   * ten percent"), and the rupee-only box meant doing the arithmetic in
+   * your head while a customer watched.
+   */
+  function setLineDiscount(itemId: string, value: string, mode: "rs" | "pct") {
     setCart((prev) =>
-      prev.map((l) =>
-        l.itemId === itemId
-          ? { ...l, discountPaise: Math.min(paise, l.unitPaise * l.qty) }
-          : l,
-      ),
+      prev.map((l) => {
+        if (l.itemId !== itemId) return l;
+        const gross = l.unitPaise * l.qty;
+        const n = Number(value) || 0;
+        const paise =
+          mode === "pct"
+            ? Math.round((gross * Math.min(n, 100)) / 100)
+            : Math.round(n * 100);
+        return { ...l, discountPaise: Math.max(0, Math.min(paise, gross)), discountMode: mode, discountInput: value };
+      }),
     );
   }
 
@@ -336,6 +358,7 @@ export function PosScreen({
           bill_label: `Offline · ${new Date().toLocaleTimeString("en-IN")}`,
         });
         setQueue(await readQueue());
+        setLastReceipt({ ...receipt, billNo: "OFFLINE" });
         if (printAfter) printReceipt({ ...receipt, billNo: "OFFLINE" });
         setNotice("Saved on this machine. It will send itself when the connection is back.");
         clearCart();
@@ -348,6 +371,7 @@ export function PosScreen({
         return;
       }
 
+      setLastReceipt(receipt);
       if (printAfter) printReceipt(receipt);
       setNotice("Sale complete.");
       clearCart();
@@ -521,15 +545,33 @@ export function PosScreen({
                   </div>
 
                   {permissions.canDiscount && (
-                    <Input
-                      type="number"
-                      min={0}
-                      step="1"
-                      placeholder="disc ₹"
-                      value={l.discountPaise ? l.discountPaise / 100 : ""}
-                      onChange={(e) => setLineDiscount(l.itemId, e.target.value)}
-                      className="w-24"
-                    />
+                    <div className="flex items-center gap-1">
+                      <Input
+                        type="number"
+                        min={0}
+                        step="1"
+                        placeholder="0"
+                        value={l.discountInput ?? (l.discountPaise ? String(l.discountPaise / 100) : "")}
+                        onChange={(e) =>
+                          setLineDiscount(l.itemId, e.target.value, l.discountMode ?? "rs")
+                        }
+                        className="w-20"
+                      />
+                      <button
+                        type="button"
+                        title="Switch between rupees and percent"
+                        onClick={() =>
+                          setLineDiscount(
+                            l.itemId,
+                            l.discountInput ?? "",
+                            (l.discountMode ?? "rs") === "rs" ? "pct" : "rs",
+                          )
+                        }
+                        className="h-[var(--control-height)] w-9 rounded-control border border-border text-sm hover:bg-surface-sunken"
+                      >
+                        {(l.discountMode ?? "rs") === "rs" ? "₹" : "%"}
+                      </button>
+                    </div>
                   )}
 
                   <span className="w-24 text-right font-mono text-sm">
@@ -589,16 +631,31 @@ export function PosScreen({
               <Row label="Line discounts" value={`− ${formatPaise(totals.lineDisc)}`} />
             )}
             {permissions.canDiscount && (
-              <div className="flex items-center justify-between gap-2 py-1">
-                <span className="text-text-muted">Bill discount ₹</span>
-                <Input
-                  type="number"
-                  min={0}
-                  value={manualDiscount}
-                  onChange={(e) => setManualDiscount(e.target.value)}
-                  className="w-28"
-                />
-              </div>
+              <>
+                <div className="flex items-center justify-between gap-2 py-1">
+                  <span className="text-text-muted">Bill discount</span>
+                  <div className="flex items-center gap-1">
+                    <Input
+                      type="number"
+                      min={0}
+                      value={manualDiscount}
+                      onChange={(e) => setManualDiscount(e.target.value)}
+                      className="w-20"
+                    />
+                    <button
+                      type="button"
+                      title="Switch between rupees and percent"
+                      onClick={() => setManualMode(manualMode === "rs" ? "pct" : "rs")}
+                      className="h-[var(--control-height)] w-9 rounded-control border border-border text-sm hover:bg-surface-sunken"
+                    >
+                      {manualMode === "rs" ? "₹" : "%"}
+                    </button>
+                  </div>
+                </div>
+                {totals.manual > 0 && (
+                  <Row label="Discount applied" value={`− ${formatPaise(totals.manual)}`} />
+                )}
+              </>
             )}
             {coupon && <Row label={`Coupon ${coupon.code}`} value={coupon.value} />}
             <div className="mt-2 flex items-center justify-between border-t border-border pt-2">
@@ -647,6 +704,16 @@ export function PosScreen({
             </div>
           </div>
         </div>
+
+        {lastReceipt && (
+          <Button
+            variant="ghost"
+            className="w-full"
+            onClick={() => reprintLast(lastReceipt)}
+          >
+            Re-print last receipt
+          </Button>
+        )}
 
         {notice && <p className="text-sm text-status-done-fg">{notice}</p>}
         {error && <p className="text-sm text-status-danger-fg">{error}</p>}

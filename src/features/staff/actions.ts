@@ -12,7 +12,8 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const staffSchema = z.object({
   id: z.string().uuid().optional().or(z.literal("")),
   name: z.string().trim().min(1, "A name is required."),
-  role: z.enum(["owner", "manager", "staff"]),
+  role: z.enum(["owner", "manager", "staff"]).optional(),
+  roleId: z.string().uuid().optional().or(z.literal("")),
   phone: z.string().trim().optional(),
   email: z.string().trim().email("That email does not look right.").optional().or(z.literal("")),
   employeeCode: z.string().trim().optional(),
@@ -32,10 +33,25 @@ export async function saveStaff(formData: FormData): Promise<Result<string>> {
   const v = parsed.data;
 
   const supabase = await createClient();
+
+  // The role picker is the source of truth now. upsert_staff still takes
+  // the tier, so it is read off the chosen role rather than asked for
+  // twice — two controls that can disagree is how someone ends up a
+  // "Cashier" with manager rights.
+  let tier = v.role ?? "staff";
+  if (v.roleId) {
+    const { data: r } = await supabase
+      .from("roles")
+      .select("tier")
+      .eq("id", v.roleId)
+      .maybeSingle();
+    if (r?.tier) tier = r.tier as typeof tier;
+  }
+
   const { data, error } = await supabase.rpc("upsert_staff", {
     p_id: v.id || null,
     p_name: v.name,
-    p_role: v.role,
+    p_role: tier,
     p_phone: v.phone || null,
     p_email: v.email || null,
     p_employee_code: v.employeeCode || null,
@@ -51,9 +67,24 @@ export async function saveStaff(formData: FormData): Promise<Result<string>> {
 
   if (error) return err(toMessage(error));
 
+  const staffId = String(data);
+
+  if (v.roleId) {
+    const { error: roleError } = await supabase.rpc("assign_staff_role", {
+      p_staff: staffId,
+      p_role: v.roleId,
+    });
+    // The person is saved either way; only the role assignment failed,
+    // so say exactly that rather than implying nothing was saved.
+    if (roleError) {
+      revalidatePath(ROUTES.staff);
+      return err(`Saved, but the role could not be set: ${toMessage(roleError)}`);
+    }
+  }
+
   revalidatePath(ROUTES.staff);
-  if (v.id) revalidatePath(ROUTES.staffDetail(v.id));
-  return ok(String(data));
+  revalidatePath(ROUTES.staffDetail(staffId));
+  return ok(staffId);
 }
 
 export async function markAttendance(formData: FormData): Promise<Result> {

@@ -4,6 +4,7 @@ import { can } from "@/config/roles";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { listStaff, listLocationOptions } from "@/features/staff/queries";
+import { listRoles } from "@/features/roles/queries";
 import { StaffManager } from "@/features/staff/StaffManager";
 
 export const metadata: Metadata = { title: "Staff" };
@@ -21,9 +22,10 @@ export default async function StaffPage({
   const { inactive } = await searchParams;
   const showInactive = inactive === "1";
 
-  const [staff, locations] = await Promise.all([
+  const [staff, locations, roles] = await Promise.all([
     listStaff(showInactive),
     listLocationOptions(),
+    listRoles(),
   ]);
 
   return (
@@ -35,6 +37,7 @@ export default async function StaffPage({
       <StaffManager
         staff={staff}
         locations={locations}
+        roles={roles}
         canManage={can(user, "staff.manage")}
         showInactive={showInactive}
       />

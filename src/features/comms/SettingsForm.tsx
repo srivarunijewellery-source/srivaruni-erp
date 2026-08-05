@@ -5,6 +5,8 @@ import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select, FieldError } from "@/components/ui/Field";
 import { Badge } from "@/components/ui/Badge";
+import Link from "next/link";
+import { ROUTES } from "@/config/nav";
 import { saveCommsSettings, sendTestMessage } from "./actions";
 import type { CommsSettings } from "./queries";
 
@@ -204,7 +206,9 @@ export function CommsSettingsForm({
           <Card>
             <CardHeader className="flex items-center justify-between gap-2">
               <span className="font-medium">WhatsApp</span>
-              <Badge tone="neutral">Ready to switch on</Badge>
+              <Badge tone={settings.whatsappEnabled ? "done" : "neutral"}>
+                {settings.whatsappEnabled ? "On" : "Off"}
+              </Badge>
             </CardHeader>
             <CardBody className="space-y-3">
               <label className="flex items-center gap-2 text-sm">
@@ -218,41 +222,16 @@ export function CommsSettingsForm({
                 Send WhatsApp
               </label>
               <p className="text-2xs text-text-muted">
-                Every event already has a WhatsApp row in the matrix below. Filling these
-                three fields and ticking the column is all that is needed &mdash; but a
-                provider (Interakt, AiSensy, Gupshup) has to approve message templates
-                first, which takes days. Start that before you need it.
+                This switch is the master on/off. Everything else — the Meta connection,
+                approved templates, and which template each event uses — lives on the
+                WhatsApp page, because none of it is a simple field.
               </p>
-
-              <div className="grid gap-3 sm:grid-cols-4">
-                <div>
-                  <Label htmlFor="waProvider">Provider</Label>
-                  <Input
-                    id="waProvider"
-                    name="waProvider"
-                    defaultValue={settings.whatsappProvider ?? ""}
-                    placeholder="interakt"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="waApiUrl">API URL</Label>
-                  <Input id="waApiUrl" name="waApiUrl" defaultValue={settings.whatsappApiUrl ?? ""} />
-                </div>
-                <div>
-                  <Label htmlFor="waApiKey">API key</Label>
-                  <Input
-                    id="waApiKey"
-                    name="waApiKey"
-                    type="password"
-                    autoComplete="off"
-                    placeholder={settings.hasWhatsappKey ? "•••••• stored" : ""}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="waFrom">Sender number</Label>
-                  <Input id="waFrom" name="waFrom" defaultValue={settings.whatsappFrom ?? ""} />
-                </div>
-              </div>
+              <Link
+                href={ROUTES.whatsapp}
+                className="inline-flex h-[var(--control-height)] items-center rounded-control border border-border bg-surface px-3 text-sm shadow-[var(--control-shadow)] transition-colors hover:border-border-strong hover:bg-surface-sunken"
+              >
+                Open WhatsApp setup
+              </Link>
             </CardBody>
           </Card>
 
