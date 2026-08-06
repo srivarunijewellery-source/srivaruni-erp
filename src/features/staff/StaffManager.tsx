@@ -114,13 +114,23 @@ export function StaffManager({
                       </Link>
                       <Badge tone={ROLE_TONE[s.role]}>{s.role}</Badge>
                       {!s.active && <Badge tone="danger">Left</Badge>}
-                      {!s.hasLogin && (
+                      {s.hasLogin ? (
                         <span
                           className="text-2xs text-text-subtle"
-                          title="No login is linked, so this person cannot sign in yet."
+                          title="A login is linked, so this person can sign in."
                         >
-                          no login
+                          has login
                         </span>
+                      ) : canManage ? (
+                        <Link
+                          href={`${ROUTES.staffDetail(s.id)}#login`}
+                          className="rounded-full border border-border px-2 py-0.5 text-2xs text-text-muted hover:border-brand hover:text-brand"
+                          title="This person cannot sign in yet. Give them a login."
+                        >
+                          give a login
+                        </Link>
+                      ) : (
+                        <span className="text-2xs text-text-subtle">no login</span>
                       )}
                     </div>
                     <p className="mt-0.5 truncate text-2xs text-text-muted">

@@ -22,13 +22,23 @@ import type { CurrentUser } from "@/types/domain";
  */
 export function AppNav({ user }: { user: CurrentUser }) {
   const pathname = usePathname();
-  const [open, setOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  /** Which groups are expanded. */
+  const [open, setOpen] = useState<Set<string>>(new Set());
+
+  const toggle = (label: string) =>
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(label)) next.delete(label);
+      else next.add(label);
+      return next;
+    });
 
   // Escape closes it, and the page behind must not scroll under it.
   useEffect(() => {
-    if (!open) return;
+    if (!drawerOpen) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") setDrawerOpen(false);
     };
     document.addEventListener("keydown", onKey);
     document.body.style.overflow = "hidden";
@@ -36,10 +46,10 @@ export function AppNav({ user }: { user: CurrentUser }) {
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = "";
     };
-  }, [open]);
+  }, [drawerOpen]);
 
   // Navigating closes the drawer.
-  useEffect(() => setOpen(false), [pathname]);
+  useEffect(() => setDrawerOpen(false), [pathname]);
 
   const visible = (items: readonly NavItem[]) =>
     items.filter((i) => !i.requires || can(user, i.requires));
@@ -50,6 +60,18 @@ export function AppNav({ user }: { user: CurrentUser }) {
   const groups = NAV_GROUPS.map((g) => ({ ...g, items: visible(g.items) })).filter(
     (g) => g.items.length > 0,
   );
+
+  // Opening the drawer expands whichever group holds the current page, so
+  // the drawer always shows where you are without a click. Everything
+  // else stays shut.
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const here = groups.find((g) => g.items.some((i) => isActive(i.href)));
+    if (here) setOpen((prev) => new Set(prev).add(here.label));
+    // groups and isActive are derived from pathname, which is the real
+    // dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drawerOpen, pathname]);
 
   // Where the person is right now, shown in the bar so the drawer does
   // not have to be opened just to answer "which page is this".
@@ -66,8 +88,8 @@ export function AppNav({ user }: { user: CurrentUser }) {
           <button
             type="button"
             aria-label="Menu"
-            aria-expanded={open}
-            onClick={() => setOpen(true)}
+            aria-expanded={drawerOpen}
+            onClick={() => setDrawerOpen(true)}
             className="flex size-9 shrink-0 flex-col items-center justify-center gap-[3px] rounded-control border border-border hover:bg-surface-sunken"
           >
             <span aria-hidden className="block h-px w-4 bg-text" />
@@ -113,11 +135,11 @@ export function AppNav({ user }: { user: CurrentUser }) {
         </div>
       </header>
 
-      {open && (
+      {drawerOpen && (
         <div className="fixed inset-0 z-40">
           <button
             aria-label="Close menu"
-            onClick={() => setOpen(false)}
+            onClick={() => setDrawerOpen(false)}
             className="absolute inset-0 cursor-default bg-neutral-900/40"
           />
 
@@ -133,7 +155,7 @@ export function AppNav({ user }: { user: CurrentUser }) {
                 </p>
               </div>
               <button
-                onClick={() => setOpen(false)}
+                onClick={() => setDrawerOpen(false)}
                 className="rounded-control px-2 py-1 text-sm text-text-muted hover:bg-surface-sunken hover:text-text"
               >
                 Close
@@ -147,22 +169,53 @@ export function AppNav({ user }: { user: CurrentUser }) {
                 active={isActive(ROUTES.dashboard)}
               />
 
-              {groups.map((group) => (
-                <div key={group.label} className="mt-4">
-                  <p className="px-3 pb-1 text-2xs font-medium uppercase tracking-widest text-text-subtle">
-                    {group.label}
-                  </p>
-                  {group.items.map((item) => (
-                    <Item
-                      key={item.href}
-                      href={item.href}
-                      label={item.label}
-                      active={isActive(item.href)}
-                      newTab={item.newTab}
-                    />
-                  ))}
-                </div>
-              ))}
+              {/* Collapsed by default. Eight groups fully expanded is
+                  sixty-odd links in one scroll, which is the flat bar's
+                  problem again in a taller shape. The group holding the
+                  current page opens itself, so the drawer always shows
+                  where you are without a click. */}
+              {groups.map((group) => {
+                const isOpen = open.has(group.label);
+                const hasActive = group.items.some((i) => isActive(i.href));
+                return (
+                  <div key={group.label} className="mt-1">
+                    <button
+                      type="button"
+                      aria-expanded={isOpen}
+                      onClick={() => toggle(group.label)}
+                      className={cn(
+                        "flex w-full items-center justify-between rounded-control px-3 py-2 text-left text-sm transition-colors hover:bg-surface-sunken",
+                        hasActive ? "font-medium text-brand" : "text-text",
+                      )}
+                    >
+                      <span>{group.label}</span>
+                      <span
+                        aria-hidden
+                        className={cn(
+                          "text-2xs text-text-subtle transition-transform duration-150",
+                          isOpen && "rotate-90",
+                        )}
+                      >
+                        ›
+                      </span>
+                    </button>
+
+                    {isOpen && (
+                      <div className="mb-1 ml-3 border-l border-border pl-1">
+                        {group.items.map((item) => (
+                          <Item
+                            key={item.href}
+                            href={item.href}
+                            label={item.label}
+                            active={isActive(item.href)}
+                            newTab={item.newTab}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
             <div className="border-t border-border px-2 py-2">

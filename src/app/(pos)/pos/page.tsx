@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { requireUser } from "@/features/auth/session";
 import { can } from "@/config/roles";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { AppNav } from "@/components/AppNav";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -74,8 +75,13 @@ export default async function PosPage({
   // it would never appear in a close, and the cash would never
   // reconcile.
   if (!session) {
+    // Before a register is open this is not a till, it is an ordinary
+    // page, and stripping the navigation off it left no way out except
+    // the back button. The chrome only disappears once billing starts.
     return (
-      <div className="mx-auto w-full max-w-3xl px-4 py-8">
+      <>
+        <AppNav user={user} />
+        <div className="mx-auto w-full max-w-3xl px-4 py-8">
         <PageHeader title="Counter" description={locationName} />
         <RegisterGate
           locationId={locationId}
@@ -85,7 +91,8 @@ export default async function PosPage({
           canChooseBranch={canChooseBranch}
           canOpen={can(user, "pos.register_open")}
         />
-      </div>
+        </div>
+      </>
     );
   }
 

@@ -103,7 +103,12 @@ export default async function StaffDetailPage({
           </CardBody>
         </Card>
 
-        {isOwner(user.role) && <LoginPanel member={member} />}
+        {isOwner(user.role) && (
+          <LoginPanel
+            member={member}
+            configured={Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY)}
+          />
+        )}
 
         {can(user, "roles.manage") && (
           <RolePanel

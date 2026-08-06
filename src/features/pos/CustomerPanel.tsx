@@ -39,6 +39,7 @@ export function CustomerPanel({
   onPick,
   onClear,
   coupon,
+  couponBlocked,
   onCoupon,
   canCoupon,
   loadExtras,
@@ -48,6 +49,9 @@ export function CustomerPanel({
   onPick: (c: CustomerHit) => void;
   onClear: () => void;
   coupon: PickedCoupon | null;
+  /** True once anything on the bill has been discounted by hand or by a
+   *  scheme. A bill claims one benefit, so the coupons grey out. */
+  couponBlocked?: boolean;
   onCoupon: (c: PickedCoupon | null) => void;
   canCoupon: boolean;
   loadExtras: (id: string) => Promise<
@@ -305,19 +309,30 @@ export function CustomerPanel({
               <p className="mb-1 text-2xs font-medium uppercase tracking-wide text-text-muted">
                 Coupons
               </p>
+              {couponBlocked && (
+                <p className="mb-1 text-2xs text-text-subtle">
+                  Clear the discount to use one of these.
+                </p>
+              )}
               <div className="flex flex-wrap gap-1.5">
                 {extras.coupons.map((c) => {
                   const tooSmall = cartTotalPaise < c.min_purchase_paise;
                   const on = coupon?.id === c.coupon_id;
+                  // Blocked only matters for coupons not already applied:
+                  // the one that IS applied must stay clickable, or there
+                  // is no way to take it off again.
+                  const blocked = Boolean(couponBlocked) && !on;
                   return (
                     <button
                       key={c.coupon_id}
                       type="button"
-                      disabled={tooSmall}
+                      disabled={tooSmall || blocked}
                       title={
-                        tooSmall
-                          ? `Needs a purchase of at least ${formatPaise(c.min_purchase_paise)}`
-                          : undefined
+                        blocked
+                          ? "This bill already has a discount. A bill takes a coupon or a discount, not both."
+                          : tooSmall
+                            ? `Needs a purchase of at least ${formatPaise(c.min_purchase_paise)}`
+                            : undefined
                       }
                       onClick={() =>
                         onCoupon(

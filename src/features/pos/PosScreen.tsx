@@ -34,7 +34,8 @@ import { CustomerPanel } from "./CustomerPanel";
 import { DrawerPanel } from "./DrawerPanel";
 import { SessionBillsPanel, type ReceiptHeader } from "./SessionBillsPanel";
 import { printReceipt, reprintLast, type ReceiptData } from "./receipt";
-import { fetchDrawer } from "./actions";
+import { fetchDrawer, searchCatalog } from "./actions";
+import { getCustomerAction } from "./customer-actions";
 import type {
   Branch,
   CustomerHit,
@@ -163,6 +164,7 @@ export function PosScreen({
   const [showBills, setShowBills] = useState(false);
   const [showMore, setShowMore] = useState(false);
   const [drawer, setDrawer] = useState<Drawer | null>(initialDrawer);
+  const [remoteResults, setRemoteResults] = useState<PosCatalogItem[]>([]);
 
   /* ------------------------------------------------ connectivity + cache */
 
@@ -284,6 +286,24 @@ export function PosScreen({
     requestAnimationFrame(() => scanRef.current?.focus());
   }, []);
 
+  /**
+   * Refocus on a click ONLY when the click landed on dead space.
+   *
+   * Blanket-refocusing on every click in the billing column made the
+   * discount and price boxes impossible to click into: the caret was
+   * yanked back to the scan box on mousedown, so the field appeared to
+   * ignore the mouse entirely while Tab still worked. Anything a person
+   * can legitimately type into or operate keeps the focus it was just
+   * given.
+   */
+  const refocusOnDeadSpace = useCallback((e: React.MouseEvent) => {
+    const el = e.target as HTMLElement | null;
+    if (el?.closest("input, select, textarea, button, a, label, [contenteditable]")) {
+      return;
+    }
+    refocusScan();
+  }, [refocusScan]);
+
   const refreshDrawer = useCallback(async () => {
     const r = await fetchDrawer(sessionId);
     if (r.ok) setDrawer(r.data);
@@ -328,16 +348,48 @@ export function PosScreen({
       catalog.find((i) => i.barcode === code) ??
       catalog.find((i) => i.barcode?.toLowerCase() === code.toLowerCase());
 
-    if (!hit) {
-      setError(`Nothing found for "${code}".`);
+    if (hit) {
+      addItem(hit);
       setScan("");
+      setError(null);
       return;
     }
-    addItem(hit);
+
+    // Not in the copy in this browser. That is NOT the same as "no such
+    // tag": the copy only carries what has stock at this branch, so a
+    // piece that just sold out here, or one priced since the page
+    // loaded, reads as "nothing found" when it exists perfectly well.
+    // Ask the server before saying no.
     setScan("");
+    if (!online) {
+      setError(`Nothing found for "${code}". This machine is offline, so it can only see what it had when it last synced.`);
+      return;
+    }
+
+    setError(null);
+    setNotice(`Looking up ${code}…`);
+    start(async () => {
+      const r = await searchCatalog(locationId, code, 5);
+      const found =
+        r.ok
+          ? (r.data.find((i) => i.barcode?.toLowerCase() === code.toLowerCase()) ?? null)
+          : null;
+
+      setNotice(null);
+      if (!found) {
+        setError(`Nothing found for "${code}".`);
+        return;
+      }
+      if (found.qty <= 0) {
+        setError(`${found.name} (${code}) is not in stock at ${locationName}.`);
+        return;
+      }
+      addItem(found);
+    });
   }
 
-  const results = useMemo(() => {
+  /** Instant matches from the copy already in the browser. */
+  const localResults = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (q.length < 2) return [];
     return catalog
@@ -345,10 +397,46 @@ export function PosScreen({
         (i) =>
           i.name.toLowerCase().includes(q) ||
           i.design_code?.toLowerCase().includes(q) ||
-          i.barcode?.includes(q),
+          i.barcode?.toLowerCase().includes(q),
       )
       .slice(0, 20);
   }, [catalog, search]);
+
+  /**
+   * The local copy answers first, the server fills in the rest.
+   *
+   * At a few thousand SKUs the browser copy is neither complete nor
+   * cheap to scan: anything with no stock at this branch is not in it at
+   * all, so searching for a piece that has just sold out here returned
+   * nothing rather than "none left". Local results appear as fast as
+   * typing; the server result lands a moment later and adds whatever the
+   * copy did not know about.
+   */
+  useEffect(() => {
+    const q = search.trim();
+    if (q.length < 2) {
+      setRemoteResults([]);
+      return;
+    }
+    let cancelled = false;
+    // Debounced, or every keystroke is a round trip.
+    const t = setTimeout(async () => {
+      const r = await searchCatalog(locationId, q, 30);
+      if (!cancelled && r.ok) setRemoteResults(r.data);
+    }, 220);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [search, locationId]);
+
+  const results = useMemo(() => {
+    const seen = new Set(localResults.map((i) => i.item_id));
+    return [...localResults, ...remoteResults.filter((i) => !seen.has(i.item_id))].slice(
+      0,
+      30,
+    );
+  }, [localResults, remoteResults]);
 
   const totals = useMemo(() => {
     const gross = cart.reduce((s, l) => s + l.unitPaise * l.qty, 0);
@@ -392,6 +480,8 @@ export function PosScreen({
         ? prev.filter((l) => l.itemId !== itemId)
         : prev.map((l) => (l.itemId === itemId ? { ...l, qty } : l)),
     );
+    // The +/- buttons are the one place a refocus is always wanted: they
+    // are tapped between scans, never typed into.
     refocusScan();
   }
 
@@ -421,6 +511,7 @@ export function PosScreen({
     setCart([]);
     setCustomer(null);
     setCoupon(null);
+    setManualDiscount("");
     setManualDiscount("");
     setShowPay(false);
     scanRef.current?.focus();
@@ -620,6 +711,16 @@ export function PosScreen({
         });
       }
       setCart(restored);
+
+      // The hold remembers who the bill was for. Restoring the lines but
+      // not the customer quietly turned a named sale into a walk-in, and
+      // took their state -- and therefore the CGST/SGST vs IGST split --
+      // with it.
+      if (res.data.customer_id) {
+        const c = await getCustomerAction(res.data.customer_id);
+        if (c.ok) setCustomer(c.data);
+      }
+
       await discardHold(bill.id);
       setHolds((h) => h.filter((x) => x.id !== bill.id));
       setNotice("Resumed.");
@@ -795,9 +896,10 @@ export function PosScreen({
       <div className="grid gap-4 p-4 lg:grid-cols-[1fr_26rem]">
         <div
           className="space-y-3"
-          // Any tap in the billing column puts the caret back in the scan
-          // box, so the scanner is never typing into a dead element.
-          onClick={refocusScan}
+          // A tap on dead space in the billing column puts the caret back
+          // in the scan box. A tap on a real control does not -- see
+          // refocusOnDeadSpace.
+          onClick={refocusOnDeadSpace}
         >
         {/* The scan box is deliberately oversized. It is the one control
             used a thousand times a day, and on a busy counter the eye
@@ -839,11 +941,27 @@ export function PosScreen({
                       setSearch("");
                       scanRef.current?.focus();
                     }}
-                    className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm hover:bg-surface-sunken"
+                    disabled={i.qty <= 0}
+                    className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-55"
                   >
-                    <span className="flex-1 truncate">{i.name}</span>
-                    <span className="text-2xs text-text-muted">{i.qty} left</span>
-                    <span className="font-mono">{formatPaise(i.price_paise)}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate">{i.name}</span>
+                      <span className="block truncate font-mono text-2xs text-text-subtle">
+                        {i.barcode ?? "no tag"}
+                        {i.design_code ? ` · ${i.design_code}` : ""}
+                        {i.category ? ` · ${i.category}` : ""}
+                      </span>
+                    </span>
+                    <span
+                      className={`shrink-0 text-2xs ${
+                        i.qty > 0 ? "text-text-muted" : "text-status-danger-fg"
+                      }`}
+                    >
+                      {i.qty > 0 ? `${i.qty} left` : "none here"}
+                    </span>
+                    <span className="tnum shrink-0 font-mono">
+                      {formatPaise(i.price_paise)}
+                    </span>
                   </button>
                 </li>
               ))}
@@ -863,6 +981,16 @@ export function PosScreen({
                   <div className="min-w-40 flex-1">
                     <p className="truncate text-sm font-medium">{l.name}</p>
                     <p className="text-2xs text-text-muted">
+                      {/* The tag, on the line. Checking a bill against the
+                          pieces on the counter is impossible by name
+                          alone when four chokers are called "Antique
+                          choker". */}
+                      <span className="font-mono text-text-subtle">
+                        {l.barcode ?? "no tag"}
+                      </span>
+                      <span aria-hidden className="mx-1.5 text-text-subtle">
+                        ·
+                      </span>
                       {formatPaise(l.unitPaise)} each
                       {l.qty > l.stockAtAdd && (
                         <span className="ml-2 text-status-pending-fg">
@@ -1040,6 +1168,7 @@ export function PosScreen({
           coupon={coupon}
           onCoupon={setCoupon}
           canCoupon={permissions.canCoupon}
+          couponBlocked={totals.lineDisc + totals.manual > 0}
           loadExtras={lookupCustomerExtras}
           cartTotalPaise={totals.net}
         />
@@ -1074,12 +1203,29 @@ export function PosScreen({
             {permissions.canDiscount && (
               <>
                 <div className="flex items-center justify-between gap-2 py-1">
-                  <span className="text-text-muted">Bill discount</span>
+                  <span className="text-text-muted">
+                    Bill discount
+                    {coupon && (
+                      <span className="ml-1.5 text-2xs text-text-subtle">
+                        blocked by the coupon
+                      </span>
+                    )}
+                  </span>
                   <div className="flex items-center gap-1">
                     <Input
                       type="number"
                       min={0}
-                      value={manualDiscount}
+                      value={coupon ? "" : manualDiscount}
+                      // A bill claims ONE of the three: a gift, a coupon,
+                      // or a discount. The database refuses a bill that
+                      // carries a coupon and a discount together, so the
+                      // counter must not be able to build one.
+                      disabled={Boolean(coupon)}
+                      title={
+                        coupon
+                          ? "Remove the coupon first. A bill takes a coupon or a discount, not both."
+                          : undefined
+                      }
                       onChange={(e) => setManualDiscount(e.target.value)}
                       className="w-20"
                     />

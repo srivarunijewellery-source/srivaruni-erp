@@ -14,7 +14,16 @@ import type { StaffMember } from "./queries";
  * giving them a login is access. Mixing them into one Save meant a
  * typo in a phone number and a password change were the same action.
  */
-export function LoginPanel({ member }: { member: StaffMember }) {
+export function LoginPanel({
+  member,
+  configured = true,
+}: {
+  member: StaffMember;
+  /** False when this deployment has no service-role key, without which
+   *  an auth user cannot be minted at all. Better to say so before the
+   *  form is filled in than after Create is pressed. */
+  configured?: boolean;
+}) {
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -53,7 +62,7 @@ export function LoginPanel({ member }: { member: StaffMember }) {
   }
 
   return (
-    <Card>
+    <Card id="login" className="scroll-mt-20">
       <CardHeader className="flex items-center justify-between gap-3">
         <span className="flex items-center gap-2 font-medium">
           Login
@@ -75,6 +84,7 @@ export function LoginPanel({ member }: { member: StaffMember }) {
           <Button
             size="sm"
             variant={open ? "ghost" : "primary"}
+            disabled={!configured}
             onClick={() => {
               setOpen(!open);
               setError(null);
@@ -86,6 +96,13 @@ export function LoginPanel({ member }: { member: StaffMember }) {
       </CardHeader>
 
       <CardBody className="space-y-3">
+        {!configured && (
+          <p className="rounded-control bg-status-pending-bg px-3 py-2 text-2xs text-status-pending-fg">
+            This deployment has no service-role key set, so logins cannot be created from
+            here. Add SUPABASE_SERVICE_ROLE_KEY in the Vercel project settings and redeploy.
+          </p>
+        )}
+
         {open && !member.hasLogin && (
           <form action={create} className="space-y-3">
             <input type="hidden" name="staffId" value={member.id} />
@@ -118,7 +135,7 @@ export function LoginPanel({ member }: { member: StaffMember }) {
               and fill the register, so only create logins for people who should have
               that reach.
             </p>
-            <Button type="submit" disabled={pending}>
+            <Button type="submit" disabled={pending || !configured}>
               {pending ? "Creating…" : "Create login"}
             </Button>
           </form>

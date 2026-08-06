@@ -71,3 +71,30 @@ export async function quickAddCustomer(input: QuickCustomer): Promise<Result<Cus
     state: input.state?.trim() || null,
   });
 }
+
+/**
+ * One customer by id.
+ *
+ * Resuming a held bill needs this: the hold stores a customer_id, and
+ * without a way to turn it back into a customer the counter silently
+ * dropped whoever the bill was for. Rebuilding the bill under "walk-in"
+ * loses the attribution AND the state that decides CGST+SGST versus
+ * IGST.
+ */
+export async function getCustomerAction(id: string): Promise<Result<CustomerHit>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("customers")
+    .select("id, phone, name, city, state")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error || !data) return err("That customer could not be read back.");
+  return ok({
+    id: data.id,
+    phone: data.phone,
+    name: data.name,
+    city: data.city,
+    state: data.state,
+  });
+}

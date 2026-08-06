@@ -11,6 +11,7 @@ import {
   toDrawer,
   type CashMovement,
   type Drawer,
+  type PosCatalogItem,
   type SessionBill,
 } from "./queries";
 
@@ -393,4 +394,51 @@ export async function fetchBillForReprint(billId: string): Promise<
       reference: p.reference ?? undefined,
     })),
   });
+}
+
+/**
+ * Search the whole catalogue, not the copy in the browser.
+ *
+ * pos_catalog ships every in-stock item at the location so the counter
+ * can scan with the network down. Searching that copy works until the
+ * catalogue is a few thousand SKUs, at which point anything not held at
+ * this branch is simply absent and cannot be found at all. The local
+ * copy still answers instantly; this fills in everything it does not
+ * know about.
+ */
+export async function searchCatalog(
+  locationId: string,
+  term: string,
+  limit = 30,
+): Promise<Result<PosCatalogItem[]>> {
+  const q = term.trim();
+  if (q.length < 2) return ok([]);
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("pos_search", {
+    p_location: locationId,
+    p_term: q,
+    p_limit: limit,
+  });
+  if (error) return err(toMessage(error));
+
+  type Row = {
+    item_id: string; barcode: string | null; name: string;
+    design_code: string | null; category: string | null; qty: number;
+    price_paise: number; mrp_paise: number; gst_rate: number;
+  };
+
+  return ok(
+    ((data ?? []) as Row[]).map((r) => ({
+      item_id: r.item_id,
+      barcode: r.barcode,
+      name: r.name,
+      design_code: r.design_code,
+      category: r.category,
+      qty: Number(r.qty ?? 0),
+      price_paise: Number(r.price_paise ?? 0),
+      mrp_paise: Number(r.mrp_paise ?? 0),
+      gst_rate: Number(r.gst_rate ?? 3),
+    })),
+  );
 }

@@ -41,6 +41,7 @@ export const ROUTES = {
   commsSettings: "/comms/settings",
   whatsapp: "/comms/whatsapp",
   roles: "/team/roles",
+  settings: "/settings",
   company: "/settings/company",
   pos: "/pos",
   sales: "/sales",
@@ -153,18 +154,29 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { href: ROUTES.attendance,  label: "Attendance",  requires: "attendance.mark" },
       { href: ROUTES.leave,       label: "Leave",       requires: "staff.view" },
       { href: ROUTES.performance, label: "Performance", requires: "staff.manage" },
-      { href: ROUTES.roles,       label: "Roles",       requires: "roles.manage" },
     ],
   },
   {
     label: "Utilities",
     items: [
       { href: ROUTES.barcodes, label: "Barcode labels" },
-      { href: ROUTES.logs, label: "Activity log" },
-      { href: ROUTES.comms,         label: "Messages",      requires: "comms.view" },
-      { href: ROUTES.company,       label: "Company",        requires: "settings.manage" },
-      { href: ROUTES.commsSettings, label: "Comms settings", requires: "comms.manage" },
-      { href: ROUTES.whatsapp,      label: "WhatsApp",       requires: "comms.manage" },
+      { href: ROUTES.logs,     label: "Activity log" },
+      { href: ROUTES.comms,    label: "Messages", requires: "comms.view" },
+    ],
+  },
+  {
+    // The individual settings pages still live beside the modules they
+    // configure; this group is the front door to all of them, because
+    // "where do I change that" had no answer short of already knowing.
+    label: "Settings",
+    items: [
+      { href: ROUTES.settings,         label: "All settings" },
+      { href: ROUTES.company,          label: "Company",           requires: "settings.manage" },
+      { href: ROUTES.roles,            label: "Roles",             requires: "roles.manage" },
+      { href: ROUTES.pricingSettings,  label: "Pricing settings",  requires: "pricing.manage" },
+      { href: ROUTES.discountSettings, label: "Discount settings", requires: "discount.manage" },
+      { href: ROUTES.commsSettings,    label: "Comms settings",    requires: "comms.manage" },
+      { href: ROUTES.whatsapp,         label: "WhatsApp",          requires: "comms.manage" },
     ],
   },
 ] as const;
