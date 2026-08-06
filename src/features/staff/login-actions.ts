@@ -67,21 +67,61 @@ export async function createStaffLogin(formData: FormData): Promise<Result<strin
   return ok(`Login created for ${email}.`);
 }
 
-/** Detaches the login without deleting the person or their history. */
+/**
+ * Detaches the login without deleting the person or their history.
+ *
+ * The auth user is deleted too, not just unhooked. Leaving it behind
+ * kept the address registered, so giving the same person their login
+ * back with the same address failed with "already registered" and there
+ * was no screen anywhere that could explain why. The staff row, their
+ * attendance and their sales all stay exactly where they are.
+ */
 export async function unlinkStaffLogin(staffId: string): Promise<Result> {
   const supabase = await createClient();
+
+  const { data: me } = await supabase.rpc("get_current_staff");
+  const role = Array.isArray(me) ? me[0]?.role : (me as { role?: string } | null)?.role;
+  if (role !== "owner") return err("Only the owner can remove a login.");
+
+  const { data: row } = await supabase
+    .from("staff")
+    .select("auth_user_id")
+    .eq("id", staffId)
+    .maybeSingle();
+
   const { error } = await supabase.rpc("link_staff_login", {
     p_staff: staffId,
     p_auth_user: null,
   });
   if (error) return err(toMessage(error));
 
+  // Detaching already revokes access, because get_current_staff finds no
+  // row. Deleting the auth user is about freeing the address, so this
+  // failing is untidy rather than unsafe.
+  if (row?.auth_user_id) {
+    try {
+      const admin = createServiceClient();
+      await admin.auth.admin.deleteUser(row.auth_user_id);
+    } catch {
+      // Left registered. The owner will find out only if they try to
+      // reuse the address, which is the moment it matters.
+    }
+  }
+
   revalidatePath(ROUTES.staff);
   revalidatePath(ROUTES.staffDetail(staffId));
   return ok(undefined);
 }
 
-/** Sends a password reset so the owner never has to know the password. */
+/**
+ * Sends a password reset link.
+ *
+ * Only useful when the sign-in address is a real inbox. Most staff here
+ * are given a made-up srivaruni.com address purely as a username, and a
+ * link sent there goes nowhere -- Supabase reports success regardless,
+ * to stop people probing which accounts exist. For those, the owner
+ * setting a password directly is the actual recovery path.
+ */
 export async function resetStaffPassword(email: string): Promise<Result<string>> {
   if (!email) return err("That person has no email address on file.");
 

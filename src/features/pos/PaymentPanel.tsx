@@ -94,11 +94,11 @@ export function PaymentPanel({
     return out;
   }, [cashAppliedPaise, others]);
 
-  function addOther() {
+  function addOther(method: string) {
     setOthers((prev) => [
       ...prev,
       {
-        method: "upi",
+        method,
         rupees: (Math.max(0, shortPaise) / 100).toFixed(2),
         reference: "",
       },
@@ -199,89 +199,114 @@ export function PaymentPanel({
               </div>
             )}
 
-            {shortPaise > 0 && (
-              <div className="space-y-2">
+            {/* Always mounted while there is anything to collect.
+                Gating this whole block on shortPaise > 0 meant adding a
+                row for the remaining amount drove short to zero and
+                unmounted the block along with the row that had just been
+                added -- the method buttons and the reference field
+                vanished the instant they were needed. Rows persist; only
+                the prompt above them reacts to what is left. */}
+            <div className="space-y-2">
+              {shortPaise > 0 ? (
                 <p className="text-sm text-status-pending-fg">
                   {formatPaise(shortPaise)} still to pay
                   {tenderedPaise > 0 ? " — take the rest another way." : "."}
                 </p>
+              ) : (
+                others.length > 0 && (
+                  <p className="text-sm text-status-done-fg">
+                    Fully covered. Add a reference if there is one.
+                  </p>
+                )
+              )}
 
-                {others.map((t, i) => (
-                  <div
-                    key={i}
-                    className="space-y-2 rounded-control border border-border p-2.5"
-                  >
-                    <div className="flex flex-wrap gap-1.5">
-                      {OTHER_METHODS.map((m) => (
-                        <button
-                          key={m.key}
-                          type="button"
-                          onClick={() =>
-                            setOthers((p) =>
-                              p.map((x, idx) =>
-                                idx === i ? { ...x, method: m.key } : x,
-                              ),
-                            )
-                          }
-                          className={`rounded-control px-3 py-1.5 text-sm transition-colors ${
-                            t.method === m.key
-                              ? "bg-brand text-brand-fg"
-                              : "border border-border hover:bg-surface-sunken"
-                          }`}
-                        >
-                          {m.label}
-                        </button>
-                      ))}
-                    </div>
-                    <div className="flex flex-wrap items-end gap-2">
-                      <div>
-                        <Label htmlFor={`amt-${i}`}>Amount ₹</Label>
-                        <Input
-                          id={`amt-${i}`}
-                          type="number"
-                          step="0.01"
-                          min={0}
-                          value={t.rupees}
-                          onChange={(e) =>
-                            setOthers((p) =>
-                              p.map((x, idx) =>
-                                idx === i ? { ...x, rupees: e.target.value } : x,
-                              ),
-                            )
-                          }
-                          className="w-36 font-mono"
-                        />
-                      </div>
-                      <div className="min-w-40 flex-1">
-                        <Label htmlFor={`ref-${i}`}>Reference</Label>
-                        <Input
-                          id={`ref-${i}`}
-                          value={t.reference}
-                          onChange={(e) =>
-                            setOthers((p) =>
-                              p.map((x, idx) =>
-                                idx === i ? { ...x, reference: e.target.value } : x,
-                              ),
-                            )
-                          }
-                          placeholder={t.method === "upi" ? "UPI ref" : "Last 4 digits"}
-                        />
-                      </div>
-                      <Button
-                        variant="ghost"
-                        onClick={() => setOthers((p) => p.filter((_, idx) => idx !== i))}
+              {others.map((t, i) => (
+                <div
+                  key={i}
+                  className="space-y-2 rounded-control border border-border p-2.5"
+                >
+                  <div className="flex flex-wrap gap-1.5">
+                    {OTHER_METHODS.map((m) => (
+                      <button
+                        key={m.key}
+                        type="button"
+                        onClick={() =>
+                          setOthers((p) =>
+                            p.map((x, idx) => (idx === i ? { ...x, method: m.key } : x)),
+                          )
+                        }
+                        className={`rounded-control px-3 py-1.5 text-sm transition-colors ${
+                          t.method === m.key
+                            ? "bg-brand text-brand-fg"
+                            : "border border-border hover:bg-surface-sunken"
+                        }`}
                       >
-                        ×
-                      </Button>
-                    </div>
+                        {m.label}
+                      </button>
+                    ))}
                   </div>
-                ))}
+                  <div className="flex flex-wrap items-end gap-2">
+                    <div>
+                      <Label htmlFor={`amt-${i}`}>Amount ₹</Label>
+                      <Input
+                        id={`amt-${i}`}
+                        type="number"
+                        step="0.01"
+                        min={0}
+                        value={t.rupees}
+                        onChange={(e) =>
+                          setOthers((p) =>
+                            p.map((x, idx) =>
+                              idx === i ? { ...x, rupees: e.target.value } : x,
+                            ),
+                          )
+                        }
+                        className="w-36 font-mono"
+                      />
+                    </div>
+                    <div className="min-w-40 flex-1">
+                      <Label htmlFor={`ref-${i}`}>Reference</Label>
+                      <Input
+                        id={`ref-${i}`}
+                        value={t.reference}
+                        onChange={(e) =>
+                          setOthers((p) =>
+                            p.map((x, idx) =>
+                              idx === i ? { ...x, reference: e.target.value } : x,
+                            ),
+                          )
+                        }
+                        placeholder={t.method === "upi" ? "UPI ref" : "Last 4 digits"}
+                      />
+                    </div>
+                    <Button
+                      variant="ghost"
+                      onClick={() => setOthers((p) => p.filter((_, idx) => idx !== i))}
+                    >
+                      ×
+                    </Button>
+                  </div>
+                </div>
+              ))}
 
-                <Button size="sm" variant="secondary" onClick={addOther}>
-                  {others.length === 0 ? "Card / UPI for the rest" : "Another method"}
-                </Button>
+              {/* One tap per method, not a tap to reveal a tap. A
+                  card-only sale is a single button press. */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-2xs text-text-muted">
+                  {others.length === 0 ? "Or take it by" : "Add"}
+                </span>
+                {OTHER_METHODS.map((m) => (
+                  <button
+                    key={m.key}
+                    type="button"
+                    onClick={() => addOther(m.key)}
+                    className="rounded-control border border-border px-3 py-1.5 text-sm hover:border-brand hover:text-brand"
+                  >
+                    {m.label}
+                  </button>
+                ))}
               </div>
-            )}
+            </div>
 
             {shortPaise < 0 && (
               <p className="text-sm text-status-danger-fg">

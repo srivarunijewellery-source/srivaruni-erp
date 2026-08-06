@@ -14,8 +14,7 @@ import {
   getCompensation,
   getStaff,
   getTargets,
-  listLeave,
-} from "@/features/staff/queries";
+  listLeave, getStaffLoginEmail } from "@/features/staff/queries";
 import { PayPanel } from "@/features/staff/PerformancePanels";
 import { LoginPanel } from "@/features/staff/LoginPanel";
 import { RolePanel } from "@/features/staff/RolePanel";
@@ -106,6 +105,7 @@ export default async function StaffDetailPage({
         {isOwner(user.role) && (
           <LoginPanel
             member={member}
+            loginEmail={await getStaffLoginEmail(member.id)}
             configured={Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY)}
           />
         )}

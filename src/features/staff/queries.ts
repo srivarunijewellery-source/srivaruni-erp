@@ -364,3 +364,21 @@ export async function listLocationOptions(): Promise<
   if (error) throw error;
   return data ?? [];
 }
+
+/**
+ * The address a person actually signs in with.
+ *
+ * Deliberately separate from staff.email, which is a contact address and
+ * drifts: the owner's contact is a personal Gmail while the login is
+ * admin@srivaruni.com, and both managers have a login but no contact
+ * email at all. Anything credential-shaped — reset links, "signs in
+ * with" — has to use this one. Owner only, since it reads auth.users.
+ */
+export async function getStaffLoginEmail(staffId: string): Promise<string | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("staff_login_email", {
+    p_staff: staffId,
+  });
+  if (error) return null;
+  return data ? String(data) : null;
+}

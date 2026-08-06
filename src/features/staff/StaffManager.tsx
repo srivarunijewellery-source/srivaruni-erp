@@ -114,23 +114,31 @@ export function StaffManager({
                       </Link>
                       <Badge tone={ROLE_TONE[s.role]}>{s.role}</Badge>
                       {!s.active && <Badge tone="danger">Left</Badge>}
-                      {s.hasLogin ? (
-                        <span
-                          className="text-2xs text-text-subtle"
-                          title="A login is linked, so this person can sign in."
-                        >
-                          has login
-                        </span>
-                      ) : canManage ? (
+                      {/* Always a link, whether or not a login exists.
+                          Making this dead text once one was assigned put
+                          the panel out of reach exactly when it was
+                          needed -- changing a password or taking access
+                          away are the things you come back for. */}
+                      {canManage ? (
                         <Link
                           href={`${ROUTES.staffDetail(s.id)}#login`}
-                          className="rounded-full border border-border px-2 py-0.5 text-2xs text-text-muted hover:border-brand hover:text-brand"
-                          title="This person cannot sign in yet. Give them a login."
+                          className={`rounded-full border px-2 py-0.5 text-2xs hover:border-brand hover:text-brand ${
+                            s.hasLogin
+                              ? "border-transparent bg-surface-sunken text-text-muted"
+                              : "border-border text-text-muted"
+                          }`}
+                          title={
+                            s.hasLogin
+                              ? "Change the password or take access away."
+                              : "This person cannot sign in yet. Give them a login."
+                          }
                         >
-                          give a login
+                          {s.hasLogin ? "manage login" : "give a login"}
                         </Link>
                       ) : (
-                        <span className="text-2xs text-text-subtle">no login</span>
+                        <span className="text-2xs text-text-subtle">
+                          {s.hasLogin ? "has login" : "no login"}
+                        </span>
                       )}
                     </div>
                     <p className="mt-0.5 truncate text-2xs text-text-muted">

@@ -317,3 +317,36 @@ begin
     execute format('grant execute on function public.%s to authenticated, service_role', v_sig);
   end loop;
 end $$;
+
+-- The address a person actually signs in with.
+--
+-- staff.email is a CONTACT address and drifts from the credential: the
+-- owner's row says a personal Gmail while the login is
+-- admin@srivaruni.com, and both managers have a login but no contact
+-- email at all. Reset links were being sent to the contact address,
+-- which mails the wrong inbox -- and because Supabase deliberately
+-- returns success for unknown addresses to stop account enumeration, it
+-- looked like it had worked every time.
+create or replace function staff_login_email(p_staff uuid)
+returns text
+language plpgsql stable security definer set search_path to 'public'
+as $$
+declare v_email text;
+begin
+  -- Owner only: this reaches into auth.users, which RLS does not cover.
+  if not is_owner() then
+    raise exception 'Only the owner can see login details.';
+  end if;
+
+  select u.email into v_email
+  from staff s join auth.users u on u.id = s.auth_user_id
+  where s.id = p_staff;
+
+  return v_email;
+end $$;
+
+do $$
+begin
+  revoke all on function public.staff_login_email(uuid) from public, anon;
+  grant execute on function public.staff_login_email(uuid) to authenticated, service_role;
+end $$;

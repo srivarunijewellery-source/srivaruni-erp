@@ -49,7 +49,7 @@ const SECTIONS: Section[] = [
       {
         href: ROUTES.staff,
         label: "Staff and logins",
-        hint: "Add people, set their role and branch, and give them a login.",
+        hint: "Add people, set their role and branch, give them a login, change a password or take access away.",
         requires: "staff.view",
       },
     ],
