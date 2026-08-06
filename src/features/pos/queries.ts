@@ -242,3 +242,149 @@ export async function listOpenSessions(locationId: string): Promise<OpenSessionA
     };
   });
 }
+
+/* ------------------------------------------------------------------ */
+/* The drawer                                                           */
+/* ------------------------------------------------------------------ */
+
+export interface Drawer {
+  sessionId: string;
+  terminal: string;
+  locationName: string;
+  status: string;
+  openedAt: string;
+  openingFloatPaise: number;
+  bills: number;
+  salesPaise: number;
+  cashSalesPaise: number;
+  cardPaise: number;
+  upiPaise: number;
+  otherPaise: number;
+  payInPaise: number;
+  payOutPaise: number;
+  expensePaise: number;
+  /** What should physically be in the till right now. */
+  expectedPaise: number;
+}
+
+export function toDrawer(raw: Record<string, unknown>): Drawer {
+  return {
+    sessionId: String(raw.session_id),
+    terminal: String(raw.terminal ?? ""),
+    locationName: String(raw.location_name ?? ""),
+    status: String(raw.status ?? "open"),
+    openedAt: String(raw.opened_at),
+    openingFloatPaise: Number(raw.opening_float_paise ?? 0),
+    bills: Number(raw.bills ?? 0),
+    salesPaise: Number(raw.sales_paise ?? 0),
+    cashSalesPaise: Number(raw.cash_sales_paise ?? 0),
+    cardPaise: Number(raw.card_paise ?? 0),
+    upiPaise: Number(raw.upi_paise ?? 0),
+    otherPaise: Number(raw.other_paise ?? 0),
+    payInPaise: Number(raw.pay_in_paise ?? 0),
+    payOutPaise: Number(raw.pay_out_paise ?? 0),
+    expensePaise: Number(raw.expense_paise ?? 0),
+    expectedPaise: Number(raw.expected_paise ?? 0),
+  };
+}
+
+export async function getDrawer(sessionId: string): Promise<Drawer | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("register_drawer", { p_session: sessionId });
+  const row = (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | null;
+  if (error || !row) return null;
+  return toDrawer(row);
+}
+
+export interface SessionBill {
+  billId: string;
+  billNo: string;
+  rungAt: string;
+  status: string;
+  customerName: string | null;
+  customerPhone: string | null;
+  soldByName: string | null;
+  items: number;
+  totalPaise: number;
+  paymentMode: string | null;
+}
+
+/**
+ * Bills rung on THIS session only.
+ *
+ * Scoped to the session rather than to the day on purpose: once a
+ * register is closed its bills stop being the counter's business, and a
+ * staff member who cannot reach the Sales screen has no reason to be
+ * scrolling through last week's invoices looking for one to reprint.
+ */
+export async function listSessionBills(sessionId: string): Promise<SessionBill[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("session_bills", { p_session: sessionId });
+  if (error) return [];
+
+  return ((data ?? []) as Array<Record<string, unknown>>).map((r) => ({
+    billId: String(r.bill_id),
+    billNo: String(r.bill_no),
+    rungAt: String(r.rung_at),
+    status: String(r.status ?? "final"),
+    customerName: r.customer_name ? String(r.customer_name) : null,
+    customerPhone: r.customer_phone ? String(r.customer_phone) : null,
+    soldByName: r.sold_by_name ? String(r.sold_by_name) : null,
+    items: Number(r.items ?? 0),
+    totalPaise: Number(r.total_paise ?? 0),
+    paymentMode: r.payment_mode ? String(r.payment_mode) : null,
+  }));
+}
+
+export interface CashMovement {
+  id: string;
+  kind: "pay_in" | "pay_out" | "expense";
+  amountPaise: number;
+  reason: string | null;
+  accountName: string | null;
+  staffName: string | null;
+  createdAt: string;
+}
+
+export async function listCashMovements(sessionId: string): Promise<CashMovement[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("session_cash_movements", {
+    p_session: sessionId,
+  });
+  if (error) return [];
+
+  return ((data ?? []) as Array<Record<string, unknown>>).map((r) => ({
+    id: String(r.id),
+    kind: String(r.kind) as CashMovement["kind"],
+    amountPaise: Number(r.amount_paise ?? 0),
+    reason: r.reason ? String(r.reason) : null,
+    accountName: r.account_name ? String(r.account_name) : null,
+    staffName: r.staff_name ? String(r.staff_name) : null,
+    createdAt: String(r.created_at),
+  }));
+}
+
+export interface ExpenseAccount {
+  id: string;
+  code: string;
+  name: string;
+}
+
+/** What a counter expense can be booked against. */
+export async function listExpenseAccounts(): Promise<ExpenseAccount[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("ledger_accounts")
+    .select("id, code, name, kind, active, system_key")
+    .eq("kind", "expense")
+    .eq("active", true)
+    .order("code");
+  if (error) return [];
+
+  // Cost of goods and the suspense bucket are posted by the system, not
+  // chosen by a person holding a tea receipt.
+  const hidden = new Set(["cogs", "suspense", "stock_writeoff", "freight_inward"]);
+  return (data ?? [])
+    .filter((r) => !r.system_key || !hidden.has(String(r.system_key)))
+    .map((r) => ({ id: r.id, code: r.code, name: r.name }));
+}

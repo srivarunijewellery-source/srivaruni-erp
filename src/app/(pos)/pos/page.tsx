@@ -5,8 +5,10 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { createClient } from "@/lib/supabase/server";
 import {
+  getDrawer,
   getPosCatalog,
   listBranches,
+  listExpenseAccounts,
   listHeldBills,
   listOpenSessions,
   listSellers,
@@ -73,7 +75,7 @@ export default async function PosPage({
   // reconcile.
   if (!session) {
     return (
-      <>
+      <div className="mx-auto w-full max-w-3xl px-4 py-8">
         <PageHeader title="Counter" description={locationName} />
         <RegisterGate
           locationId={locationId}
@@ -83,14 +85,16 @@ export default async function PosPage({
           canChooseBranch={canChooseBranch}
           canOpen={can(user, "pos.register_open")}
         />
-      </>
+      </div>
     );
   }
 
-  const [catalog, holds, sellers, bizRes] = await Promise.all([
+  const [catalog, holds, sellers, expenseAccounts, drawer, bizRes] = await Promise.all([
     getPosCatalog(locationId),
     listHeldBills(locationId),
     listSellers(locationId),
+    listExpenseAccounts(),
+    getDrawer(session.id),
     supabase
       .from("business_settings")
       .select("legal_name, gstin, invoice_terms, invoice_footer, home_state")
@@ -113,41 +117,35 @@ export default async function PosPage({
   ]);
 
   return (
-    <>
-      <PageHeader
-        title="Counter"
-        description={`${locationName} · ${session.terminal}`}
-      />
-
-      <PosScreen
-        locationId={locationId}
-        locationName={locationName}
-        sessionId={session.id}
-        terminal={session.terminal}
-        openingFloatPaise={session.openingFloatPaise}
-        initialCatalog={catalog}
-        heldBills={holds}
-        sellers={sellers}
-        branches={branches}
-        canChooseBranch={canChooseBranch}
-        staffName={user.name}
-        shopName={bizRes.data?.legal_name ?? "Sri Varuni Fashion Jewellery"}
-        // A branch may hold its own GSTIN when registered in another
-        // state; it takes precedence over the company's.
-        gstin={branchRes.data?.gstin ?? bizRes.data?.gstin ?? null}
-        branchAddress={branchRes.data?.address ?? null}
-        branchPhone={branchRes.data?.phone ?? null}
-        invoiceTerms={bizRes.data?.invoice_terms ?? null}
-        invoiceFooter={bizRes.data?.invoice_footer ?? null}
-        upiId={bankRes.data?.upi_id ?? null}
-        homeState={bizRes.data?.home_state ?? "Telangana"}
-        canCloseRegister={can(user, "pos.register_close")}
-        permissions={{
-          canDiscount: can(user, "pos.discount"),
-          canCoupon: can(user, "pos.coupon"),
-          canHold: can(user, "pos.hold"),
-        }}
-      />
-    </>
+    <PosScreen
+      locationId={locationId}
+      locationName={locationName}
+      sessionId={session.id}
+      terminal={session.terminal}
+      initialCatalog={catalog}
+      heldBills={holds}
+      sellers={sellers}
+      branches={branches}
+      canChooseBranch={canChooseBranch}
+      expenseAccounts={expenseAccounts}
+      initialDrawer={drawer}
+      staffName={user.name}
+      shopName={bizRes.data?.legal_name ?? "Sri Varuni Fashion Jewellery"}
+      // A branch may hold its own GSTIN when registered in another
+      // state; it takes precedence over the company's.
+      gstin={branchRes.data?.gstin ?? bizRes.data?.gstin ?? null}
+      branchAddress={branchRes.data?.address ?? null}
+      branchPhone={branchRes.data?.phone ?? null}
+      invoiceTerms={bizRes.data?.invoice_terms ?? null}
+      invoiceFooter={bizRes.data?.invoice_footer ?? null}
+      upiId={bankRes.data?.upi_id ?? null}
+      homeState={bizRes.data?.home_state ?? "Telangana"}
+      canCloseRegister={can(user, "pos.register_close")}
+      permissions={{
+        canDiscount: can(user, "pos.discount"),
+        canCoupon: can(user, "pos.coupon"),
+        canHold: can(user, "pos.hold"),
+      }}
+    />
   );
 }

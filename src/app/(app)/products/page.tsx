@@ -2,32 +2,70 @@ import type { Metadata } from "next";
 import { requireUser } from "@/features/auth/session";
 import { listProducts } from "@/features/products/queries";
 import { can } from "@/config/roles";
+import { ROUTES } from "@/config/nav";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { Input } from "@/components/ui/Field";
+import { FilterBar } from "@/components/ui/FilterBar";
 import { ProductsTable } from "@/features/products/ProductsTable";
 import { NewProductDialog } from "@/features/products/NewProductDialog";
-import { listCategories, listItemFormOptions } from "@/features/inward/queries";
+import {
+  listCategories,
+  listItemFormOptions,
+  listStores,
+} from "@/features/inward/queries";
 
 export const metadata: Metadata = { title: "Products" };
 
 export default async function ProductsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{
+    q?: string;
+    category?: string;
+    itemType?: string;
+    plating?: string;
+    status?: string;
+    location?: string;
+    stock?: string;
+  }>;
 }) {
-  const { q = "" } = await searchParams;
+  const {
+    q = "",
+    category = "",
+    itemType = "",
+    plating = "",
+    status = "",
+    location = "",
+    stock = "",
+  } = await searchParams;
+
   const user = await requireUser();
-  const [rows, categories, options] = await Promise.all([
-    listProducts(q),
+  const [rows, categories, options, stores] = await Promise.all([
+    listProducts(q, {
+      categoryId: category,
+      itemTypeId: itemType,
+      platingId: plating,
+      status,
+      locationId: location,
+      stock,
+    }),
     listCategories(),
     listItemFormOptions(),
+    listStores(),
   ]);
 
   // Pricing columns are owner-only. The database enforces the same rule:
   // item_costs is owner-only via RLS, and items_pricing_guard rejects a
   // price change from anyone else.
   const canEditPricing = can(user, "inward.viewCost");
+
+  // Types belong to a category, so offering all of them beside a chosen
+  // category would list combinations that cannot exist.
+  const types = category
+    ? options.itemTypes.filter((t) => t.categoryId === category)
+    : options.itemTypes;
+
+  const filtered = Boolean(q || category || itemType || plating || status || location || stock);
 
   return (
     <>
@@ -47,27 +85,79 @@ export default async function ProductsPage({
         }
       />
 
-      <form className="mb-4" role="search">
-        <Input
-          name="q"
-          defaultValue={q}
-          placeholder="Scan a tag or type an item name"
-          aria-label="Search products"
-          className="max-w-md"
-        />
-      </form>
+      <FilterBar
+        basePath={ROUTES.products}
+        value={{ q, category, itemType, plating, status, location, stock }}
+        searchLabel="Search name or tag"
+        searchPlaceholder="Scan a tag or type an item name"
+        selects={[
+          {
+            key: "location",
+            label: "Held at",
+            allLabel: "Any store",
+            options: stores.map((s) => ({
+              value: s.id,
+              label: `${s.code} — ${s.name}`,
+            })),
+          },
+          {
+            key: "category",
+            label: "Category",
+            allLabel: "All categories",
+            options: categories.map((c) => ({ value: c.id, label: c.name })),
+          },
+          {
+            key: "itemType",
+            label: "Item type",
+            allLabel: "All types",
+            options: types.map((t) => ({ value: t.id, label: t.name })),
+          },
+          {
+            key: "plating",
+            label: "Plating",
+            allLabel: "All plating",
+            options: options.platings.map((p) => ({ value: p.id, label: p.value })),
+          },
+          {
+            key: "stock",
+            label: "On hand",
+            allLabel: "Anything",
+            options: [
+              { value: "in", label: "In stock somewhere" },
+              { value: "out", label: "Nothing left" },
+            ],
+          },
+          {
+            key: "status",
+            label: "Status",
+            allLabel: "Any status",
+            options: [
+              { value: "pending_pricing", label: "Awaiting pricing" },
+              { value: "active", label: "Active" },
+              { value: "inactive", label: "Inactive" },
+              { value: "discontinued", label: "Discontinued" },
+            ],
+          },
+        ]}
+      />
 
       {rows.length === 0 ? (
         <EmptyState
-          title={q ? `Nothing matches “${q}”` : "No products yet"}
+          title={filtered ? "Nothing matches that" : "No products yet"}
           hint={
-            q
-              ? "Check the tag, or try part of the item name."
+            filtered
+              ? "Try a wider filter, or check the tag."
               : "Items appear here as soon as they are added to an inward, before pricing."
           }
         />
       ) : (
-        <ProductsTable rows={rows} showPricing={canEditPricing} />
+        <>
+          <p className="mb-2 text-2xs text-text-muted">
+            {rows.length} product{rows.length === 1 ? "" : "s"}
+            {rows.length === 200 && " · showing the first 200, narrow the filters to see more"}
+          </p>
+          <ProductsTable rows={rows} showPricing={canEditPricing} />
+        </>
       )}
     </>
   );

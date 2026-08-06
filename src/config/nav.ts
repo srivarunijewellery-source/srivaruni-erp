@@ -59,6 +59,9 @@ export interface NavItem {
   label: string;
   /** Hidden unless the user holds this capability. */
   requires?: Capability;
+  /** Opens in a new tab. The counter does, so office work is not lost
+   *  every time someone goes to ring a sale. */
+  newTab?: boolean;
 }
 
 /**
@@ -121,7 +124,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
   {
     label: "Counter",
     items: [
-      { href: ROUTES.pos,   label: "Billing", requires: "pos.sell" },
+      { href: ROUTES.pos,   label: "Billing", requires: "pos.sell", newTab: true },
       { href: ROUTES.sales, label: "Sales",   requires: "stock.view" },
     ],
   },

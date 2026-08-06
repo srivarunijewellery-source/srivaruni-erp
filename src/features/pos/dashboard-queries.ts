@@ -84,17 +84,47 @@ export interface RecentBill {
   paymentMode: string | null;
 }
 
-export async function listRecentBills(limit = 50): Promise<RecentBill[]> {
+export interface BillFilters {
+  from?: string;
+  to?: string;
+  location?: string;
+  soldBy?: string;
+  status?: string;
+  q?: string;
+}
+
+export async function listRecentBills(
+  limit = 50,
+  filters: BillFilters = {},
+): Promise<RecentBill[]> {
   const supabase = await createClient();
-  const { data, error } = await supabase
+
+  let query = supabase
     .from("bills")
     .select(`id, bill_no, bill_date, total_paise, status, payment_mode,
              locations:location_id(code), customers:customer_id(name),
              staff:sold_by(name)`)
-    .in("status", ["final", "cancelled"])
     .order("bill_date", { ascending: false })
     .order("finalised_at", { ascending: false, nullsFirst: false })
     .limit(limit);
+
+  query =
+    filters.status === "final" || filters.status === "cancelled"
+      ? query.eq("status", filters.status)
+      : query.in("status", ["final", "cancelled"]);
+
+  // The list follows the same window as the figures above it. Showing
+  // "the last 50 bills ever" beside a one-day revenue total was the
+  // reason people thought the numbers disagreed.
+  if (filters.from) query = query.gte("bill_date", filters.from);
+  if (filters.to) query = query.lte("bill_date", filters.to);
+  if (filters.location) query = query.eq("location_id", filters.location);
+  if (filters.soldBy) query = query.eq("sold_by", filters.soldBy);
+
+  const term = filters.q?.trim();
+  if (term) query = query.ilike("bill_no", `%${term}%`);
+
+  const { data, error } = await query;
   if (error) return [];
 
   type Row = {

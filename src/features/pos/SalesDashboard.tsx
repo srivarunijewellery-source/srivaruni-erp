@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { Input, Label } from "@/components/ui/Field";
+import { Input, Label, Select } from "@/components/ui/Field";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { formatPaise } from "@/lib/money";
@@ -29,6 +29,7 @@ export function SalesDashboard({
   staffList,
   from,
   to,
+  filters,
 }: {
   branches: BranchSales[];
   registers: RegisterStatus[];
@@ -37,19 +38,41 @@ export function SalesDashboard({
   staffList: Seller[];
   from: string;
   to: string;
+  /** Everything narrowing the bill list, kept in the URL. */
+  filters: { location: string; soldBy: string; status: string; q: string };
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState<{ id: string; no: string } | null>(null);
+  const [q, setQ] = useState(filters.q);
 
-  function go(f: string, t: string) {
-    router.push(`${ROUTES.sales}?from=${f}&to=${t}`);
+  /**
+   * Every control writes the WHOLE query string.
+   *
+   * The date pickers used to push `?from=&to=` and nothing else, so
+   * choosing a branch and then changing the date silently threw the
+   * branch away. Merging into the existing params means the filters
+   * compose instead of fighting.
+   */
+  function go(next: Partial<Record<string, string>>) {
+    const merged: Record<string, string> = {
+      from,
+      to,
+      location: filters.location,
+      soldBy: filters.soldBy,
+      status: filters.status,
+      q: filters.q,
+      ...next,
+    };
+    const params = new URLSearchParams();
+    for (const [k, v] of Object.entries(merged)) if (v) params.set(k, v);
+    router.push(`${ROUTES.sales}?${params.toString()}`);
   }
 
   function preset(days: number) {
     const end = new Date();
     const start = new Date();
     start.setDate(start.getDate() - days);
-    go(iso(start), iso(end));
+    go({ from: iso(start), to: iso(end) });
   }
 
   const active = branches.filter((b) => b.bills > 0);
@@ -71,37 +94,106 @@ export function SalesDashboard({
   return (
     <div className="space-y-4">
       <Card>
-        <CardBody className="flex flex-wrap items-end gap-3">
-          <div>
-            <Label htmlFor="from">From</Label>
-            <Input
-              id="from"
-              type="date"
-              value={from}
-              onChange={(e) => go(e.target.value, to)}
-              className="w-44"
-            />
+        <CardBody className="space-y-3">
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <Label htmlFor="from">From</Label>
+              <Input
+                id="from"
+                type="date"
+                value={from}
+                onChange={(e) => go({ from: e.target.value })}
+                className="w-44"
+              />
+            </div>
+            <div>
+              <Label htmlFor="to">To</Label>
+              <Input
+                id="to"
+                type="date"
+                value={to}
+                onChange={(e) => go({ to: e.target.value })}
+                className="w-44"
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button size="sm" variant="secondary" onClick={() => preset(0)}>
+                Today
+              </Button>
+              <Button size="sm" variant="secondary" onClick={() => preset(7)}>
+                7 days
+              </Button>
+              <Button size="sm" variant="secondary" onClick={() => preset(30)}>
+                30 days
+              </Button>
+            </div>
           </div>
-          <div>
-            <Label htmlFor="to">To</Label>
-            <Input
-              id="to"
-              type="date"
-              value={to}
-              onChange={(e) => go(from, e.target.value)}
-              className="w-44"
-            />
-          </div>
-          <div className="flex gap-2">
-            <Button size="sm" variant="secondary" onClick={() => preset(0)}>
-              Today
-            </Button>
-            <Button size="sm" variant="secondary" onClick={() => preset(7)}>
-              7 days
-            </Button>
-            <Button size="sm" variant="secondary" onClick={() => preset(30)}>
-              30 days
-            </Button>
+
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <Label htmlFor="branch">Branch</Label>
+              <Select
+                id="branch"
+                value={filters.location}
+                onChange={(e) => go({ location: e.target.value })}
+              >
+                <option value="">All branches</option>
+                {branches.map((b) => (
+                  <option key={b.locationId} value={b.locationId}>
+                    {b.code} — {b.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="soldBy">Salesperson</Label>
+              <Select
+                id="soldBy"
+                value={filters.soldBy}
+                onChange={(e) => go({ soldBy: e.target.value })}
+              >
+                <option value="">Everyone</option>
+                {staffList.map((sp) => (
+                  <option key={sp.id} value={sp.id}>
+                    {sp.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="status">Status</Label>
+              <Select
+                id="status"
+                value={filters.status}
+                onChange={(e) => go({ status: e.target.value })}
+              >
+                <option value="">Final and cancelled</option>
+                <option value="final">Final only</option>
+                <option value="cancelled">Cancelled only</option>
+              </Select>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                go({ q: q.trim() });
+              }}
+            >
+              <Label htmlFor="billq">Find a bill</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="billq"
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  placeholder="Bill number or customer"
+                />
+                <Button type="submit" variant="secondary">
+                  Go
+                </Button>
+              </div>
+            </form>
           </div>
         </CardBody>
       </Card>

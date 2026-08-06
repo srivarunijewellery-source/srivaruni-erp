@@ -19,25 +19,39 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 export default async function SalesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string; to?: string }>;
+  searchParams: Promise<{
+    from?: string;
+    to?: string;
+    location?: string;
+    soldBy?: string;
+    status?: string;
+    q?: string;
+  }>;
 }) {
   const user = await requireUser();
   if (!can(user, "stock.view")) {
     return <EmptyState title="You do not have access to sales figures" />;
   }
 
-  const { from, to } = await searchParams;
+  const sp = await searchParams;
   const today = new Date().toISOString().slice(0, 10);
-  const start = from && DATE.test(from) ? from : today;
-  const end = to && DATE.test(to) ? to : today;
+  const start = sp.from && DATE.test(sp.from) ? sp.from : today;
+  const end = sp.to && DATE.test(sp.to) ? sp.to : today;
 
-  const [branches, registers, recent, sellers] = await Promise.all([
+  const filters = {
+    location: sp.location ?? "",
+    soldBy: sp.soldBy ?? "",
+    status: sp.status === "final" || sp.status === "cancelled" ? sp.status : "",
+    q: sp.q ?? "",
+  };
+
+  const [branches, registers, recent, sellers, staffList] = await Promise.all([
     getSalesSummary(start, end),
     getRegisterStatus(),
-    listRecentBills(50),
+    listRecentBills(100, { from: start, to: end, ...filters }),
     getSalespersonReport(start, end),
+    listSellers(user.locationId ?? ""),
   ]);
-  const staffList = await listSellers(user.locationId ?? "");
 
   return (
     <>
@@ -53,6 +67,7 @@ export default async function SalesPage({
         staffList={staffList}
         from={start}
         to={end}
+        filters={filters}
       />
     </>
   );

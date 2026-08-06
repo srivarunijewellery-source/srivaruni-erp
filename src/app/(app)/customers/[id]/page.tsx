@@ -2,7 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/features/auth/session";
-import { getCustomer } from "@/features/customers/queries";
+import {
+  getCustomer,
+  getCustomerSummary,
+  listCustomerPurchases,
+} from "@/features/customers/queries";
 import { listCustomerCoupons } from "@/features/coupons/queries";
 import { can } from "@/config/roles";
 import { ROUTES } from "@/config/nav";
@@ -11,6 +15,8 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { CustomerForm } from "@/features/customers/CustomerForm";
 import { formatDate } from "@/lib/format";
+import { formatPaise } from "@/lib/money";
+import { Badge } from "@/components/ui/Badge";
 
 export const metadata: Metadata = { title: "Customer" };
 
@@ -25,7 +31,11 @@ export default async function CustomerDetailPage({
   const customer = await getCustomer(id);
   if (!customer) notFound();
 
-  const coupons = await listCustomerCoupons(customer.id);
+  const [coupons, summary, purchases] = await Promise.all([
+    listCustomerCoupons(customer.id),
+    getCustomerSummary(customer.id),
+    listCustomerPurchases(customer.id),
+  ]);
 
   const editing = edit === "1" && can(user, "customer.manage");
 
@@ -109,14 +119,107 @@ export default async function CustomerDetailPage({
       )}
 
       <Card className="mt-4">
-        <CardBody>
-          <p className="text-sm text-text-muted">
-            Purchase history will appear here once billing is built. Nothing links a sale to
-            a customer yet.
-          </p>
-        </CardBody>
+        <CardHeader className="flex flex-wrap items-baseline justify-between gap-2">
+          <span className="font-medium">What they have bought</span>
+          {summary.favouriteCategory && (
+            <span className="text-2xs text-text-muted">
+              mostly {summary.favouriteCategory}
+            </span>
+          )}
+        </CardHeader>
+
+        {summary.bills === 0 ? (
+          <CardBody>
+            <p className="text-sm text-text-muted">
+              Nothing bought yet. Bills rung at the counter against this phone number
+              show up here, piece by piece.
+            </p>
+          </CardBody>
+        ) : (
+          <>
+            <CardBody className="grid grid-cols-2 gap-3 border-b border-border sm:grid-cols-4">
+              <Stat label="Spent" value={formatPaise(summary.spentPaise)} />
+              <Stat
+                label="Bills"
+                value={`${summary.bills}`}
+                hint={`${summary.pieces} piece${summary.pieces === 1 ? "" : "s"}`}
+              />
+              <Stat label="Average bill" value={formatPaise(summary.avgBillPaise)} />
+              <Stat
+                label="Last visit"
+                value={summary.lastVisit ? formatDate(summary.lastVisit) : "—"}
+                hint={
+                  summary.firstVisit ? `first ${formatDate(summary.firstVisit)}` : undefined
+                }
+              />
+            </CardBody>
+
+            <CardBody className="py-0">
+              <ul className="divide-y divide-border">
+                {purchases.map((b) => (
+                  <li key={b.billId} className="py-3">
+                    <div className="flex flex-wrap items-baseline gap-2">
+                      <span className="font-mono text-sm font-medium">{b.billNo}</span>
+                      <span className="text-2xs text-text-muted">
+                        {formatDate(b.billDate)}
+                        {b.locationCode ? ` · ${b.locationCode}` : ""}
+                      </span>
+                      {b.status === "cancelled" && <Badge tone="danger">cancelled</Badge>}
+                      <span className="ml-auto tnum font-mono text-sm">
+                        {formatPaise(b.totalPaise)}
+                      </span>
+                    </div>
+
+                    <ul className="mt-1.5 space-y-1">
+                      {b.lines.map((l) => (
+                        <li
+                          key={l.itemId + l.billId}
+                          className="flex flex-wrap items-baseline gap-2 text-sm"
+                        >
+                          <Link
+                            href={ROUTES.productDetail(l.itemId)}
+                            className="min-w-0 flex-1 truncate hover:text-brand hover:underline"
+                          >
+                            {l.itemName}
+                          </Link>
+                          {l.category && (
+                            <span className="text-2xs text-text-subtle">{l.category}</span>
+                          )}
+                          <span className="tnum font-mono text-2xs text-text-muted">
+                            ×{l.qty}
+                          </span>
+                          <span className="tnum w-24 text-right font-mono text-2xs">
+                            {formatPaise(l.lineTotalPaise)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </li>
+                ))}
+              </ul>
+            </CardBody>
+          </>
+        )}
       </Card>
     </>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+}) {
+  return (
+    <div>
+      <p className="text-2xs uppercase tracking-wide text-text-muted">{label}</p>
+      <p className="tnum font-mono text-lg">{value}</p>
+      {hint && <p className="text-2xs text-text-subtle">{hint}</p>}
+    </div>
   );
 }
 

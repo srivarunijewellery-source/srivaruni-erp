@@ -28,28 +28,70 @@ export interface ProductRow {
   sizeId: string | null;
 }
 
+export interface ProductFilters {
+  categoryId?: string;
+  itemTypeId?: string;
+  platingId?: string;
+  status?: string;
+  /** Only items with stock at this location. */
+  locationId?: string;
+  /** "in" for anything on hand, "out" for nothing on hand. */
+  stock?: string;
+}
+
 /**
  * Catalog listing.
  *
  * Cost comes from item_latest_cost, a security_invoker view over the
  * owner-only item_costs table, so a staff session simply gets no rows
  * back and the column renders empty. The number never crosses the wire.
+ *
+ * The location filter is an inner join on stock_balances rather than a
+ * post-filter: "show me what is in ZHB" has to exclude items held only
+ * elsewhere, and filtering after a 200-row page has already been taken
+ * would silently drop matches that fell below the cut.
  */
-export async function listProducts(query: string): Promise<ProductRow[]> {
+export async function listProducts(
+  query: string,
+  filters: ProductFilters = {},
+): Promise<ProductRow[]> {
   const supabase = await createClient();
 
-  let q = supabase
-    .from("items")
-    .select(
-      `id, barcode, name, status, category_id, created_at,
+  // Two select shapes rather than one built by concatenation: joining
+  // strings with + collapses the row type to an error type at compile
+  // time, so each variant has to be its own literal.
+  const WITH_LOCATION = `id, barcode, name, status, category_id, created_at,
        mrp_paise, selling_price_paise, hsn, gst_rate,
        colour_id, plating_id, stone_id, size_id,
        categories(name), item_types(name),
        item_photos(storage_path, is_primary, sort_order),
-       stock_balances(qty)`,
-    )
-    .order("created_at", { ascending: false })
-    .limit(200);
+       stock_balances!inner(qty, location_id)` as const;
+
+  const PLAIN = `id, barcode, name, status, category_id, created_at,
+       mrp_paise, selling_price_paise, hsn, gst_rate,
+       colour_id, plating_id, stone_id, size_id,
+       categories(name), item_types(name),
+       item_photos(storage_path, is_primary, sort_order),
+       stock_balances(qty, location_id)` as const;
+
+  let q = filters.locationId
+    ? supabase
+        .from("items")
+        .select(WITH_LOCATION)
+        .eq("stock_balances.location_id", filters.locationId)
+        .gt("stock_balances.qty", 0)
+        .order("created_at", { ascending: false })
+        .limit(200)
+    : supabase
+        .from("items")
+        .select(PLAIN)
+        .order("created_at", { ascending: false })
+        .limit(200);
+
+  if (filters.categoryId) q = q.eq("category_id", filters.categoryId);
+  if (filters.itemTypeId) q = q.eq("item_type_id", filters.itemTypeId);
+  if (filters.platingId) q = q.eq("plating_id", filters.platingId);
+  if (filters.status) q = q.eq("status", filters.status);
 
   const term = query.trim();
   if (term) q = q.or(`barcode.ilike.%${term}%,name.ilike.%${term}%`);
@@ -72,7 +114,7 @@ export async function listProducts(query: string): Promise<ProductRow[]> {
     }
   }
 
-  return (data ?? []).map((r) => {
+  const mapped = (data ?? []).map((r) => {
     const category = Array.isArray(r.categories) ? r.categories[0] : r.categories;
     const photos = (r.item_photos ?? []) as Array<{
       storage_path: string; is_primary: boolean; sort_order: number;
@@ -107,6 +149,13 @@ export async function listProducts(query: string): Promise<ProductRow[]> {
       sizeId: r.size_id,
     };
   });
+
+  // On hand is a sum across locations, so it cannot be a database
+  // filter without a second round trip. The page is already capped at
+  // 200 rows, which makes this cheap.
+  if (filters.stock === "in") return mapped.filter((r) => r.onHand > 0);
+  if (filters.stock === "out") return mapped.filter((r) => r.onHand <= 0);
+  return mapped;
 }
 
 export interface ProductDetail extends ProductRow {

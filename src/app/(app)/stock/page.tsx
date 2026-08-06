@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { searchStock } from "@/features/stock/queries";
+import { getStockFacets, searchStock } from "@/features/stock/queries";
 import { PageHeader } from "@/components/ui/PageHeader";
 import Link from "next/link";
 import { Barcode } from "@/components/ui/Barcode";
@@ -8,7 +8,7 @@ import { itemPhotoUrl } from "@/lib/storage";
 import { ROUTES } from "@/config/nav";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { DataTable, type Column } from "@/components/ui/DataTable";
-import { Input } from "@/components/ui/Field";
+import { FilterBar } from "@/components/ui/FilterBar";
 import { formatPaise } from "@/lib/money";
 import type { StockRow } from "@/types/domain";
 
@@ -17,10 +17,19 @@ export const metadata: Metadata = { title: "Stock" };
 export default async function StockPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{
+    q?: string;
+    location?: string;
+    category?: string;
+    itemType?: string;
+  }>;
 }) {
-  const { q = "" } = await searchParams;
-  const rows = await searchStock(q);
+  const { q = "", location = "", category = "", itemType = "" } = await searchParams;
+
+  const [rows, facets] = await Promise.all([
+    searchStock(q, { location, category, itemType }),
+    getStockFacets(),
+  ]);
 
   const columns: ReadonlyArray<Column<StockRow>> = [
     {
@@ -51,33 +60,82 @@ export default async function StockPage({
       ),
     },
     { key: "category", header: "Category", render: (r) => r.category },
-    { key: "store", header: "Store", render: (r) => <span className="font-mono text-2xs">{r.locationCode}</span> },
+    {
+      key: "store",
+      header: "Store",
+      render: (r) => <span className="font-mono text-2xs">{r.locationCode}</span>,
+    },
     { key: "qty", header: "On hand", numeric: true, render: (r) => r.qty },
-    { key: "price", header: "Price", numeric: true, render: (r) => formatPaise(r.sellingPricePaise) },
+    {
+      key: "price",
+      header: "Price",
+      numeric: true,
+      render: (r) => formatPaise(r.sellingPricePaise),
+    },
   ];
+
+  const filtered = Boolean(q || location || category || itemType);
+  const pieces = rows.reduce((s, r) => s + r.qty, 0);
 
   return (
     <>
-      <PageHeader title="Stock" description="Saleable stock only. Transit and damaged pieces are excluded." />
+      <PageHeader
+        title="Stock"
+        description="Saleable stock only. Transit and damaged pieces are excluded."
+      />
 
-      <form className="mb-4" role="search">
-        <Input
-          name="q"
-          defaultValue={q}
-          placeholder="Scan a tag or type an item name"
-          aria-label="Search stock"
-          autoFocus
-          className="max-w-md"
-        />
-      </form>
+      <FilterBar
+        basePath={ROUTES.stock}
+        value={{ q, location, category, itemType }}
+        searchLabel="Search name or tag"
+        searchPlaceholder="Scan a tag or type an item name"
+        selects={[
+          {
+            key: "location",
+            label: "Store",
+            allLabel: "All stores",
+            options: facets.locations.map((l) => ({
+              value: l.id,
+              label: `${l.code} — ${l.name}`,
+            })),
+          },
+          {
+            key: "category",
+            label: "Category",
+            allLabel: "All categories",
+            options: facets.categories.map((c) => ({ value: c, label: c })),
+          },
+          {
+            key: "itemType",
+            label: "Item type",
+            allLabel: "All types",
+            options: facets.itemTypes.map((t) => ({ value: t, label: t })),
+          },
+        ]}
+      />
 
       {rows.length === 0 ? (
         <EmptyState
-          title={q ? `Nothing matches “${q}”` : "No stock on hand"}
-          hint={q ? "Check the tag, or try part of the item name." : "Approved inward will show up here."}
+          title={filtered ? "Nothing matches that" : "No stock on hand"}
+          hint={
+            filtered
+              ? "Try a wider filter, or check the tag."
+              : "Approved inward will show up here."
+          }
         />
       ) : (
-        <DataTable columns={columns} rows={rows} getKey={(r) => `${r.itemId}-${r.locationCode}`} />
+        <>
+          <p className="mb-2 text-2xs text-text-muted">
+            {rows.length} row{rows.length === 1 ? "" : "s"} · {pieces} piece
+            {pieces === 1 ? "" : "s"}
+            {rows.length === 200 && " · showing the first 200, narrow the filters to see more"}
+          </p>
+          <DataTable
+            columns={columns}
+            rows={rows}
+            getKey={(r) => `${r.itemId}-${r.locationCode}`}
+          />
+        </>
       )}
     </>
   );

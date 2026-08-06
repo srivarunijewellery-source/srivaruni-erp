@@ -129,3 +129,133 @@ export async function listUpcomingOccasions(withinDays = 30): Promise<
 
   return out.sort((a, b) => a.date.localeCompare(b.date));
 }
+
+/* ------------------------------------------------------------------ */
+/* Purchase history                                                     */
+/* ------------------------------------------------------------------ */
+
+export interface CustomerSummary {
+  bills: number;
+  pieces: number;
+  spentPaise: number;
+  firstVisit: string | null;
+  lastVisit: string | null;
+  avgBillPaise: number;
+  favouriteCategory: string | null;
+}
+
+export interface CustomerPurchaseLine {
+  billId: string;
+  billNo: string;
+  billDate: string;
+  billStatus: string;
+  locationCode: string | null;
+  itemId: string;
+  itemName: string;
+  barcode: string | null;
+  category: string | null;
+  qty: number;
+  unitPricePaise: number;
+  discountPaise: number;
+  lineTotalPaise: number;
+  soldByName: string | null;
+}
+
+/** One bill, with the pieces on it. */
+export interface CustomerPurchase {
+  billId: string;
+  billNo: string;
+  billDate: string;
+  status: string;
+  locationCode: string | null;
+  totalPaise: number;
+  lines: CustomerPurchaseLine[];
+}
+
+export async function getCustomerSummary(id: string): Promise<CustomerSummary> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("customer_summary", { p_customer: id });
+  const row = (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | null;
+
+  if (error || !row) {
+    return {
+      bills: 0, pieces: 0, spentPaise: 0, firstVisit: null,
+      lastVisit: null, avgBillPaise: 0, favouriteCategory: null,
+    };
+  }
+
+  return {
+    bills: Number(row.bills ?? 0),
+    pieces: Number(row.pieces ?? 0),
+    spentPaise: Number(row.spent_paise ?? 0),
+    firstVisit: row.first_visit ? String(row.first_visit) : null,
+    lastVisit: row.last_visit ? String(row.last_visit) : null,
+    avgBillPaise: Number(row.avg_bill_paise ?? 0),
+    favouriteCategory: row.favourite_category ? String(row.favourite_category) : null,
+  };
+}
+
+/**
+ * Every piece this customer has ever taken away, grouped back into the
+ * bills they came on.
+ *
+ * The item level is the point: "what did she buy last time" is the
+ * question actually asked at the counter, and a list of bill totals
+ * cannot answer it. Grouping happens here rather than in SQL because a
+ * one-to-many join is the natural shape to read and the wrong shape to
+ * render.
+ */
+export async function listCustomerPurchases(
+  id: string,
+  limit = 200,
+): Promise<CustomerPurchase[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("customer_items", {
+    p_customer: id,
+    p_limit: limit,
+  });
+  if (error) return [];
+
+  const out: CustomerPurchase[] = [];
+  const byBill = new Map<string, CustomerPurchase>();
+
+  for (const raw of (data ?? []) as Array<Record<string, unknown>>) {
+    const line: CustomerPurchaseLine = {
+      billId: String(raw.bill_id),
+      billNo: String(raw.bill_no),
+      billDate: String(raw.bill_date),
+      billStatus: String(raw.bill_status ?? "final"),
+      locationCode: raw.location_code ? String(raw.location_code) : null,
+      itemId: String(raw.item_id),
+      itemName: String(raw.item_name ?? "Item"),
+      barcode: raw.barcode ? String(raw.barcode) : null,
+      category: raw.category ? String(raw.category) : null,
+      qty: Number(raw.qty ?? 0),
+      unitPricePaise: Number(raw.unit_price_paise ?? 0),
+      discountPaise: Number(raw.discount_paise ?? 0),
+      lineTotalPaise: Number(raw.line_total_paise ?? 0),
+      soldByName: raw.sold_by_name ? String(raw.sold_by_name) : null,
+    };
+
+    let bill = byBill.get(line.billId);
+    if (!bill) {
+      bill = {
+        billId: line.billId,
+        billNo: line.billNo,
+        billDate: line.billDate,
+        status: line.billStatus,
+        locationCode: line.locationCode,
+        totalPaise: 0,
+        lines: [],
+      };
+      byBill.set(line.billId, bill);
+      // The RPC already orders by date descending, so pushing as bills
+      // are first seen keeps that order without a second sort.
+      out.push(bill);
+    }
+    bill.lines.push(line);
+    bill.totalPaise += line.lineTotalPaise;
+  }
+
+  return out;
+}

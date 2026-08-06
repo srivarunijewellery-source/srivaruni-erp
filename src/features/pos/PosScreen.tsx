@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import Link from "next/link";
+import { ROUTES } from "@/config/nav";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select } from "@/components/ui/Field";
 import { Badge } from "@/components/ui/Badge";
@@ -29,8 +31,19 @@ import { PersonIcon } from "@/components/ui/Icon";
 import { PaymentPanel } from "./PaymentPanel";
 import { CloseRegisterPanel } from "./CloseRegisterPanel";
 import { CustomerPanel } from "./CustomerPanel";
+import { DrawerPanel } from "./DrawerPanel";
+import { SessionBillsPanel, type ReceiptHeader } from "./SessionBillsPanel";
 import { printReceipt, reprintLast, type ReceiptData } from "./receipt";
-import type { Branch, CustomerHit, HeldBill, PosCatalogItem, Seller } from "./queries";
+import { fetchDrawer } from "./actions";
+import type {
+  Branch,
+  CustomerHit,
+  Drawer,
+  ExpenseAccount,
+  HeldBill,
+  PosCatalogItem,
+  Seller,
+} from "./queries";
 
 export interface CartLine {
   itemId: string;
@@ -64,13 +77,14 @@ export function PosScreen({
   locationName,
   sessionId,
   terminal,
-  openingFloatPaise,
   initialCatalog,
   heldBills,
   sellers,
   branches,
   canChooseBranch,
   canCloseRegister,
+  expenseAccounts,
+  initialDrawer,
   permissions,
   staffName,
   shopName,
@@ -86,13 +100,14 @@ export function PosScreen({
   locationName: string;
   sessionId: string;
   terminal: string;
-  openingFloatPaise: number;
   initialCatalog: PosCatalogItem[];
   heldBills: HeldBill[];
   sellers: Seller[];
   branches: Branch[];
   canChooseBranch: boolean;
   canCloseRegister: boolean;
+  expenseAccounts: ExpenseAccount[];
+  initialDrawer: Drawer | null;
   permissions: Permissions;
   staffName: string;
   shopName: string;
@@ -144,6 +159,10 @@ export function PosScreen({
 
   const scanRef = useRef<HTMLInputElement>(null);
   const [showClose, setShowClose] = useState(false);
+  const [showDrawer, setShowDrawer] = useState(false);
+  const [showBills, setShowBills] = useState(false);
+  const [showMore, setShowMore] = useState(false);
+  const [drawer, setDrawer] = useState<Drawer | null>(initialDrawer);
 
   /* ------------------------------------------------ connectivity + cache */
 
@@ -222,6 +241,53 @@ export function PosScreen({
   useEffect(() => {
     if (online) void drainQueue();
   }, [online, drainQueue]);
+
+  /**
+   * The scan box has to keep the caret, always.
+   *
+   * A hardware scanner is a keyboard: it types the code and presses
+   * Enter at whatever element happens to be focused. Tapping a quantity
+   * button, a discount field or a salesman badge moves focus off the
+   * scan box, and the next scan then lands in a number input or nowhere
+   * at all -- which is what "sometimes it just doesn't take the item"
+   * actually was. Anything typed while no text field is focused is
+   * routed back here.
+   */
+  useEffect(() => {
+    const el = () => scanRef.current;
+    const isTyping = () => {
+      const a = document.activeElement as HTMLElement | null;
+      if (!a || a === el()) return false;
+      const tag = a.tagName;
+      return (
+        tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA" || a.isContentEditable
+      );
+    };
+
+    const onKey = (e: KeyboardEvent) => {
+      // A modal owns the keyboard while it is up.
+      if (document.querySelector('[role="dialog"]')) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (isTyping()) return;
+      if (e.key.length !== 1 && e.key !== "Enter") return;
+      el()?.focus();
+    };
+
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
+  /** Called after every cart interaction, so the next scan lands right. */
+  const refocusScan = useCallback(() => {
+    // A frame late: React has to finish re-rendering the row that was
+    // just tapped, or the focus is stolen straight back by the button.
+    requestAnimationFrame(() => scanRef.current?.focus());
+  }, []);
+
+  const refreshDrawer = useCallback(async () => {
+    const r = await fetchDrawer(sessionId);
+    if (r.ok) setDrawer(r.data);
+  }, [sessionId]);
 
   /* ------------------------------------------------------------- cart */
 
@@ -326,6 +392,7 @@ export function PosScreen({
         ? prev.filter((l) => l.itemId !== itemId)
         : prev.map((l) => (l.itemId === itemId ? { ...l, qty } : l)),
     );
+    refocusScan();
   }
 
   /**
@@ -487,10 +554,14 @@ export function PosScreen({
         return;
       }
 
-      setLastReceipt(receipt);
-      if (printAfter) printReceipt(receipt);
-      setNotice("Sale complete.");
+      // The invoice number is minted inside the database, so the slip
+      // built above still has a placeholder in it. Print the real one.
+      const printed: ReceiptData = { ...receipt, billNo: res.data.billNo || "—" };
+      setLastReceipt(printed);
+      if (printAfter) printReceipt(printed);
+      setNotice(`Sale complete · ${res.data.billNo}`);
       clearCart();
+      void refreshDrawer();
     });
   }
 
@@ -559,30 +630,64 @@ export function PosScreen({
 
   const staleMinutes = syncedAt ? Math.round((Date.now() - syncedAt) / 60000) : null;
 
+  /** Shop details a reprint needs, which do not change between bills. */
+  const receiptHeader: ReceiptHeader = {
+    shopName,
+    gstin,
+    locationName,
+    branchAddress,
+    branchPhone,
+    terms: invoiceTerms,
+    footer: invoiceFooter,
+    upiId,
+  };
+
   return (
-    <div className="grid gap-4 lg:grid-cols-[1fr_24rem]">
-      <div className="space-y-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge tone={online ? "done" : "danger"}>{online ? "Online" : "Offline"}</Badge>
-          {queue.length > 0 && (
-            <Badge tone="pending">{queue.length} waiting to send</Badge>
-          )}
-          {!sessionId && <Badge tone="pending">Register not open</Badge>}
-          {staleMinutes !== null && staleMinutes > 30 && (
-            <span
-              className="text-2xs text-text-muted"
-              title="Stock counts on this machine were last refreshed then."
-            >
-              stock copy {staleMinutes} min old
+    <div className="min-h-dvh">
+      {/* ------------------------------------------------------------------
+          Counter chrome.
+
+          This bar replaces the whole app navigation, which used to sit
+          above the till: eight dropdown menus over a half-rung bill, each
+          one a way to lose it. What is left is what a person at the
+          counter actually needs -- where they are, what is in the drawer,
+          the bills they have rung -- and everything destructive is behind
+          the overflow, two taps away from a stray elbow.
+          ------------------------------------------------------------ */}
+      <header className="sticky top-0 z-30 border-b border-border bg-surface">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5">
+          <div className="flex items-baseline gap-2">
+            <span className="font-mono text-2xs uppercase tracking-widest text-text-subtle">
+              Counter
             </span>
-          )}
-          <span className="ml-auto flex items-center gap-2">
-            {canChooseBranch && branches.length > 1 ? (
+            <span className="text-lg font-semibold tracking-tight">{locationName}</span>
+            <span className="rounded-full bg-surface-sunken px-2 py-0.5 text-2xs text-text-muted">
+              {terminal}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Badge tone={online ? "done" : "danger"}>{online ? "Online" : "Offline"}</Badge>
+            {queue.length > 0 && (
+              <Badge tone="pending">{queue.length} waiting to send</Badge>
+            )}
+            {staleMinutes !== null && staleMinutes > 30 && (
+              <span
+                className="text-2xs text-text-muted"
+                title="Stock counts on this machine were last refreshed then."
+              >
+                stock copy {staleMinutes} min old
+              </span>
+            )}
+          </div>
+
+          <div className="ml-auto flex items-center gap-2">
+            {canChooseBranch && branches.length > 1 && (
               <Select
                 aria-label="Branch"
                 value={locationId}
                 onChange={(e) => {
-                  // Changing branch means a different register and a
+                  // A different branch is a different register and a
                   // different catalogue, so the cart cannot come along.
                   if (
                     cart.length === 0 ||
@@ -599,20 +704,106 @@ export function PosScreen({
                   </option>
                 ))}
               </Select>
-            ) : (
-              <span className="text-2xs text-text-muted">{locationName}</span>
             )}
-            <span className="text-2xs text-text-muted">{terminal}</span>
-            {canCloseRegister && (
-              <Button size="sm" variant="ghost" onClick={() => setShowClose(true)}>
-                Close register
-              </Button>
-            )}
-          </span>
-        </div>
 
-        <div className="flex flex-wrap gap-2">
-          <Input
+            {/* In the drawer, always on screen. The number people used to
+                have to close the register to find out. */}
+            <button
+              type="button"
+              onClick={() => setShowDrawer(true)}
+              className="flex items-baseline gap-2 rounded-control border border-border px-3 py-1.5 text-left hover:bg-surface-sunken"
+              title="Put money in, take money out, or record a small expense"
+            >
+              <span className="text-2xs uppercase tracking-wide text-text-muted">
+                Drawer
+              </span>
+              <span className="tnum font-mono text-sm font-medium">
+                {drawer ? formatPaise(drawer.expectedPaise) : "—"}
+              </span>
+            </button>
+
+            <Button size="sm" variant="secondary" onClick={() => setShowBills(true)}>
+              Bills
+              {drawer && drawer.bills > 0 && (
+                <span className="tnum font-mono text-2xs text-text-muted">
+                  {drawer.bills}
+                </span>
+              )}
+            </Button>
+
+            {/* Everything that ends something lives in here. */}
+            <div className="relative">
+              <button
+                type="button"
+                aria-label="More"
+                aria-expanded={showMore}
+                onClick={() => setShowMore((v) => !v)}
+                className="h-8 rounded-control border border-border px-2.5 text-sm text-text-muted hover:bg-surface-sunken hover:text-text"
+              >
+                ⋯
+              </button>
+              {showMore && (
+                <>
+                  <button
+                    aria-hidden
+                    tabIndex={-1}
+                    onClick={() => setShowMore(false)}
+                    className="fixed inset-0 z-10 cursor-default"
+                  />
+                  <div className="absolute right-0 top-full z-20 mt-1 min-w-56 overflow-hidden rounded-card border border-border bg-surface shadow-raised">
+                    <p className="border-b border-border px-3 py-2 text-2xs text-text-muted">
+                      Billing as {staffName}
+                    </p>
+                    {lastReceipt && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowMore(false);
+                          reprintLast(lastReceipt);
+                        }}
+                        className="block w-full px-3 py-2 text-left text-sm hover:bg-surface-sunken"
+                      >
+                        Re-print last receipt
+                      </button>
+                    )}
+                    <Link
+                      href={ROUTES.dashboard}
+                      className="block border-t border-border px-3 py-2 text-left text-sm hover:bg-surface-sunken"
+                    >
+                      Leave the counter
+                    </Link>
+                    {canCloseRegister && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowMore(false);
+                          setShowClose(true);
+                        }}
+                        className="block w-full border-t border-border px-3 py-2 text-left text-sm text-status-danger-fg hover:bg-status-danger-bg"
+                      >
+                        Close register…
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div className="grid gap-4 p-4 lg:grid-cols-[1fr_26rem]">
+        <div
+          className="space-y-3"
+          // Any tap in the billing column puts the caret back in the scan
+          // box, so the scanner is never typing into a dead element.
+          onClick={refocusScan}
+        >
+        {/* The scan box is deliberately oversized. It is the one control
+            used a thousand times a day, and on a busy counter the eye
+            needs to find it without looking. */}
+        <div className="flex flex-wrap gap-2 rounded-card border border-border bg-surface p-2 shadow-card">
+          <input
             ref={scanRef}
             autoFocus
             value={scan}
@@ -624,14 +815,15 @@ export function PosScreen({
                 handleScan(scan);
               }
             }}
-            placeholder="Scan a barcode"
-            className="w-64 font-mono"
+            placeholder="Scan a tag"
+            aria-label="Scan a tag"
+            className="h-12 w-72 rounded-control border-2 border-brand/25 bg-surface px-3 font-mono text-lg tracking-wide placeholder:text-text-subtle focus:border-brand focus:shadow-[var(--control-ring)] focus:outline-none"
           />
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="or search by name / design code"
-            className="min-w-56 flex-1"
+            className="h-12 min-w-56 flex-1 text-base"
           />
         </div>
 
@@ -661,13 +853,13 @@ export function PosScreen({
 
         <div className="rounded-card border border-border bg-surface">
           {cart.length === 0 ? (
-            <p className="px-4 py-10 text-center text-sm text-text-muted">
+            <p className="px-4 py-16 text-center text-base text-text-subtle">
               Scan a piece to begin.
             </p>
           ) : (
             <ul className="divide-y divide-border">
               {cart.map((l) => (
-                <li key={l.itemId} className="flex flex-wrap items-center gap-3 px-3 py-2.5">
+                <li key={l.itemId} className="flex flex-wrap items-center gap-3 px-3 py-3">
                   <div className="min-w-40 flex-1">
                     <p className="truncate text-sm font-medium">{l.name}</p>
                     <p className="text-2xs text-text-muted">
@@ -681,11 +873,21 @@ export function PosScreen({
                   </div>
 
                   <div className="flex items-center gap-1">
-                    <Button size="sm" variant="secondary" onClick={() => setQty(l.itemId, l.qty - 1)}>
+                    <Button
+                      variant="secondary"
+                      className="w-10 px-0 text-lg"
+                      aria-label={`One fewer ${l.name}`}
+                      onClick={() => setQty(l.itemId, l.qty - 1)}
+                    >
                       −
                     </Button>
-                    <span className="w-8 text-center font-mono text-sm">{l.qty}</span>
-                    <Button size="sm" variant="secondary" onClick={() => setQty(l.itemId, l.qty + 1)}>
+                    <span className="tnum w-9 text-center font-mono text-base">{l.qty}</span>
+                    <Button
+                      variant="secondary"
+                      className="w-10 px-0 text-lg"
+                      aria-label={`One more ${l.name}`}
+                      onClick={() => setQty(l.itemId, l.qty + 1)}
+                    >
                       +
                     </Button>
                   </div>
@@ -720,7 +922,7 @@ export function PosScreen({
                     </div>
                   )}
 
-                  <span className="w-24 text-right font-mono text-sm">
+                  <span className="tnum w-24 text-right font-mono text-base font-medium">
                     {formatPaise(l.unitPaise * l.qty - l.discountPaise)}
                   </span>
 
@@ -906,9 +1108,13 @@ export function PosScreen({
                 }
               />
             )}
-            <div className="mt-2 flex items-center justify-between border-t border-border pt-2">
-              <span className="font-medium">To pay</span>
-              <span className="font-mono text-xl">{formatPaise(totals.net)}</span>
+            <div className="mt-2 flex items-baseline justify-between rounded-control bg-brand px-3 py-2.5 text-brand-fg">
+              <span className="text-2xs font-medium uppercase tracking-widest opacity-80">
+                To pay
+              </span>
+              <span className="tnum font-mono text-3xl font-medium">
+                {formatPaise(totals.net)}
+              </span>
             </div>
           </div>
 
@@ -924,6 +1130,8 @@ export function PosScreen({
 
           <div className="mt-3 space-y-2">
             <Button
+              variant="primary"
+              size="lg"
               className="w-full"
               disabled={cart.length === 0 || pending || !billSeller}
               onClick={() => setShowPay(true)}
@@ -953,16 +1161,6 @@ export function PosScreen({
           </div>
         </div>
 
-        {lastReceipt && (
-          <Button
-            variant="ghost"
-            className="w-full"
-            onClick={() => reprintLast(lastReceipt)}
-          >
-            Re-print last receipt
-          </Button>
-        )}
-
         {notice && <p className="text-sm text-status-done-fg">{notice}</p>}
         {error && <p className="text-sm text-status-danger-fg">{error}</p>}
 
@@ -989,15 +1187,39 @@ export function PosScreen({
             )}
           </div>
         )}
+        </div>
       </div>
 
       {showClose && (
         <CloseRegisterPanel
           sessionId={sessionId}
           terminal={terminal}
-          openingFloatPaise={openingFloatPaise}
           unsent={queue.length}
           onClose={() => setShowClose(false)}
+        />
+      )}
+
+      {showDrawer && (
+        <DrawerPanel
+          sessionId={sessionId}
+          expenseAccounts={expenseAccounts}
+          onChanged={setDrawer}
+          onClose={() => {
+            setShowDrawer(false);
+            refocusScan();
+          }}
+        />
+      )}
+
+      {showBills && (
+        <SessionBillsPanel
+          sessionId={sessionId}
+          terminal={terminal}
+          header={receiptHeader}
+          onClose={() => {
+            setShowBills(false);
+            refocusScan();
+          }}
         />
       )}
 

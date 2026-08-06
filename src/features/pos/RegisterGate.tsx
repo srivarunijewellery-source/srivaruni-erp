@@ -9,6 +9,11 @@ import { Badge } from "@/components/ui/Badge";
 import { formatPaise } from "@/lib/money";
 import { ROUTES } from "@/config/nav";
 import { openRegister } from "./actions";
+import {
+  DenominationCounter,
+  denominationTotalPaise,
+  type Denominations,
+} from "./DenominationCounter";
 import type { Branch, OpenSessionAt } from "./queries";
 
 /**
@@ -42,7 +47,8 @@ export function RegisterGate({
   const [terminal, setTerminal] = useState(
     `Counter ${sessions.length + 1}`,
   );
-  const [float, setFloat] = useState("");
+  const [denoms, setDenoms] = useState<Denominations>({});
+  const floatPaise = denominationTotalPaise(denoms);
 
   function go(sessionId: string) {
     router.push(`${ROUTES.pos}?branch=${locationId}&session=${sessionId}`);
@@ -51,7 +57,14 @@ export function RegisterGate({
   function doOpen() {
     start(async () => {
       setError(null);
-      const r = await openRegister(locationId, Number(float) || 0, terminal);
+      // Rupees, because openRegister still takes them; the count itself
+      // is exact because it came off the denomination grid.
+      const r = await openRegister(
+        locationId,
+        floatPaise / 100,
+        terminal,
+        Object.keys(denoms).length > 0 ? denoms : null,
+      );
       if (r.ok) go(r.data);
       else setError(r.error);
     });
@@ -132,38 +145,33 @@ export function RegisterGate({
               Ask a manager to open the register.
             </p>
           ) : !opening ? (
-            <Button onClick={() => setOpening(true)}>Open a register</Button>
+            <Button variant="primary" onClick={() => setOpening(true)}>Open a register</Button>
           ) : (
             <div className="space-y-3">
-              <div className="flex flex-wrap items-end gap-3">
-                <div>
-                  <Label htmlFor="terminal">Counter name</Label>
-                  <Input
-                    id="terminal"
-                    value={terminal}
-                    onChange={(e) => setTerminal(e.target.value)}
-                    className="w-44"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="float">Opening cash ₹</Label>
-                  <Input
-                    id="float"
-                    type="number"
-                    min={0}
-                    value={float}
-                    onChange={(e) => setFloat(e.target.value)}
-                    className="w-36"
-                    autoFocus
-                  />
-                </div>
+              <div>
+                <Label htmlFor="terminal">Counter name</Label>
+                <Input
+                  id="terminal"
+                  value={terminal}
+                  onChange={(e) => setTerminal(e.target.value)}
+                  className="w-44"
+                />
               </div>
+
+              <div>
+                <p className="mb-2 text-2xs font-medium uppercase tracking-wide text-text-muted">
+                  Count the opening cash
+                </p>
+                <DenominationCounter value={denoms} onChange={setDenoms} autoFocus />
+              </div>
+
               <p className="text-2xs text-text-muted">
-                Count the drawer before you type. This figure is what the close is
-                measured against, so a guess here becomes a variance later.
+                This figure is what the close is measured against, so a guess here becomes
+                a variance later. Counting by denomination now also means the closing count
+                can be compared pile by pile.
               </p>
               <div className="flex gap-2">
-                <Button onClick={doOpen} disabled={pending}>
+                <Button variant="primary" onClick={doOpen} disabled={pending}>
                   {pending ? "Opening…" : "Open and start billing"}
                 </Button>
                 <Button variant="ghost" onClick={() => setOpening(false)}>
