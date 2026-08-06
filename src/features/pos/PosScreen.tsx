@@ -28,13 +28,21 @@ import {
   type FinaliseInput,
 } from "./actions";
 import { PersonIcon } from "@/components/ui/Icon";
-import { PaymentPanel } from "./PaymentPanel";
+import { PaymentPanel, type PaymentResult } from "./PaymentPanel";
+import type { BillBenefits } from "./actions";
 import { CloseRegisterPanel } from "./CloseRegisterPanel";
 import { CustomerPanel } from "./CustomerPanel";
 import { DrawerPanel } from "./DrawerPanel";
 import { SessionBillsPanel, type ReceiptHeader } from "./SessionBillsPanel";
+import { ReturnPanel } from "./ReturnPanel";
 import { printReceipt, reprintLast, type ReceiptData } from "./receipt";
-import { fetchDrawer, searchCatalog } from "./actions";
+import {
+  fetchBillBenefits,
+  fetchCustomerCredits,
+  fetchDrawer,
+  redeemCustomerCredit,
+  searchCatalog,
+} from "./actions";
 import { getCustomerAction } from "./customer-actions";
 import type {
   Branch,
@@ -162,9 +170,16 @@ export function PosScreen({
   const [showClose, setShowClose] = useState(false);
   const [showDrawer, setShowDrawer] = useState(false);
   const [showBills, setShowBills] = useState(false);
+  const [showReturn, setShowReturn] = useState(false);
   const [showMore, setShowMore] = useState(false);
   const [drawer, setDrawer] = useState<Drawer | null>(initialDrawer);
   const [remoteResults, setRemoteResults] = useState<PosCatalogItem[]>([]);
+  const [changeDue, setChangeDue] = useState<{ amount: number; billNo: string } | null>(
+    null,
+  );
+  /** Credit notes the customer on this bill is holding. */
+  const [creditPaise, setCreditPaise] = useState(0);
+  const [benefits, setBenefits] = useState<BillBenefits | null>(null);
 
   /* ------------------------------------------------ connectivity + cache */
 
@@ -304,6 +319,51 @@ export function PosScreen({
     refocusScan();
   }, [refocusScan]);
 
+  useEffect(() => {
+    if (!customer) {
+      setCreditPaise(0);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const r = await fetchCustomerCredits(customer.id);
+      if (!cancelled) {
+        setCreditPaise(r.ok ? r.data.reduce((s, c) => s + c.balancePaise, 0) : 0);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [customer]);
+
+  // What this bill earns, recomputed as the cart changes. Gifts and
+  // schemes were configured in CRM and then surfaced nowhere the
+  // customer could be told about them.
+  useEffect(() => {
+    if (cart.length === 0) {
+      setBenefits(null);
+      return;
+    }
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      const r = await fetchBillBenefits(
+        locationId,
+        cart.map((l) => ({
+          item_id: l.itemId,
+          qty: l.qty,
+          unit_price_paise: l.unitPaise,
+          discount_paise: l.discountPaise,
+        })),
+        cart.reduce((sum, l) => sum + l.unitPaise * l.qty - l.discountPaise, 0),
+      );
+      if (!cancelled && r.ok) setBenefits(r.data);
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [cart, locationId]);
+
   const refreshDrawer = useCallback(async () => {
     const r = await fetchDrawer(sessionId);
     if (r.ok) setDrawer(r.data);
@@ -348,6 +408,7 @@ export function PosScreen({
       catalog.find((i) => i.barcode === code) ??
       catalog.find((i) => i.barcode?.toLowerCase() === code.toLowerCase());
 
+    setChangeDue(null);
     if (hit) {
       addItem(hit);
       setScan("");
@@ -519,7 +580,8 @@ export function PosScreen({
 
   /* ---------------------------------------------------------- finalise */
 
-  function completeSale(payments: Array<{ method: string; amount_paise: number; reference?: string }>) {
+  function completeSale(result: PaymentResult) {
+    const { payments, creditPaise, changePaise } = result;
     const clientUuid = uuid();
     const rungAt = new Date().toISOString();
 
@@ -645,11 +707,28 @@ export function PosScreen({
         return;
       }
 
+      // Credit is spent against a bill that already exists, so this can
+      // only happen now. A failure here leaves a real, paid bill behind,
+      // so it is reported rather than thrown -- the sale stands and the
+      // credit can be applied by hand.
+      if (creditPaise > 0) {
+        const cr = await redeemCustomerCredit(res.data.id, creditPaise);
+        if (!cr.ok) {
+          setError(
+            `Sale ${res.data.billNo} went through, but the credit note could not be applied: ${cr.error}`,
+          );
+        }
+      }
+
       // The invoice number is minted inside the database, so the slip
       // built above still has a placeholder in it. Print the real one.
       const printed: ReceiptData = { ...receipt, billNo: res.data.billNo || "—" };
       setLastReceipt(printed);
       if (printAfter) printReceipt(printed);
+
+      // Change stays on screen until the next scan: the person at the
+      // till is counting notes out of the drawer while reading it.
+      setChangeDue(changePaise > 0 ? { amount: changePaise, billNo: res.data.billNo } : null);
       setNotice(`Sale complete · ${res.data.billNo}`);
       clearCart();
       void refreshDrawer();
@@ -797,7 +876,7 @@ export function PosScreen({
                     window.location.href = `/pos?branch=${e.target.value}`;
                   }
                 }}
-                className="h-8 w-40 py-0 text-2xs"
+                className="h-[var(--control-height-sm)] w-40 py-0 text-2xs"
               >
                 {branches.map((b) => (
                   <option key={b.id} value={b.id}>
@@ -812,7 +891,7 @@ export function PosScreen({
             <button
               type="button"
               onClick={() => setShowDrawer(true)}
-              className="flex items-baseline gap-2 rounded-control border border-border px-3 py-1.5 text-left hover:bg-surface-sunken"
+              className="flex h-[var(--control-height-sm)] items-center gap-2 rounded-control border border-border px-3 text-left hover:bg-surface-sunken"
               title="Put money in, take money out, or record a small expense"
             >
               <span className="text-2xs uppercase tracking-wide text-text-muted">
@@ -822,6 +901,10 @@ export function PosScreen({
                 {drawer ? formatPaise(drawer.expectedPaise) : "—"}
               </span>
             </button>
+
+            <Button size="sm" variant="secondary" onClick={() => setShowReturn(true)}>
+              Return
+            </Button>
 
             <Button size="sm" variant="secondary" onClick={() => setShowBills(true)}>
               Bills
@@ -839,7 +922,7 @@ export function PosScreen({
                 aria-label="More"
                 aria-expanded={showMore}
                 onClick={() => setShowMore((v) => !v)}
-                className="h-8 rounded-control border border-border px-2.5 text-sm text-text-muted hover:bg-surface-sunken hover:text-text"
+                className="h-[var(--control-height-sm)] rounded-control border border-border px-2.5 text-sm text-text-muted hover:bg-surface-sunken hover:text-text"
               >
                 ⋯
               </button>
@@ -905,6 +988,9 @@ export function PosScreen({
             used a thousand times a day, and on a busy counter the eye
             needs to find it without looking. */}
         <div className="flex flex-wrap gap-2 rounded-card border border-border bg-surface p-2 shadow-card">
+          {/* Both boxes are the same height and sit on the same
+              baseline. The scan box keeps a heavier border because it is
+              the one that matters, not because it is a different size. */}
           <input
             ref={scanRef}
             autoFocus
@@ -919,15 +1005,32 @@ export function PosScreen({
             }}
             placeholder="Scan a tag"
             aria-label="Scan a tag"
-            className="h-12 w-72 rounded-control border-2 border-brand/25 bg-surface px-3 font-mono text-lg tracking-wide placeholder:text-text-subtle focus:border-brand focus:shadow-[var(--control-ring)] focus:outline-none"
+            className="h-12 w-72 rounded-control border-2 border-brand/30 bg-surface px-3 font-mono text-lg leading-none tracking-wide placeholder:text-text-subtle focus:border-brand focus:shadow-[var(--control-ring)] focus:outline-none"
           />
-          <Input
+          <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="or search by name / design code"
-            className="h-12 min-w-56 flex-1 text-base"
+            aria-label="Search the catalogue"
+            className="h-12 min-w-56 flex-1 rounded-control border-2 border-border bg-surface px-3 text-base leading-none placeholder:text-text-subtle focus:border-brand focus:shadow-[var(--control-ring)] focus:outline-none"
           />
         </div>
+
+        {changeDue && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-card border border-status-done-fg/30 bg-status-done-bg px-4 py-3">
+            <div className="space-y-1">
+              <p className="text-2xs font-medium uppercase tracking-widest text-status-done-fg">
+                Return change for {changeDue.billNo}
+              </p>
+              <p className="tnum font-mono text-4xl leading-none font-medium text-status-done-fg">
+                {formatPaise(changeDue.amount)}
+              </p>
+            </div>
+            <Button variant="secondary" onClick={() => setChangeDue(null)}>
+              Done
+            </Button>
+          </div>
+        )}
 
         {results.length > 0 && (
           <div className="rounded-card border border-border bg-surface">
@@ -1254,11 +1357,44 @@ export function PosScreen({
                 }
               />
             )}
-            <div className="mt-2 flex items-baseline justify-between rounded-control bg-brand px-3 py-2.5 text-brand-fg">
+            {benefits && (benefits.gifts.length > 0 || benefits.schemePaise > 0) && (
+              <div className="mt-2 space-y-1.5 rounded-control border border-border bg-surface-sunken px-3 py-2">
+                {benefits.schemePaise > 0 && (
+                  <div className="flex items-baseline justify-between gap-2 text-sm">
+                    <span className="min-w-0 truncate text-text-muted">
+                      {benefits.schemeNames.join(", ") || "Scheme discount"}
+                    </span>
+                    <span className="tnum shrink-0 font-mono text-status-done-fg">
+                      − {formatPaise(benefits.schemePaise)}
+                    </span>
+                  </div>
+                )}
+                {benefits.gifts.map((g) => (
+                  <div
+                    key={g.name + g.itemName}
+                    className="flex items-baseline justify-between gap-2 text-sm"
+                  >
+                    <span className="min-w-0 truncate text-text-muted">{g.name}</span>
+                    <span className="shrink-0 text-2xs text-status-done-fg">
+                      free {g.itemQty} × {g.itemName}
+                    </span>
+                  </div>
+                ))}
+                <p className="text-2xs text-text-subtle">
+                  Tell the customer — a gift nobody is offered is not an offer.
+                </p>
+              </div>
+            )}
+
+            {/* Label vertically centred against the figure rather than
+                sharing its baseline: a 3xl number and a 2xs label on one
+                baseline leaves the label sitting on the floor of the
+                box. */}
+            <div className="mt-2 flex items-center justify-between gap-3 rounded-control bg-brand px-4 py-3 text-brand-fg">
               <span className="text-2xs font-medium uppercase tracking-widest opacity-80">
                 To pay
               </span>
-              <span className="tnum font-mono text-3xl font-medium">
+              <span className="tnum font-mono text-3xl leading-none font-medium">
                 {formatPaise(totals.net)}
               </span>
             </div>
@@ -1369,10 +1505,25 @@ export function PosScreen({
         />
       )}
 
+      {showReturn && (
+        <ReturnPanel
+          sessionId={sessionId}
+          onDone={(msg) => {
+            setNotice(`Return taken · ${msg}`);
+            void refreshDrawer();
+          }}
+          onClose={() => {
+            setShowReturn(false);
+            refocusScan();
+          }}
+        />
+      )}
+
       {showPay && (
         <PaymentPanel
           totalPaise={totals.net}
           pending={pending}
+          creditAvailablePaise={creditPaise}
           onCancel={() => setShowPay(false)}
           onConfirm={(payments) => {
             setShowPay(false);

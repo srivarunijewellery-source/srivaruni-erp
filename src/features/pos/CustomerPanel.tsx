@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Field";
 import { Badge } from "@/components/ui/Badge";
 import { formatPaise } from "@/lib/money";
+import { assignCouponToCustomer, listAssignableCoupons } from "./actions";
 import { quickAddCustomer, searchCustomersAction } from "./customer-actions";
 import type { CustomerHit } from "./queries";
 
@@ -40,6 +41,7 @@ export function CustomerPanel({
   onClear,
   coupon,
   couponBlocked,
+  onCouponAssigned,
   onCoupon,
   canCoupon,
   loadExtras,
@@ -52,6 +54,8 @@ export function CustomerPanel({
   /** True once anything on the bill has been discounted by hand or by a
    *  scheme. A bill claims one benefit, so the coupons grey out. */
   couponBlocked?: boolean;
+  /** Called after a coupon is handed over, so the panel can reload. */
+  onCouponAssigned?: () => void;
   onCoupon: (c: PickedCoupon | null) => void;
   canCoupon: boolean;
   loadExtras: (id: string) => Promise<
@@ -63,6 +67,11 @@ export function CustomerPanel({
   const [term, setTerm] = useState("");
   const [hits, setHits] = useState<CustomerHit[]>([]);
   const [extras, setExtras] = useState<Extras | null>(null);
+  const [giveOpen, setGiveOpen] = useState(false);
+  const [givable, setGivable] = useState<
+    Array<{ id: string; code: string; batch: string; value: string }>
+  >([]);
+  const [giveError, setGiveError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
   const [draft, setDraft] = useState({
@@ -75,6 +84,10 @@ export function CustomerPanel({
     anniversary: "",
   });
   const [more, setMore] = useState(false);
+
+  // Bumped after a coupon is handed over, so the list below reloads
+  // and the new coupon is immediately usable on this bill.
+  const [extrasNonce, setExtrasNonce] = useState(0);
 
   useEffect(() => {
     if (!customer) {
@@ -89,7 +102,7 @@ export function CustomerPanel({
     return () => {
       cancelled = true;
     };
-  }, [customer, loadExtras]);
+  }, [customer, loadExtras, extrasNonce]);
 
   function doSearch(value: string) {
     setTerm(value);
@@ -303,6 +316,79 @@ export function CustomerPanel({
               Remove
             </Button>
           </div>
+
+          {canCoupon && customer && (
+            <div className="mt-2">
+              {!giveOpen ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setGiveOpen(true);
+                    setGiveError(null);
+                    void (async () => {
+                      const r = await listAssignableCoupons();
+                      if (r.ok) setGivable(r.data);
+                      else setGiveError(r.error);
+                    })();
+                  }}
+                  className="text-2xs text-text-muted underline-offset-2 hover:text-brand hover:underline"
+                >
+                  Give this customer a coupon
+                </button>
+              ) : (
+                <div className="rounded-control border border-border p-2">
+                  <p className="mb-1.5 text-2xs font-medium uppercase tracking-wide text-text-muted">
+                    Unassigned coupons
+                  </p>
+                  {giveError && (
+                    <p className="text-2xs text-status-danger-fg">{giveError}</p>
+                  )}
+                  {givable.length === 0 && !giveError && (
+                    <p className="text-2xs text-text-subtle">
+                      None left to give. Generate a batch from the Coupons page.
+                    </p>
+                  )}
+                  <div className="flex flex-wrap gap-1.5">
+                    {givable.slice(0, 12).map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        disabled={pending}
+                        onClick={() =>
+                          start(async () => {
+                            setGiveError(null);
+                            const r = await assignCouponToCustomer(c.id, customer.id);
+                            if (!r.ok) {
+                              setGiveError(r.error);
+                              return;
+                            }
+                            setGivable((prev) => prev.filter((x) => x.id !== c.id));
+                            setGiveOpen(false);
+                            // The coupon now belongs to them, so the list
+                            // above has to be read again to show it.
+                            setExtrasNonce((n) => n + 1);
+                            onCouponAssigned?.();
+                          })
+                        }
+                        className="rounded-control border border-border px-2.5 py-1 text-2xs hover:border-brand hover:text-brand"
+                        title={c.batch}
+                      >
+                        <span className="font-mono">{c.code}</span>
+                        <span className="ml-1.5 text-text-muted">{c.value}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setGiveOpen(false)}
+                    className="mt-1.5 text-2xs text-text-subtle hover:text-text"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
 
           {extras && extras.coupons.length > 0 && canCoupon && (
             <div>

@@ -7,6 +7,7 @@ import {
   getCustomerSummary,
   listCustomerPurchases,
 } from "@/features/customers/queries";
+import { fetchCustomerCredits } from "@/features/pos/actions";
 import { listCustomerCoupons } from "@/features/coupons/queries";
 import { can } from "@/config/roles";
 import { ROUTES } from "@/config/nav";
@@ -31,11 +32,14 @@ export default async function CustomerDetailPage({
   const customer = await getCustomer(id);
   if (!customer) notFound();
 
-  const [coupons, summary, purchases] = await Promise.all([
+  const [coupons, summary, purchases, creditsRes] = await Promise.all([
     listCustomerCoupons(customer.id),
     getCustomerSummary(customer.id),
     listCustomerPurchases(customer.id),
+    fetchCustomerCredits(customer.id),
   ]);
+  const credits = creditsRes.ok ? creditsRes.data : [];
+  const creditPaise = credits.reduce((s, c) => s + c.balancePaise, 0);
 
   const editing = edit === "1" && can(user, "customer.manage");
 
@@ -111,6 +115,33 @@ export default async function CustomerDetailPage({
                   <span className="tnum font-mono text-2xs">
                     till {formatDate(c.validTo)}
                   </span>
+                </li>
+              ))}
+            </ul>
+          </CardBody>
+        </Card>
+      )}
+
+      {credits.length > 0 && (
+        <Card className="mt-4">
+          <CardHeader className="flex flex-wrap items-baseline justify-between gap-2">
+            <span className="font-medium">Credit to spend</span>
+            <span className="tnum font-mono text-lg">{formatPaise(creditPaise)}</span>
+          </CardHeader>
+          <CardBody className="p-0">
+            <ul className="divide-y divide-border">
+              {credits.map((c) => (
+                <li
+                  key={c.creditNoteId}
+                  className="flex flex-wrap items-baseline gap-3 px-4 py-2.5 text-sm"
+                >
+                  <span className="font-mono font-medium">{c.noteNo}</span>
+                  <span className="min-w-0 flex-1 truncate text-2xs text-text-muted">
+                    {c.returnNo ? `from ${c.returnNo}` : "issued manually"}
+                    {c.spentPaise > 0 ? ` · ${formatPaise(c.spentPaise)} already used` : ""}
+                    {c.validUntil ? ` · good until ${formatDate(c.validUntil)}` : ""}
+                  </span>
+                  <span className="tnum font-mono">{formatPaise(c.balancePaise)}</span>
                 </li>
               ))}
             </ul>

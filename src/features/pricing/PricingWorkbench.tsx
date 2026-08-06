@@ -12,7 +12,12 @@ import { formatPaise, formatPaiseCompact, parseRupeesToPaise } from "@/lib/money
 import {
   BAND_FIT_LABEL, BAND_FIT_TONE, bandFit, formatBps, marginBps,
 } from "@/lib/pricing";
-import { applyRulesToItems, previewRecommendation, savePrice } from "./actions";
+import {
+  applyRulesToItems,
+  previewRecommendation,
+  renameItem,
+  savePrice,
+} from "./actions";
 import type { PriceBand, PriceRecommendation } from "@/types/domain";
 import type { PricingRow } from "./queries";
 
@@ -65,6 +70,10 @@ export function PricingWorkbench({
     Object.fromEntries(rows.map((r) => [r.itemId, initial(r)])),
   );
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [editingName, setEditingName] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  /** Renamed items, so the row updates without a full refresh. */
+  const [names, setNames] = useState<Record<string, string>>({});
   const [bulkMsg, setBulkMsg] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -94,6 +103,21 @@ export function PricingWorkbench({
       sellingText: st.sellingTouched
         ? st.sellingText
         : (rec.recommendedMrpPaise / 100).toString(),
+    });
+  }
+
+  function commitName(itemId: string, next: string) {
+    const trimmed = next.trim();
+    setEditingName(null);
+    const current = names[itemId] ?? rows.find((r) => r.itemId === itemId)?.name ?? "";
+    if (trimmed.length < 2 || trimmed === current) return;
+
+    setRenaming(itemId);
+    startTransition(async () => {
+      const r = await renameItem(itemId, trimmed);
+      setRenaming(null);
+      if (r.ok) setNames((prev) => ({ ...prev, [itemId]: r.data }));
+      else setBulkMsg(r.error);
     });
   }
 
@@ -217,13 +241,47 @@ export function PricingWorkbench({
                     <div className="flex items-center gap-2">
                       <PhotoThumb src={itemPhotoUrl(row.photoPath)} alt={row.name} size={36} />
                       <div className="min-w-0">
-                        <div className="truncate font-medium">
-                          <Link
-                            href={ROUTES.productDetail(row.itemId)}
-                            className="rounded-sm underline decoration-border decoration-dotted underline-offset-2 hover:decoration-brand hover:text-brand focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
-                          >
-                            {row.name}
-                          </Link>
+                        {/* The name is editable in place. Vendor
+                            shorthand gets spotted here, and this is the
+                            name the counter searches on and the customer
+                            sees on their bill. */}
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          {editingName === row.itemId ? (
+                            <input
+                              autoFocus
+                              defaultValue={names[row.itemId] ?? row.name}
+                              disabled={renaming === row.itemId}
+                              onBlur={(e) => commitName(row.itemId, e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  commitName(row.itemId, e.currentTarget.value);
+                                }
+                                if (e.key === "Escape") setEditingName(null);
+                              }}
+                              className="h-7 w-full min-w-0 rounded-control border border-brand bg-surface px-1.5 text-sm focus:shadow-[var(--control-ring)] focus:outline-none"
+                            />
+                          ) : (
+                            <>
+                              <span className="truncate font-medium">
+                                <Link
+                                  href={ROUTES.productDetail(row.itemId)}
+                                  className="rounded-sm underline decoration-border decoration-dotted underline-offset-2 hover:decoration-brand hover:text-brand focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
+                                >
+                                  {names[row.itemId] ?? row.name}
+                                </Link>
+                              </span>
+                              <button
+                                type="button"
+                                aria-label={`Rename ${names[row.itemId] ?? row.name}`}
+                                title="Rename"
+                                onClick={() => setEditingName(row.itemId)}
+                                className="shrink-0 rounded-sm px-1 text-2xs text-text-subtle hover:text-brand"
+                              >
+                                edit
+                              </button>
+                            </>
+                          )}
                         </div>
                         <div className="truncate text-2xs text-text-muted">
                           <span className="font-mono">{row.barcode}</span>

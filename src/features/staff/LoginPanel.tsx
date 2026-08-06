@@ -5,7 +5,12 @@ import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, FieldError } from "@/components/ui/Field";
 import { Badge } from "@/components/ui/Badge";
-import { createStaffLogin, resetStaffPassword, unlinkStaffLogin } from "./login-actions";
+import {
+  createStaffLogin,
+  resetStaffPassword,
+  setStaffPassword,
+  unlinkStaffLogin,
+} from "./login-actions";
 import type { StaffMember } from "./queries";
 
 /**
@@ -28,6 +33,7 @@ export function LoginPanel({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
+  const [reveal, setReveal] = useState(false);
 
   function create(formData: FormData) {
     start(async () => {
@@ -48,6 +54,18 @@ export function LoginPanel({
       const r = await unlinkStaffLogin(member.id);
       if (r.ok) setNotice("Login removed. The person and their history are untouched.");
       else setError(r.error);
+    });
+  }
+
+  function changePassword(formData: FormData) {
+    start(async () => {
+      setError(null);
+      setNotice(null);
+      const r = await setStaffPassword(formData);
+      if (r.ok) {
+        setNotice(r.data);
+        setReveal(false);
+      } else setError(r.error);
     });
   }
 
@@ -149,11 +167,47 @@ export function LoginPanel({
         )}
 
         {member.hasLogin && (
-          <p className="text-sm text-text-muted">
-            Signs in with {member.email ?? "their linked email"}. Removing the login keeps
-            the person, their attendance and their sales history — it only takes away
-            access.
-          </p>
+          <>
+            <p className="text-sm text-text-muted">
+              Signs in with {member.email ?? "their linked email"}. Removing the login keeps
+              the person, their attendance and their sales history — it only takes away
+              access.
+            </p>
+
+            {/* Once a login existed there was no way back in to change
+                anything: the form disappeared and only Reset and Remove
+                were left. Setting a password directly matters when
+                someone is standing at the counter locked out and a reset
+                email is no use to them. */}
+            {reveal ? (
+              <form action={changePassword} className="space-y-3">
+                <input type="hidden" name="staffId" value={member.id} />
+                <div className="max-w-xs">
+                  <Label htmlFor="newPassword">New password</Label>
+                  <Input
+                    id="newPassword"
+                    name="password"
+                    type="text"
+                    required
+                    minLength={8}
+                    placeholder="At least 8 characters"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Button type="submit" disabled={pending}>
+                    {pending ? "Saving…" : "Set this password"}
+                  </Button>
+                  <Button type="button" variant="ghost" onClick={() => setReveal(false)}>
+                    Cancel
+                  </Button>
+                </div>
+              </form>
+            ) : (
+              <Button size="sm" variant="secondary" onClick={() => setReveal(true)}>
+                Set a new password
+              </Button>
+            )}
+          </>
         )}
 
         {notice && <p className="text-sm text-status-done-fg">{notice}</p>}

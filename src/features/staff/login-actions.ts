@@ -95,3 +95,50 @@ export async function resetStaffPassword(email: string): Promise<Result<string>>
 
   return ok(`Reset link sent to ${email}.`);
 }
+
+/**
+ * Sets a password directly, without a reset email.
+ *
+ * A reset link is the right default, but it is useless to someone
+ * standing at the counter locked out with no access to the inbox the
+ * login was created against — which, for shop staff, is common. Owner
+ * only, checked against the caller's own session before the admin
+ * client is touched, exactly as createStaffLogin does.
+ */
+export async function setStaffPassword(formData: FormData): Promise<Result<string>> {
+  const staffId = String(formData.get("staffId") ?? "");
+  const password = String(formData.get("password") ?? "");
+
+  if (!staffId) return err("Missing staff member.");
+  if (password.length < 8) return err("Use at least 8 characters.");
+
+  const supabase = await createClient();
+  const { data: me, error: meError } = await supabase.rpc("get_current_staff");
+  if (meError) return err(toMessage(meError));
+
+  const role = Array.isArray(me) ? me[0]?.role : (me as { role?: string } | null)?.role;
+  if (role !== "owner") return err("Only the owner can change a login.");
+
+  const { data: row, error: rowError } = await supabase
+    .from("staff")
+    .select("auth_user_id, name")
+    .eq("id", staffId)
+    .maybeSingle();
+
+  if (rowError || !row?.auth_user_id) {
+    return err("That person has no login to change.");
+  }
+
+  let admin;
+  try {
+    admin = createServiceClient();
+  } catch (e) {
+    return err(toMessage(e, "Login changes are not configured on this deployment."));
+  }
+
+  const { error } = await admin.auth.admin.updateUserById(row.auth_user_id, { password });
+  if (error) return err(error.message);
+
+  revalidatePath(ROUTES.staffDetail(staffId));
+  return ok(`Password set. Give it to ${row.name} directly and have them change it.`);
+}

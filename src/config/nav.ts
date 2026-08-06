@@ -45,6 +45,7 @@ export const ROUTES = {
   company: "/settings/company",
   pos: "/pos",
   sales: "/sales",
+  returns: "/returns",
   expenses: "/accounts/expenses",
   journals: "/accounts/journals",
   trialBalance: "/accounts/trial-balance",
@@ -126,7 +127,8 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     label: "Counter",
     items: [
       { href: ROUTES.pos,   label: "Billing", requires: "pos.sell", newTab: true },
-      { href: ROUTES.sales, label: "Sales",   requires: "stock.view" },
+      { href: ROUTES.sales,   label: "Sales",   requires: "stock.view" },
+      { href: ROUTES.returns, label: "Returns", requires: "stock.view" },
     ],
   },
   {

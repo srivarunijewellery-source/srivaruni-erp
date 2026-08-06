@@ -378,3 +378,32 @@ export async function recommendForRate(
   if (error) return err(toMessage(error));
   return ok(toRecommendation(Array.isArray(data) ? data[0] : data));
 }
+
+/**
+ * Renames an item from the pricing bench.
+ *
+ * Pricing is the first time anyone looks properly at a new piece, and it
+ * is where the vendor's shorthand gets noticed. The name is what the
+ * counter searches on and what prints on the customer's bill, so fixing
+ * it here rather than on a separate trip to the product page is worth
+ * the field.
+ */
+export async function renameItem(
+  itemId: string,
+  name: string,
+): Promise<Result<string>> {
+  const trimmed = name.trim();
+  if (trimmed.length < 2) return err("Give the item a name.");
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("rename_item", {
+    p_item: itemId,
+    p_name: trimmed,
+  });
+  if (error) return err(toMessage(error));
+
+  revalidatePath(ROUTES.pricing);
+  revalidatePath(ROUTES.products);
+  revalidatePath(ROUTES.productDetail(itemId));
+  return ok(String(data ?? trimmed));
+}

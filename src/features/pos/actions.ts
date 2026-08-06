@@ -442,3 +442,255 @@ export async function searchCatalog(
     })),
   );
 }
+
+/* ------------------------------------------------------------------ */
+/* Returns and customer credit                                          */
+/* ------------------------------------------------------------------ */
+
+export interface ReturnableLine {
+  billLineId: string;
+  itemId: string;
+  itemName: string;
+  barcode: string | null;
+  qty: number;
+  returnedQty: number;
+  returnableQty: number;
+  unitPricePaise: number;
+  lineTotalPaise: number;
+}
+
+export async function fetchBillForReturn(
+  billId: string,
+): Promise<Result<ReturnableLine[]>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("bill_for_return", { p_bill: billId });
+  if (error) return err(toMessage(error));
+
+  return ok(
+    ((data ?? []) as Array<Record<string, unknown>>).map((r) => ({
+      billLineId: String(r.bill_line_id),
+      itemId: String(r.item_id),
+      itemName: String(r.item_name ?? "Item"),
+      barcode: r.barcode ? String(r.barcode) : null,
+      qty: Number(r.qty ?? 0),
+      returnedQty: Number(r.returned_qty ?? 0),
+      returnableQty: Number(r.returnable_qty ?? 0),
+      unitPricePaise: Number(r.unit_price_paise ?? 0),
+      lineTotalPaise: Number(r.line_total_paise ?? 0),
+    })),
+  );
+}
+
+export interface ReturnLineInput {
+  bill_line_id: string;
+  item_id: string;
+  qty: number;
+  /** False for damaged pieces: credited, but not put back on the shelf. */
+  restock: boolean;
+  reason?: string | null;
+}
+
+export async function recordSalesReturn(
+  billId: string,
+  lines: ReturnLineInput[],
+  reason: string | null,
+  note: string | null,
+  sessionId: string | null,
+): Promise<Result<{ returnNo: string; creditNoteNo: string; amountPaise: number }>> {
+  if (lines.length === 0) return err("Nothing to return.");
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("record_sales_return", {
+    p_bill: billId,
+    p_lines: lines,
+    p_reason: reason,
+    p_note: note,
+    p_session: sessionId,
+  });
+  if (error) return err(toMessage(error));
+
+  const d = (data ?? {}) as Record<string, unknown>;
+  revalidatePath(ROUTES.pos);
+  return ok({
+    returnNo: String(d.return_no ?? ""),
+    creditNoteNo: String(d.credit_note_no ?? ""),
+    amountPaise: Number(d.amount_paise ?? 0),
+  });
+}
+
+export interface CustomerCredit {
+  creditNoteId: string;
+  noteNo: string;
+  amountPaise: number;
+  spentPaise: number;
+  balancePaise: number;
+  validUntil: string | null;
+  returnNo: string | null;
+}
+
+export async function fetchCustomerCredits(
+  customerId: string,
+): Promise<Result<CustomerCredit[]>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("customer_credits", {
+    p_customer: customerId,
+  });
+  if (error) return err(toMessage(error));
+
+  return ok(
+    ((data ?? []) as Array<Record<string, unknown>>).map((r) => ({
+      creditNoteId: String(r.credit_note_id),
+      noteNo: String(r.note_no),
+      amountPaise: Number(r.amount_paise ?? 0),
+      spentPaise: Number(r.spent_paise ?? 0),
+      balancePaise: Number(r.balance_paise ?? 0),
+      validUntil: r.valid_until ? String(r.valid_until) : null,
+      returnNo: r.return_no ? String(r.return_no) : null,
+    })),
+  );
+}
+
+/** Spend credit against a bill that already exists. */
+export async function redeemCustomerCredit(
+  billId: string,
+  amountPaise: number,
+): Promise<Result<Record<string, unknown>>> {
+  if (amountPaise <= 0) return ok({});
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("redeem_customer_credit", {
+    p_bill: billId,
+    p_amount: Math.round(amountPaise),
+  });
+  if (error) return err(toMessage(error));
+  return ok((data ?? {}) as Record<string, unknown>);
+}
+
+/** Hand a coupon to the customer standing at the counter. */
+export async function assignCouponToCustomer(
+  couponId: string,
+  customerId: string,
+): Promise<Result<void>> {
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("assign_coupon", {
+    p_coupon: couponId,
+    p_customer: customerId,
+  });
+  if (error) return err(toMessage(error));
+  return ok(undefined);
+}
+
+/** Unassigned coupons that could be given out, newest batch first. */
+export async function listAssignableCoupons(): Promise<
+  Result<Array<{ id: string; code: string; batch: string; value: string }>>
+> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("coupons")
+    .select("id, code, status, customer_id, coupon_batches(name, discount_kind, discount_bps, discount_paise)")
+    // 'available' is the real status for an unassigned coupon. Filtering
+    // on 'issued' matched nothing, which would have shown an empty list
+    // forever with no error to explain it.
+    .eq("status", "available")
+    .is("customer_id", null)
+    .order("serial")
+    .limit(50);
+  if (error) return err(toMessage(error));
+
+  type Batch = {
+    name: string; discount_kind: string;
+    discount_bps: number | null; discount_paise: number | null;
+  };
+
+  return ok(
+    (data ?? []).map((r) => {
+      const raw = r.coupon_batches as unknown as Batch | Batch[] | null;
+      const b = Array.isArray(raw) ? raw[0] : raw;
+      return {
+        id: r.id,
+        code: r.code,
+        batch: b?.name ?? "",
+        value:
+          b?.discount_kind === "percent"
+            ? `${((b.discount_bps ?? 0) / 100).toFixed(0)}%`
+            : `₹${((b?.discount_paise ?? 0) / 100).toFixed(0)}`,
+      };
+    }),
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* What this bill earns                                                 */
+/* ------------------------------------------------------------------ */
+
+export interface BillBenefits {
+  gifts: Array<{ name: string; itemName: string; itemQty: number }>;
+  /** Automatic scheme discount the server will apply at finalise. */
+  schemePaise: number;
+  schemeNames: string[];
+}
+
+/**
+ * Gifts earned and schemes that apply, at the current cart value.
+ *
+ * These were configured in CRM and then never surfaced anywhere the
+ * customer could be told about them, which makes them worth nothing: a
+ * gift nobody is offered is not an offer. Both are worked out by the
+ * same functions the finalise path uses, so the counter quotes exactly
+ * what the bill will do rather than a second opinion.
+ */
+export async function fetchBillBenefits(
+  locationId: string,
+  lines: Array<{ item_id: string; qty: number; unit_price_paise: number; discount_paise: number }>,
+  cartPaise: number,
+): Promise<Result<BillBenefits>> {
+  const supabase = await createClient();
+
+  const [giftRes, discRes] = await Promise.all([
+    cartPaise > 0
+      ? supabase.rpc("allocate_gift_offers", {
+          p_bill_paise: cartPaise,
+          p_location: locationId,
+          p_on: null,
+        })
+      : Promise.resolve({ data: [], error: null }),
+    lines.length > 0
+      ? supabase.rpc("resolve_discounts", {
+          p_lines: lines,
+          p_location: locationId,
+          p_on: null,
+          p_role: null,
+          p_manual_bps: 0,
+          p_manual_paise: 0,
+        })
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+
+  const gifts = ((giftRes.data ?? []) as Array<Record<string, unknown>>).map((r) => ({
+    name: String(r.name ?? ""),
+    itemName: String(r.item_name ?? ""),
+    itemQty: Number(r.item_qty ?? r.awards ?? 0),
+  }));
+
+  // resolve_discounts returns ONE object describing the whole bill, not
+  // a row per line. Reading it as rows silently produced zero every
+  // time, which is a large part of why schemes never showed up here.
+  const d = (discRes.data ?? {}) as {
+    total_discount_paise?: number;
+    line_discount_paise?: number;
+    invoice_discount_paise?: number;
+    invoice_scheme_name?: string | null;
+    lines?: Array<{ scheme_name?: string | null }>;
+    notes?: string[];
+  };
+
+  const names = new Set<string>();
+  if (d.invoice_scheme_name) names.add(d.invoice_scheme_name);
+  for (const l of d.lines ?? []) {
+    if (l.scheme_name) names.add(l.scheme_name);
+  }
+
+  const schemePaise =
+    Number(d.line_discount_paise ?? 0) + Number(d.invoice_discount_paise ?? 0);
+
+  return ok({ gifts, schemePaise, schemeNames: [...names] });
+}
