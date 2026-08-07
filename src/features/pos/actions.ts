@@ -625,7 +625,7 @@ export async function listAssignableCoupons(): Promise<
 /* ------------------------------------------------------------------ */
 
 export interface BillBenefits {
-  gifts: Array<{ name: string; itemName: string; itemQty: number }>;
+  gifts: Array<{ name: string; itemId: string | null; itemName: string; itemQty: number }>;
   /** Automatic scheme discount the server will apply at finalise. */
   schemePaise: number;
   schemeNames: string[];
@@ -669,6 +669,7 @@ export async function fetchBillBenefits(
 
   const gifts = ((giftRes.data ?? []) as Array<Record<string, unknown>>).map((r) => ({
     name: String(r.name ?? ""),
+    itemId: r.item_id ? String(r.item_id) : null,
     itemName: String(r.item_name ?? ""),
     itemQty: Number(r.item_qty ?? r.awards ?? 0),
   }));
@@ -709,4 +710,26 @@ export async function fetchBillBenefits(
  */
 export async function pingServer(): Promise<Result<number>> {
   return ok(Date.now());
+}
+
+/**
+ * Records what was actually handed over free.
+ *
+ * The counter could show a gift and tick it as given, and none of that
+ * was written anywhere — so gifts could not be reported, could not be
+ * seen against the customer, and the free piece never came off stock.
+ * Called after the bill exists, like credit redemption.
+ */
+export async function recordBillGifts(
+  billId: string,
+  gifts: Array<{ offer_name: string; item_id: string | null; qty: number }>,
+): Promise<Result<Record<string, unknown>>> {
+  if (gifts.length === 0) return ok({});
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("record_bill_gifts", {
+    p_bill: billId,
+    p_gifts: gifts,
+  });
+  if (error) return err(toMessage(error));
+  return ok((data ?? {}) as Record<string, unknown>);
 }

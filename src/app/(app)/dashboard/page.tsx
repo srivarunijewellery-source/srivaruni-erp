@@ -1,0 +1,382 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+import { requireUser } from "@/features/auth/session";
+import { isOwner } from "@/config/roles";
+import { ROUTES } from "@/config/nav";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { FilterBar } from "@/components/ui/FilterBar";
+import { formatPaise } from "@/lib/money";
+import { listStores } from "@/features/inward/queries";
+import {
+  DIMENSIONS,
+  getExpensePivot,
+  getBenefitsGiven,
+  getSalesByPeriod,
+  getSalesPivot,
+  type Dimension,
+  type Grain,
+} from "@/features/dashboard/queries";
+import { TrendChart } from "@/features/dashboard/TrendChart";
+import { PivotTable } from "@/features/dashboard/PivotTable";
+
+export const metadata: Metadata = { title: "Dashboard" };
+
+const GRAINS: Grain[] = ["day", "week", "month", "year"];
+const TABS = [
+  { key: "sales", label: "Sales" },
+  { key: "expenses", label: "Expenses" },
+  { key: "benefits", label: "Given away" },
+] as const;
+
+function monthsAgo(n: number): string {
+  const d = new Date();
+  d.setMonth(d.getMonth() - n);
+  d.setDate(1);
+  return d.toISOString().slice(0, 10);
+}
+
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{
+    tab?: string;
+    from?: string;
+    to?: string;
+    location?: string;
+    dimension?: string;
+    grain?: string;
+  }>;
+}) {
+  const user = await requireUser();
+
+  // Owner only, and checked here as well as in every RPC. The functions
+  // carry their own is_owner() guard, so a missing check in this file
+  // would show an empty page rather than leak a figure.
+  if (!isOwner(user.role)) {
+    return (
+      <EmptyState
+        title="The dashboard is owner-only"
+        hint="It shows cost and margin across every branch."
+      />
+    );
+  }
+
+  const sp = await searchParams;
+  const tab =
+    sp.tab === "expenses" || sp.tab === "benefits" ? sp.tab : "sales";
+  const from = sp.from || monthsAgo(5);
+  const to = sp.to || new Date().toISOString().slice(0, 10);
+  const location = sp.location || "";
+  const grain = (GRAINS.includes(sp.grain as Grain) ? sp.grain : "month") as Grain;
+  const dimension = (DIMENSIONS.some((d) => d.key === sp.dimension)
+    ? sp.dimension
+    : "category") as Dimension;
+
+  const loc = location || null;
+
+  const [stores, points, salesPivot, expensePivot, benefits] = await Promise.all([
+    listStores(),
+    tab === "sales" ? getSalesByPeriod(from, to, loc, grain) : Promise.resolve([]),
+    tab === "sales"
+      ? getSalesPivot(from, to, dimension, loc)
+      : Promise.resolve({ months: [], rows: [], totals: {}, grandTotalPaise: 0 }),
+    tab === "expenses"
+      ? getExpensePivot(from, to, loc)
+      : Promise.resolve({ months: [], rows: [], totals: {}, grandTotalPaise: 0 }),
+    tab === "benefits" ? getBenefitsGiven(from, to, loc) : Promise.resolve([]),
+  ]);
+
+  // What each kind of giveaway actually cost. A coupon and a discount
+  // cost their face value; a gift costs what the piece cost us, which is
+  // a very different number from what it would have sold for.
+  const givenBy = (k: string) => benefits.filter((b) => b.kind === k);
+  const sumValue = (k: string) =>
+    givenBy(k).reduce((s, b) => s + b.valuePaise, 0);
+  const giftCost = givenBy("gift").reduce((s, b) => s + b.costPaise, 0);
+  const givenTotalCost = sumValue("coupon") + sumValue("discount") + giftCost;
+
+  const revenue = points.reduce((s, p) => s + p.revenuePaise, 0);
+  const margin = points.reduce((s, p) => s + p.marginPaise, 0);
+  const bills = points.reduce((s, p) => s + p.bills, 0);
+  const pieces = points.reduce((s, p) => s + p.qty, 0);
+  const marginPct = revenue > 0 ? (margin / revenue) * 100 : 0;
+  const spend = expensePivot.grandTotalPaise;
+
+  const qs = (over: Record<string, string>) => {
+    const params = new URLSearchParams({
+      tab,
+      from,
+      to,
+      location,
+      dimension,
+      grain,
+      ...over,
+    });
+    for (const [k, v] of [...params.entries()]) if (!v) params.delete(k);
+    return `${ROUTES.insights}?${params.toString()}`;
+  };
+
+  return (
+    <>
+      <PageHeader
+        title="Dashboard"
+        description="Where the money came from and where it went. Owner only."
+      />
+
+      <div className="mb-4 flex gap-1 border-b border-border">
+        {TABS.map((t) => (
+          <Link
+            key={t.key}
+            href={qs({ tab: t.key })}
+            className={`-mb-px border-b-2 px-4 py-2 text-sm transition-colors ${
+              tab === t.key
+                ? "border-brand font-medium text-brand"
+                : "border-transparent text-text-muted hover:text-text"
+            }`}
+          >
+            {t.label}
+          </Link>
+        ))}
+      </div>
+
+      <FilterBar
+        basePath={ROUTES.insights}
+        value={{ tab, from, to, location, dimension, grain }}
+        searchKey="_unused"
+        searchLabel="From / to are set below"
+        selects={[
+          {
+            key: "location",
+            label: "Branch",
+            allLabel: "All branches",
+            options: stores.map((s) => ({ value: s.id, label: `${s.code} — ${s.name}` })),
+          },
+          ...(tab === "sales"
+            ? [
+                {
+                  key: "grain",
+                  label: "Group by",
+                  allLabel: "Month",
+                  options: GRAINS.map((g) => ({ value: g, label: g })),
+                },
+                {
+                  key: "dimension",
+                  label: "Break down by",
+                  allLabel: "Category",
+                  options: DIMENSIONS.map((d) => ({ value: d.key, label: d.label })),
+                },
+              ]
+            : []),
+        ]}
+      />
+
+      {tab === "sales" ? (
+        <>
+          <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Metric label="Revenue" value={formatPaise(revenue)} hint={`${bills} bills`} />
+            <Metric
+              label="Margin"
+              value={formatPaise(margin)}
+              hint={`${marginPct.toFixed(1)}% of revenue`}
+            />
+            <Metric
+              label="Average bill"
+              value={formatPaise(bills > 0 ? Math.round(revenue / bills) : 0)}
+              hint={`${pieces} pieces`}
+            />
+            <Metric
+              label="Pieces per bill"
+              value={bills > 0 ? (pieces / bills).toFixed(1) : "—"}
+              hint="how much goes in a bag"
+            />
+          </div>
+
+          <Card className="mb-4">
+            <CardHeader className="font-medium">Revenue and margin</CardHeader>
+            <CardBody className="p-0">
+              <TrendChart points={points} />
+            </CardBody>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-wrap items-baseline justify-between gap-2">
+              <span className="font-medium">
+                By {DIMENSIONS.find((d) => d.key === dimension)?.label.toLowerCase()}
+              </span>
+              <span className="text-2xs text-text-muted">
+                cancelled bills excluded
+              </span>
+            </CardHeader>
+            <CardBody className="p-0">
+              <PivotTable
+                pivot={salesPivot}
+                label={DIMENSIONS.find((d) => d.key === dimension)?.label ?? "Category"}
+                showMargin
+              />
+            </CardBody>
+          </Card>
+        </>
+      ) : tab === "benefits" ? (
+        <>
+          <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Metric
+              label="Given away"
+              value={formatPaise(givenTotalCost)}
+              hint="what it cost us"
+            />
+            <Metric
+              label="Discounts"
+              value={formatPaise(sumValue("discount"))}
+              hint={`${givenBy("discount").length} bills`}
+            />
+            <Metric
+              label="Coupons"
+              value={formatPaise(sumValue("coupon"))}
+              hint={`${givenBy("coupon").length} redeemed`}
+            />
+            <Metric
+              label="Gifts"
+              value={formatPaise(giftCost)}
+              hint={`${givenBy("gift").length} given · ${formatPaise(sumValue("gift"))} at tag price`}
+            />
+          </div>
+
+          <Card>
+            <CardHeader className="flex flex-wrap items-baseline justify-between gap-2">
+              <span className="font-medium">Every cut given</span>
+              <span className="text-2xs text-text-muted">
+                newest first · {benefits.length} in this window
+              </span>
+            </CardHeader>
+            <CardBody className="p-0">
+              {benefits.length === 0 ? (
+                <p className="px-4 py-10 text-center text-sm text-text-muted">
+                  Nothing was given away in this window.
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[720px] border-collapse text-sm">
+                    <thead>
+                      <tr className="border-b border-border bg-surface-sunken">
+                        {["What", "Offer", "Bill", "Customer", "Branch", "Sold by", "Value", "Cost"].map(
+                          (h) => (
+                            <th
+                              key={h}
+                              className={`px-3 py-2 text-2xs font-medium uppercase tracking-wide text-text-muted ${
+                                h === "Value" || h === "Cost" ? "text-right" : "text-left"
+                              }`}
+                            >
+                              {h}
+                            </th>
+                          ),
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {benefits.slice(0, 200).map((b, i) => (
+                        <tr key={`${b.billId}-${b.kind}-${i}`} className="border-b border-border">
+                          <td className="px-3 py-2">
+                            <Badge
+                              tone={
+                                b.kind === "gift"
+                                  ? "done"
+                                  : b.kind === "coupon"
+                                    ? "pending"
+                                    : "neutral"
+                              }
+                            >
+                              {b.kind}
+                            </Badge>
+                          </td>
+                          <td className="px-3 py-2">{b.name}</td>
+                          <td className="px-3 py-2">
+                            <Link
+                              href={ROUTES.billDetail(b.billId)}
+                              className="font-mono text-2xs hover:text-brand hover:underline"
+                            >
+                              {b.billNo}
+                            </Link>
+                          </td>
+                          <td className="px-3 py-2">
+                            {b.customerId ? (
+                              <Link
+                                href={ROUTES.customerDetail(b.customerId)}
+                                className="hover:text-brand hover:underline"
+                              >
+                                {b.customerName ?? b.customerPhone}
+                              </Link>
+                            ) : (
+                              <span className="text-text-subtle">Walk-in</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 font-mono text-2xs">{b.locationCode}</td>
+                          <td className="px-3 py-2 text-2xs">{b.staffName}</td>
+                          <td className="tnum px-3 py-2 text-right font-mono">
+                            {formatPaise(b.valuePaise)}
+                          </td>
+                          <td className="tnum px-3 py-2 text-right font-mono text-2xs text-text-muted">
+                            {b.kind === "gift" ? formatPaise(b.costPaise) : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardBody>
+          </Card>
+        </>
+      ) : (
+        <>
+          <div className="mb-4 grid gap-3 sm:grid-cols-3">
+            <Metric label="Spent" value={formatPaise(spend)} hint="in this window" />
+            <Metric
+              label="Heads"
+              value={String(expensePivot.rows.length)}
+              hint="expense accounts used"
+            />
+            <Metric
+              label="Biggest head"
+              value={expensePivot.rows[0]?.dimension ?? "—"}
+              hint={
+                expensePivot.rows[0]
+                  ? formatPaise(expensePivot.rows[0].totalRevenuePaise)
+                  : undefined
+              }
+            />
+          </div>
+
+          <Card>
+            <CardHeader className="font-medium">Expenses by head</CardHeader>
+            <CardBody className="p-0">
+              <PivotTable pivot={expensePivot} label="Account" />
+            </CardBody>
+          </Card>
+        </>
+      )}
+    </>
+  );
+}
+
+function Metric({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+}) {
+  return (
+    <Card>
+      <CardBody>
+        <p className="text-2xs uppercase tracking-wide text-text-muted">{label}</p>
+        <p className="tnum font-mono text-2xl">{value}</p>
+        {hint && <p className="text-2xs text-text-subtle">{hint}</p>}
+      </CardBody>
+    </Card>
+  );
+}

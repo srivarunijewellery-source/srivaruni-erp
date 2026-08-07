@@ -259,3 +259,33 @@ export async function listCustomerPurchases(
 
   return out;
 }
+
+export interface CustomerGift {
+  billId: string;
+  billNo: string;
+  billDate: string;
+  offerName: string;
+  itemName: string | null;
+  qty: number;
+}
+
+/**
+ * Gifts this customer has been handed.
+ *
+ * Not owner-gated: the counter needs to be able to say "you already had
+ * the free bangles in June" without opening the books.
+ */
+export async function listCustomerGifts(id: string): Promise<CustomerGift[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("customer_gifts", { p_customer: id });
+  if (error) return [];
+
+  return ((data ?? []) as Array<Record<string, unknown>>).map((r) => ({
+    billId: String(r.bill_id),
+    billNo: String(r.bill_no),
+    billDate: String(r.bill_date),
+    offerName: String(r.offer_name ?? "Gift"),
+    itemName: r.item_name ? String(r.item_name) : null,
+    qty: Number(r.qty ?? 0),
+  }));
+}

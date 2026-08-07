@@ -47,6 +47,7 @@ import {
   fetchBillBenefits,
   fetchCustomerCredits,
   fetchDrawer,
+  recordBillGifts,
   redeemCustomerCredit,
   searchCatalog,
 } from "./actions";
@@ -903,6 +904,27 @@ export function PosScreen({
         if (!cr.ok) {
           setError(
             `Sale ${res.data.billNo} went through, but the credit note could not be applied: ${cr.error}`,
+          );
+        }
+      }
+
+      // Gifts are recorded against the bill once it exists. Same
+      // best-effort treatment as credit: the sale has happened, so a
+      // failure here is reported, never thrown away.
+      if (giftsTaken && benefits && benefits.gifts.length > 0) {
+        const gr = await attempt(() =>
+          recordBillGifts(
+            res.data.id,
+            benefits.gifts.map((g) => ({
+              offer_name: g.name,
+              item_id: g.itemId ?? null,
+              qty: g.itemQty,
+            })),
+          ),
+        );
+        if (!gr.ok) {
+          setError(
+            `Sale ${res.data.billNo} went through, but the gift was not recorded: ${gr.error}`,
           );
         }
       }

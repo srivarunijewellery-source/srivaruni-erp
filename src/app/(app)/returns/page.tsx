@@ -98,11 +98,14 @@ export default async function ReturnsPage({
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-2">
                       <span className="font-mono text-sm font-medium">{r.returnNo}</span>
+                      {r.billNo && (
+                        <span className="text-2xs text-text-muted">against {r.billNo}</span>
+                      )}
                       {r.locationCode && <Badge tone="neutral">{r.locationCode}</Badge>}
                     </span>
                     <span className="block truncate text-2xs text-text-muted">
                       {formatDate(r.returnDate)}
-                      {r.billNo ? ` · against ${r.billNo}` : ""}
+                      
                       {r.customerName ? ` · ${r.customerName}` : ""} · {r.pieces} piece
                       {r.pieces === 1 ? "" : "s"}
                       {r.reason ? ` · ${r.reason}` : ""}

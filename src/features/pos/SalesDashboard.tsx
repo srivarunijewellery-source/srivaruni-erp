@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
@@ -341,7 +343,15 @@ export function SalesDashboard({
             <ul className="max-h-[28rem] divide-y divide-border overflow-auto">
               {recent.map((r) => (
                 <li key={r.id} className="flex flex-wrap items-center gap-3 px-4 py-2.5">
-                  <span className="w-32 font-mono text-2xs text-text-muted">{r.billNo}</span>
+                  {/* The bill number is the way in to the whole bill --
+                      lines, payments, gifts and any returns against it.
+                      It was plain text everywhere until now. */}
+                  <Link
+                    href={ROUTES.billDetail(r.id)}
+                    className="w-32 font-mono text-2xs text-text-muted hover:text-brand hover:underline"
+                  >
+                    {r.billNo}
+                  </Link>
                   <div className="min-w-32 flex-1">
                     <p className="truncate text-sm">
                       {r.customerName ?? "Walk-in"}

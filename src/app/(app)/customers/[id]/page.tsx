@@ -8,6 +8,7 @@ import {
   listCustomerPurchases,
 } from "@/features/customers/queries";
 import { fetchCustomerCredits } from "@/features/pos/actions";
+import { listCustomerGifts } from "@/features/customers/queries";
 import { listCustomerCoupons } from "@/features/coupons/queries";
 import { can } from "@/config/roles";
 import { ROUTES } from "@/config/nav";
@@ -32,11 +33,12 @@ export default async function CustomerDetailPage({
   const customer = await getCustomer(id);
   if (!customer) notFound();
 
-  const [coupons, summary, purchases, creditsRes] = await Promise.all([
+  const [coupons, summary, purchases, creditsRes, gifts] = await Promise.all([
     listCustomerCoupons(customer.id),
     getCustomerSummary(customer.id),
     listCustomerPurchases(customer.id),
     fetchCustomerCredits(customer.id),
+    listCustomerGifts(customer.id),
   ]);
   const credits = creditsRes.ok ? creditsRes.data : [];
   const creditPaise = credits.reduce((s, c) => s + c.balancePaise, 0);
@@ -149,6 +151,33 @@ export default async function CustomerDetailPage({
         </Card>
       )}
 
+      {gifts.length > 0 && (
+        <Card className="mt-4">
+          <CardHeader className="font-medium">Gifts given</CardHeader>
+          <CardBody className="p-0">
+            <ul className="divide-y divide-border">
+              {gifts.map((g, i) => (
+                <li
+                  key={`${g.billId}-${i}`}
+                  className="flex flex-wrap items-baseline gap-3 px-4 py-2.5 text-sm"
+                >
+                  <span className="font-medium">{g.offerName}</span>
+                  <span className="min-w-0 flex-1 truncate text-2xs text-text-muted">
+                    {g.qty} × {g.itemName ?? "item"} · {formatDate(g.billDate)}
+                  </span>
+                  <Link
+                    href={ROUTES.billDetail(g.billId)}
+                    className="font-mono text-2xs text-text-muted hover:text-brand hover:underline"
+                  >
+                    {g.billNo}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </CardBody>
+        </Card>
+      )}
+
       <Card className="mt-4">
         <CardHeader className="flex flex-wrap items-baseline justify-between gap-2">
           <span className="font-medium">What they have bought</span>
@@ -190,7 +219,12 @@ export default async function CustomerDetailPage({
                 {purchases.map((b) => (
                   <li key={b.billId} className="py-3">
                     <div className="flex flex-wrap items-baseline gap-2">
-                      <span className="font-mono text-sm font-medium">{b.billNo}</span>
+                      <Link
+                        href={ROUTES.billDetail(b.billId)}
+                        className="font-mono text-sm font-medium hover:text-brand hover:underline"
+                      >
+                        {b.billNo}
+                      </Link>
                       <span className="text-2xs text-text-muted">
                         {formatDate(b.billDate)}
                         {b.locationCode ? ` · ${b.locationCode}` : ""}
