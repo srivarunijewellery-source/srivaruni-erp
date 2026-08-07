@@ -10,6 +10,7 @@ import { fetchBillForReprint, fetchSessionBills } from "./actions";
 import { printReceipt, type ReceiptData } from "./receipt";
 import type { Seller, SessionBill } from "./queries";
 import { BillActions } from "./BillActions";
+import { BillPeek } from "@/features/sales/BillPeek";
 
 /** The parts of a slip that come from the shop, not from the bill. */
 export type ReceiptHeader = Pick<
@@ -38,10 +39,12 @@ export function SessionBillsPanel({
   terminal,
   header,
   sellers,
+  locationId,
   canAmend,
   onClose,
 }: {
   sessionId: string;
+  locationId: string;
   terminal: string;
   header: ReceiptHeader;
   sellers: Seller[];
@@ -55,6 +58,7 @@ export function SessionBillsPanel({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [acting, setActing] = useState<SessionBill | null>(null);
+  const [peek, setPeek] = useState<SessionBill | null>(null);
   const [done, setDone] = useState<string | null>(null);
 
   useEffect(() => {
@@ -142,7 +146,15 @@ export function SessionBillsPanel({
                 <li key={b.billId} className="flex flex-wrap items-center gap-3 px-3 py-2.5">
                   <div className="min-w-0 flex-1">
                     <p className="flex items-center gap-2 text-sm">
-                      <span className="font-mono font-medium">{b.billNo}</span>
+                      {/* The number opens the bill. Check what is on it
+                          before changing anything about it. */}
+                      <button
+                        type="button"
+                        onClick={() => setPeek(b)}
+                        className="font-mono font-medium hover:text-brand hover:underline"
+                      >
+                        {b.billNo}
+                      </button>
                       {b.status === "cancelled" && <Badge tone="danger">cancelled</Badge>}
                     </p>
                     <p className="truncate text-2xs text-text-muted">
@@ -150,9 +162,18 @@ export function SessionBillsPanel({
                         hour: "2-digit",
                         minute: "2-digit",
                       })}
-                      {b.customerName ? ` · ${b.customerName}` : ""}
+                      {b.customerName ? ` · ${b.customerName}` : " · walk-in"}
                       {b.soldByName ? ` · ${b.soldByName}` : ""} · {b.items} item
                       {b.items === 1 ? "" : "s"}
+                      {/* How it was paid, on the row. Switching a bill to
+                          cash without being able to see what it currently
+                          is means guessing, which is the one thing this
+                          screen should never require. */}
+                      {b.paymentMode && (
+                        <span className="ml-1.5 rounded-full bg-surface-sunken px-1.5 py-0.5 uppercase tracking-wide text-text">
+                          {b.paymentMode}
+                        </span>
+                      )}
                     </p>
                   </div>
 
@@ -199,10 +220,15 @@ export function SessionBillsPanel({
         </p>
       </div>
 
+      {peek && (
+        <BillPeek billId={peek.billId} billNo={peek.billNo} onClose={() => setPeek(null)} />
+      )}
+
       {acting && (
         <BillActions
           bill={acting}
           sellers={sellers}
+          locationId={locationId}
           onClose={() => setActing(null)}
           onDone={(msg) => {
             setDone(msg);

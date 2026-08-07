@@ -73,6 +73,8 @@ export async function getRegisterStatus(): Promise<RegisterStatus[]> {
 }
 
 export interface RecentBill {
+  customerId: string | null;
+  soldById: string | null;
   id: string;
   billNo: string;
   billDate: string;
@@ -102,6 +104,7 @@ export async function listRecentBills(
   let query = supabase
     .from("bills")
     .select(`id, bill_no, bill_date, total_paise, status, payment_mode,
+             customer_id, sold_by,
              locations:location_id(code), customers:customer_id(name),
              staff:sold_by(name)`)
     .order("bill_date", { ascending: false })
@@ -133,12 +136,16 @@ export async function listRecentBills(
     locations: { code: string } | { code: string }[] | null;
     customers: { name: string } | { name: string }[] | null;
     staff: { name: string } | { name: string }[] | null;
+    customer_id: string | null;
+    sold_by: string | null;
   };
   const one = <T,>(v: T | T[] | null): T | null =>
     Array.isArray(v) ? (v[0] ?? null) : v;
 
   return ((data ?? []) as unknown as Row[]).map((r) => ({
     id: r.id,
+    customerId: r.customer_id ?? null,
+    soldById: r.sold_by ?? null,
     billNo: r.bill_no,
     billDate: r.bill_date,
     locationCode: one(r.locations)?.code ?? null,

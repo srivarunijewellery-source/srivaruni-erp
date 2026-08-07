@@ -1,34 +1,60 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requireUser } from "@/features/auth/session";
-import { listCustomers, listUpcomingOccasions } from "@/features/customers/queries";
 import { can } from "@/config/roles";
 import { ROUTES } from "@/config/nav";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { CustomerSearch } from "@/features/customers/CustomerSearch";
-import { formatDate } from "@/lib/format";
+import { FilterBar } from "@/components/ui/FilterBar";
+import { formatPaise } from "@/lib/money";
+import {
+  getCustomerOverview,
+  listCustomerRows,
+} from "@/features/customers/queries";
+import { CustomerTable } from "@/features/customers/CustomerTable";
+import { Button } from "@/components/ui/Button";
+import { listUpcomingOccasions } from "@/features/customers/queries";
 
 export const metadata: Metadata = { title: "Customers" };
+
+const PAGE = 40;
 
 export default async function CustomersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; sort?: string; page?: string }>;
 }) {
-  const [user, { q = "" }] = await Promise.all([requireUser(), searchParams]);
-  const [customers, occasions] = await Promise.all([
-    listCustomers(q),
-    listUpcomingOccasions(30),
+  const user = await requireUser();
+  if (!can(user, "customer.manage") && !can(user, "pos.sell")) {
+    return <EmptyState title="You do not have access to customers" />;
+  }
+
+  const { q = "", sort = "spend", page: pageRaw = "0" } = await searchParams;
+  const page = Math.max(0, Number(pageRaw) || 0);
+
+  const [list, overview, occasions] = await Promise.all([
+    listCustomerRows(q, sort, PAGE, page * PAGE),
+    getCustomerOverview(),
+    listUpcomingOccasions(),
   ]);
+
+  const pages = Math.ceil(list.total / PAGE);
+  const repeatPct =
+    overview.withBills > 0 ? (overview.repeat / overview.withBills) * 100 : 0;
+
+  const peakRevenue = Math.max(1, ...overview.byMonth.map((m) => m.revenuePaise));
+
+  const qs = (over: Record<string, string>) => {
+    const p = new URLSearchParams({ q, sort, page: String(page), ...over });
+    for (const [k, v] of [...p.entries()]) if (!v || v === "0") p.delete(k);
+    const s = p.toString();
+    return s ? `${ROUTES.customers}?${s}` : ROUTES.customers;
+  };
 
   return (
     <>
       <PageHeader
-        title="Customers"
-        description="Identified by phone number, so the same person coming back lands on the same record."
         action={
           can(user, "customer.manage") && (
             <Link href={`${ROUTES.customers}/new`}>
@@ -36,79 +62,159 @@ export default async function CustomersPage({
             </Link>
           )
         }
+        title="Customers"
+        description="Identified by phone number, so the same person coming back lands on the same record."
       />
+
+      <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Metric label="Customers" value={String(overview.total)} />
+        <Metric
+          label="Have bought"
+          value={String(overview.withBills)}
+          hint={`${overview.total - overview.withBills} never have`}
+        />
+        <Metric
+          label="Came back"
+          value={String(overview.repeat)}
+          hint={`${repeatPct.toFixed(0)}% of buyers`}
+        />
+        <Metric
+          label="Credit outstanding"
+          value={formatPaise(overview.creditOut)}
+          hint="notes they can still spend"
+        />
+      </div>
+
+      {overview.byMonth.length > 0 && (
+        <Card className="mb-4">
+          <CardHeader className="flex items-baseline justify-between gap-2">
+            <span className="font-medium">Customers buying, by month</span>
+            <span className="text-2xs text-text-muted">last 12 months</span>
+          </CardHeader>
+          <CardBody>
+            {/* Bars are revenue; the number under each is how many
+                different people bought. A month where revenue holds up
+                on fewer customers is a different business than one where
+                it holds up on more. */}
+            <div className="flex items-end gap-1.5 overflow-x-auto pb-1">
+              {overview.byMonth.map((m) => (
+                <div key={m.key} className="flex min-w-12 flex-1 flex-col items-center gap-1">
+                  <span className="tnum text-2xs text-text-muted">{m.customers}</span>
+                  <div
+                    className="w-full rounded-t-sm bg-brand"
+                    style={{
+                      height: `${Math.max(4, (m.revenuePaise / peakRevenue) * 88)}px`,
+                    }}
+                    title={`${m.month}: ${formatPaise(m.revenuePaise)} from ${m.customers} customers`}
+                  />
+                  <span className="text-2xs text-text-subtle">{m.month}</span>
+                </div>
+              ))}
+            </div>
+          </CardBody>
+        </Card>
+      )}
 
       {occasions.length > 0 && (
         <Card className="mb-4">
-          <CardHeader>
-            <span className="font-medium">Coming up in the next 30 days</span>
+          <CardHeader className="font-medium">
+            Coming up in the next 30 days
           </CardHeader>
-          <CardBody className="py-0">
-            <ul className="divide-y divide-border">
-              {occasions.slice(0, 8).map((o) => (
-                <li
-                  key={`${o.customer.id}-${o.occasion}`}
-                  className="flex items-center justify-between gap-3 py-2"
-                >
-                  <Link
-                    href={ROUTES.customerDetail(o.customer.id)}
-                    className="min-w-0 flex-1 truncate text-sm hover:underline"
-                  >
-                    {o.customer.name ?? o.customer.phone}
-                  </Link>
-                  <span className="text-2xs capitalize text-text-muted">{o.occasion}</span>
-                  <span className="tnum font-mono text-2xs">{formatDate(o.date)}</span>
-                </li>
-              ))}
-            </ul>
+          <CardBody className="flex flex-wrap gap-2">
+            {occasions.slice(0, 12).map((o, i) => (
+              <Link
+                key={`${o.customer.id}-${i}`}
+                href={ROUTES.customerDetail(o.customer.id)}
+                className="rounded-control border border-border px-2.5 py-1 text-2xs hover:border-brand hover:text-brand"
+              >
+                {o.customer.name ?? o.customer.phone}
+                <span className="ml-1.5 text-text-subtle">{o.occasion}</span>
+              </Link>
+            ))}
           </CardBody>
         </Card>
       )}
 
-      <div className="mb-4">
-        <CustomerSearch initial={q} />
-      </div>
+      <FilterBar
+        basePath={ROUTES.customers}
+        value={{ q, sort, page: String(page) }}
+        searchLabel="Find a customer"
+        searchPlaceholder="Name or phone"
+        selects={[
+          {
+            key: "sort",
+            label: "Sort by",
+            allLabel: "Most spent",
+            options: [
+              { value: "recent", label: "Most recent visit" },
+              { value: "bills", label: "Most bills" },
+              { value: "name", label: "Name" },
+            ],
+          },
+        ]}
+      />
 
-      {customers.length === 0 ? (
-        <EmptyState
-          title={q ? "Nobody matches that" : "No customers yet"}
-          hint={
-            q
-              ? "Try part of a name, or the last few digits of a number."
-              : "Add someone at the counter and they'll appear here."
-          }
-        />
-      ) : (
-        <Card>
-          <CardBody className="py-0">
-            <ul className="divide-y divide-border">
-              {customers.map((c) => (
-                <li key={c.id} className="py-2.5">
+      <Card>
+        <CardHeader className="flex flex-wrap items-baseline justify-between gap-2">
+          <span className="font-medium">
+            {list.total} customer{list.total === 1 ? "" : "s"}
+          </span>
+          {pages > 1 && (
+            <span className="text-2xs text-text-muted">
+              showing {page * PAGE + 1}&ndash;{page * PAGE + list.rows.length}
+            </span>
+          )}
+        </CardHeader>
+        <CardBody className="p-0">
+          <CustomerTable rows={list.rows} />
+
+          {pages > 1 && (
+            <div className="flex items-center justify-between gap-3 border-t border-border px-4 py-2">
+              <span className="text-2xs text-text-muted">
+                Page {page + 1} of {pages}
+              </span>
+              <div className="flex gap-2">
+                {page > 0 && (
                   <Link
-                    href={ROUTES.customerDetail(c.id)}
-                    className="flex items-center justify-between gap-3"
+                    href={qs({ page: String(page - 1) })}
+                    className="rounded-control border border-border px-3 py-1.5 text-2xs hover:border-brand hover:text-brand"
                   >
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">
-                        {c.name ?? <span className="text-text-muted">No name</span>}
-                      </p>
-                      <p className="font-mono text-2xs text-text-muted">
-                        {c.phone}
-                        {c.city && ` · ${c.city}`}
-                      </p>
-                    </div>
-                    {c.gstin && (
-                      <span className="shrink-0 rounded-full bg-surface-sunken px-2 py-0.5 text-2xs text-text-muted">
-                        GST
-                      </span>
-                    )}
+                    Previous
                   </Link>
-                </li>
-              ))}
-            </ul>
-          </CardBody>
-        </Card>
-      )}
+                )}
+                {page + 1 < pages && (
+                  <Link
+                    href={qs({ page: String(page + 1) })}
+                    className="rounded-control border border-border px-3 py-1.5 text-2xs hover:border-brand hover:text-brand"
+                  >
+                    Next
+                  </Link>
+                )}
+              </div>
+            </div>
+          )}
+        </CardBody>
+      </Card>
     </>
+  );
+}
+
+function Metric({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+}) {
+  return (
+    <Card>
+      <CardBody>
+        <p className="text-2xs uppercase tracking-wide text-text-muted">{label}</p>
+        <p className="tnum font-mono text-2xl">{value}</p>
+        {hint && <p className="text-2xs text-text-subtle">{hint}</p>}
+      </CardBody>
+    </Card>
   );
 }

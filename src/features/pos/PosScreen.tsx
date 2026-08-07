@@ -1926,6 +1926,7 @@ export function PosScreen({
           terminal={terminal}
           header={receiptHeader}
           sellers={sellers}
+          locationId={locationId}
           canAmend={canCloseRegister}
           onClose={() => {
             setShowBills(false);

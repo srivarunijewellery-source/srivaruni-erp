@@ -12,6 +12,7 @@ import { formatPaise } from "@/lib/money";
 import { formatDate } from "@/lib/format";
 import { ROUTES } from "@/config/nav";
 import { BillPeek } from "@/features/sales/BillPeek";
+import { CustomerPeek } from "@/features/customers/CustomerPeek";
 import { BillSellerEditor } from "./BillSellerEditor";
 import type { Seller } from "./queries";
 import type {
@@ -47,6 +48,10 @@ export function SalesDashboard({
   const [editing, setEditing] = useState<{ id: string; no: string } | null>(null);
   // Peeking at a bill should not cost you your place in the list.
   const [peek, setPeek] = useState<{ id: string; no: string } | null>(null);
+  // Same rule as bills: a name with data behind it opens that data.
+  const [peekCustomer, setPeekCustomer] = useState<{ id: string; name: string } | null>(
+    null,
+  );
   const [q, setQ] = useState(filters.q);
 
   /**
@@ -357,7 +362,23 @@ export function SalesDashboard({
                   </button>
                   <div className="min-w-32 flex-1">
                     <p className="truncate text-sm">
-                      {r.customerName ?? "Walk-in"}
+                      {r.customerId ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPeekCustomer({
+                              id: r.customerId!,
+                              name: r.customerName ?? "Customer",
+                            });
+                          }}
+                          className="hover:text-brand hover:underline"
+                        >
+                          {r.customerName ?? "Customer"}
+                        </button>
+                      ) : (
+                        "Walk-in"
+                      )}
                       {r.status === "cancelled" && (
                         <Badge tone="danger" className="ml-2">
                           cancelled
@@ -411,6 +432,14 @@ export function SalesDashboard({
 
       {peek && (
         <BillPeek billId={peek.id} billNo={peek.no} onClose={() => setPeek(null)} />
+      )}
+
+      {peekCustomer && (
+        <CustomerPeek
+          customerId={peekCustomer.id}
+          name={peekCustomer.name}
+          onClose={() => setPeekCustomer(null)}
+        />
       )}
     </div>
   );

@@ -12,8 +12,8 @@ import {
   setBillSalesman,
 } from "./actions";
 import { searchCustomersAction } from "./customer-actions";
-import { fetchBillForReturn, type ReturnableLine } from "./actions";
-import type { CustomerHit, Seller, SessionBill } from "./queries";
+import { fetchBillForReturn, searchCatalog } from "./actions";
+import type { CustomerHit, PosCatalogItem, Seller, SessionBill } from "./queries";
 
 type Mode = "menu" | "salesman" | "payment" | "customer" | "edit";
 
@@ -31,11 +31,14 @@ const METHODS = ["cash", "upi", "card", "bank", "cheque"] as const;
 export function BillActions({
   bill,
   sellers,
+  locationId,
   onDone,
   onClose,
 }: {
   bill: SessionBill;
   sellers: Seller[];
+  /** Needed to search the catalogue when adding a piece to the bill. */
+  locationId: string;
   onDone: (message: string) => void;
   onClose: () => void;
 }) {
@@ -49,10 +52,29 @@ export function BillActions({
   const [phone, setPhone] = useState("");
   const [hits, setHits] = useState<CustomerHit[]>([]);
 
-  const [lines, setLines] = useState<ReturnableLine[] | null>(null);
-  const [qty, setQty] = useState<Record<string, number>>({});
+  /**
+   * The bill being rebuilt.
+   *
+   * Editing used to only let quantities go down, which covers "rang two
+   * instead of one" and nothing else. A bill can be wrong in every
+   * direction -- wrong price, missing piece, item that was never handed
+   * over -- so while the register is open the whole invoice is editable.
+   */
+  type EditLine = {
+    key: string;
+    itemId: string;
+    name: string;
+    barcode: string | null;
+    qty: number;
+    unitPaise: number;
+    soldBy: string | null;
+  };
+  const [lines, setLines] = useState<EditLine[] | null>(null);
   const [reason, setReason] = useState("");
   const [confirmEdit, setConfirmEdit] = useState(false);
+  const [addQ, setAddQ] = useState("");
+  const [addHits, setAddHits] = useState<PosCatalogItem[]>([]);
+  const [payMethod, setPayMethod] = useState("cash");
 
   const run = (fn: () => Promise<{ ok: boolean; error?: string }>, msg: string) =>
     start(async () => {
@@ -67,16 +89,40 @@ export function BillActions({
     start(async () => {
       const r = await fetchBillForReturn(bill.billId);
       if (r.ok) {
-        setLines(r.data);
-        setQty(Object.fromEntries(r.data.map((l) => [l.billLineId, l.qty])));
+        setLines(
+          r.data.map((l) => ({
+            key: l.billLineId,
+            itemId: l.itemId,
+            name: l.itemName,
+            barcode: l.barcode,
+            qty: l.qty,
+            unitPaise: l.unitPricePaise,
+            soldBy: null,
+          })),
+        );
+        setPayMethod(bill.paymentMode ?? "cash");
       } else setError(r.error);
     });
   }
 
-  const newTotal = (lines ?? []).reduce(
-    (s, l) => s + (qty[l.billLineId] ?? 0) * l.unitPricePaise,
-    0,
-  );
+  function addItem(i: PosCatalogItem) {
+    setLines((prev) => [
+      ...(prev ?? []),
+      {
+        key: `new-${i.item_id}-${Date.now()}`,
+        itemId: i.item_id,
+        name: i.name,
+        barcode: i.barcode,
+        qty: 1,
+        unitPaise: i.price_paise,
+        soldBy: null,
+      },
+    ]);
+    setAddQ("");
+    setAddHits([]);
+  }
+
+  const newTotal = (lines ?? []).reduce((s, l) => s + l.qty * l.unitPaise, 0);
 
   return (
     <Modal
@@ -259,31 +305,176 @@ export function BillActions({
               <p className="py-6 text-center text-sm text-text-muted">Reading the bill…</p>
             ) : (
               <>
-                <ul className="divide-y divide-border rounded-card border border-border">
-                  {lines.map((l) => (
-                    <li key={l.billLineId} className="flex items-center gap-2 px-3 py-2">
-                      <span className="min-w-0 flex-1 truncate text-sm">{l.itemName}</span>
-                      <span className="tnum font-mono text-2xs text-text-muted">
-                        {formatPaise(l.unitPricePaise)}
-                      </span>
-                      <Input
-                        type="number"
-                        min={0}
-                        value={qty[l.billLineId] ?? 0}
-                        onChange={(e) =>
-                          setQty((p) => ({
-                            ...p,
-                            [l.billLineId]: Math.max(0, Number(e.target.value) || 0),
-                          }))
-                        }
-                        className="h-8 w-16 text-right font-mono text-sm"
-                      />
+                <ul className="max-h-64 divide-y divide-border overflow-auto rounded-card border border-border">
+                  {lines.map((l, i) => (
+                    <li key={l.key} className="space-y-1 px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm">{l.name}</span>
+                          <span className="block font-mono text-2xs text-text-subtle">
+                            {l.barcode ?? "no tag"}
+                          </span>
+                        </span>
+
+                        <Input
+                          type="number"
+                          min={0}
+                          aria-label="Quantity"
+                          value={l.qty}
+                          onChange={(e) =>
+                            setLines((p) =>
+                              (p ?? []).map((x, idx) =>
+                                idx === i
+                                  ? { ...x, qty: Math.max(0, Number(e.target.value) || 0) }
+                                  : x,
+                              ),
+                            )
+                          }
+                          className="h-8 w-14 text-right font-mono text-sm"
+                        />
+                        <span className="text-2xs text-text-subtle">×</span>
+                        {/* Price is editable too: a piece rung at the
+                            wrong tag price is as common as a wrong
+                            quantity, and refusing to fix it here would
+                            send someone to a return instead. */}
+                        <Input
+                          type="number"
+                          min={0}
+                          aria-label="Price"
+                          value={(l.unitPaise / 100).toString()}
+                          onChange={(e) =>
+                            setLines((p) =>
+                              (p ?? []).map((x, idx) =>
+                                idx === i
+                                  ? {
+                                      ...x,
+                                      unitPaise: Math.round(
+                                        (Number(e.target.value) || 0) * 100,
+                                      ),
+                                    }
+                                  : x,
+                              ),
+                            )
+                          }
+                          className="h-8 w-20 text-right font-mono text-sm"
+                        />
+
+                        <button
+                          type="button"
+                          aria-label={`Remove ${l.name}`}
+                          onClick={() =>
+                            setLines((p) => (p ?? []).filter((_, idx) => idx !== i))
+                          }
+                          className="shrink-0 px-1 text-text-subtle hover:text-status-danger-fg"
+                        >
+                          ×
+                        </button>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className="text-2xs text-text-subtle">Sold by</span>
+                        <Select
+                          value={l.soldBy ?? ""}
+                          onChange={(e) =>
+                            setLines((p) =>
+                              (p ?? []).map((x, idx) =>
+                                idx === i ? { ...x, soldBy: e.target.value || null } : x,
+                              ),
+                            )
+                          }
+                          className="h-7 w-44 py-0 text-2xs"
+                        >
+                          <option value="">Whoever is on the bill</option>
+                          {sellers.map((sp) => (
+                            <option key={sp.id} value={sp.id}>
+                              {sp.name}
+                            </option>
+                          ))}
+                        </Select>
+                        <span className="tnum ml-auto font-mono text-2xs">
+                          {formatPaise(l.qty * l.unitPaise)}
+                        </span>
+                      </div>
                     </li>
                   ))}
+                  {lines.length === 0 && (
+                    <li className="px-3 py-3 text-sm text-text-muted">
+                      Nothing left on this bill. Add something, or cancel.
+                    </li>
+                  )}
                 </ul>
 
+                <div>
+                  <Label htmlFor="addq">Add a piece</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="addq"
+                      value={addQ}
+                      onChange={(e) => setAddQ(e.target.value)}
+                      placeholder="Scan a tag or type a name"
+                    />
+                    <Button
+                      variant="secondary"
+                      disabled={pending || addQ.trim().length < 2}
+                      onClick={() =>
+                        start(async () => {
+                          const r = await searchCatalog(locationId, addQ.trim(), 8);
+                          if (r.ok) setAddHits(r.data);
+                          else setError(r.error);
+                        })
+                      }
+                    >
+                      Find
+                    </Button>
+                  </div>
+                  {addHits.length > 0 && (
+                    <ul className="mt-1 divide-y divide-border rounded-card border border-border">
+                      {addHits.map((i) => (
+                        <li key={i.item_id}>
+                          <button
+                            type="button"
+                            onClick={() => addItem(i)}
+                            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-surface-sunken"
+                          >
+                            <span className="min-w-0 flex-1 truncate">{i.name}</span>
+                            <span className="text-2xs text-text-muted">{i.qty} left</span>
+                            <span className="tnum font-mono text-2xs">
+                              {formatPaise(i.price_paise)}
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-2xs text-text-muted">Paid by</span>
+                  {METHODS.map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setPayMethod(m)}
+                      className={`rounded-control px-2.5 py-1 text-2xs capitalize ${
+                        payMethod === m
+                          ? "bg-brand text-brand-fg"
+                          : "border border-border hover:bg-surface-sunken"
+                      }`}
+                    >
+                      {m}
+                    </button>
+                  ))}
+                </div>
+
                 <div className="flex items-baseline justify-between rounded-control bg-surface-sunken px-3 py-2">
-                  <span className="text-sm">New total</span>
+                  <span className="text-sm">
+                    New total
+                    {newTotal !== bill.totalPaise && (
+                      <span className="ml-2 text-2xs text-text-muted">
+                        was {formatPaise(bill.totalPaise)}
+                      </span>
+                    )}
+                  </span>
                   <span className="tnum font-mono text-lg">{formatPaise(newTotal)}</span>
                 </div>
 
@@ -313,14 +504,15 @@ export function BillActions({
                             editBill(
                               bill.billId,
                               (lines ?? [])
-                                .filter((l) => (qty[l.billLineId] ?? 0) > 0)
+                                .filter((l) => l.qty > 0)
                                 .map((l) => ({
                                   item_id: l.itemId,
-                                  qty: qty[l.billLineId]!,
-                                  unit_price_paise: l.unitPricePaise,
+                                  qty: l.qty,
+                                  unit_price_paise: l.unitPaise,
                                   discount_paise: 0,
+                                  sold_by: l.soldBy,
                                 })),
-                              [{ method: "cash", amount_paise: newTotal }],
+                              [{ method: payMethod, amount_paise: newTotal }],
                               reason,
                             ),
                           `${bill.billNo} corrected. The owner has been emailed.`,

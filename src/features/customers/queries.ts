@@ -289,3 +289,93 @@ export async function listCustomerGifts(id: string): Promise<CustomerGift[]> {
     qty: Number(r.qty ?? 0),
   }));
 }
+
+/* ------------------------------------------------------------------ */
+/* The list                                                             */
+/* ------------------------------------------------------------------ */
+
+export interface CustomerListRow {
+  id: string;
+  name: string | null;
+  phone: string;
+  city: string | null;
+  bills: number;
+  pieces: number;
+  spentPaise: number;
+  lastVisit: string | null;
+  firstVisit: string | null;
+  creditPaise: number;
+  coupons: number;
+}
+
+export interface CustomerListPage {
+  rows: CustomerListRow[];
+  total: number;
+}
+
+export async function listCustomerRows(
+  search: string,
+  sort: string,
+  limit = 40,
+  offset = 0,
+): Promise<CustomerListPage> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("customer_list", {
+    p_search: search || null,
+    p_sort: sort || "spend",
+    p_limit: limit,
+    p_offset: offset,
+  });
+  if (error) return { rows: [], total: 0 };
+
+  const raw = (data ?? []) as Array<Record<string, unknown>>;
+  return {
+    total: raw.length > 0 ? Number(raw[0]!.total_matching ?? 0) : 0,
+    rows: raw.map((r) => ({
+      id: String(r.id),
+      name: r.name ? String(r.name) : null,
+      phone: String(r.phone),
+      city: r.city ? String(r.city) : null,
+      bills: Number(r.bills ?? 0),
+      pieces: Number(r.pieces ?? 0),
+      spentPaise: Number(r.spent_paise ?? 0),
+      lastVisit: r.last_visit ? String(r.last_visit) : null,
+      firstVisit: r.first_visit ? String(r.first_visit) : null,
+      creditPaise: Number(r.credit_paise ?? 0),
+      coupons: Number(r.coupons ?? 0),
+    })),
+  };
+}
+
+export interface CustomerOverview {
+  total: number;
+  withBills: number;
+  repeat: number;
+  creditOut: number;
+  byMonth: Array<{
+    month: string;
+    key: string;
+    bills: number;
+    customers: number;
+    revenuePaise: number;
+  }>;
+}
+
+export async function getCustomerOverview(): Promise<CustomerOverview> {
+  const supabase = await createClient();
+  const { data } = await supabase.rpc("customer_overview");
+  const d = (data ?? {}) as Record<string, unknown>;
+  return {
+    total: Number(d.total ?? 0),
+    withBills: Number(d.with_bills ?? 0),
+    repeat: Number(d.repeat ?? 0),
+    creditOut: Number(d.credit_out ?? 0),
+    byMonth: ((d.by_month ?? []) as Array<Record<string, unknown>>).map((m) => ({
+      month: String(m.month ?? ""),
+      key: String(m.key ?? ""),
+      bills: Number(m.bills ?? 0),
+      customers: Number(m.customers ?? 0),
+      revenuePaise: Number(m.revenue_paise ?? 0),
+    })),
+  };
+}

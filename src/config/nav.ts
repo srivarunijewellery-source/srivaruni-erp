@@ -49,6 +49,7 @@ export const ROUTES = {
   sales: "/sales",
   returns: "/returns",
   billDetail: (id: string) => `/sales/${id}`,
+  financeSummary: "/accounts/summary",
   expenses: "/accounts/expenses",
   journals: "/accounts/journals",
   trialBalance: "/accounts/trial-balance",
@@ -140,6 +141,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     // read-mostly and get reached when a question comes up.
     label: "Accounts",
     items: [
+      { href: ROUTES.financeSummary, label: "Financial summary", requires: "accounts.view" },
       { href: ROUTES.expenses,     label: "Expenses",          requires: "accounts.manage" },
       { href: ROUTES.journals,     label: "Journal",           requires: "accounts.view" },
       { href: ROUTES.trialBalance, label: "Trial balance",     requires: "accounts.view" },
