@@ -407,3 +407,45 @@ export async function renameItem(
   revalidatePath(ROUTES.productDetail(itemId));
   return ok(String(data ?? trimmed));
 }
+
+/**
+ * Margin bands, owner only.
+ *
+ * The nine bands ("25–30%", "30–35%" ...) were seeded once by a
+ * migration and had no editor anywhere — anyone wanting a different
+ * spread had to ask for a database change. Renaming and adjusting a band
+ * stays open even once it has history behind it, the same as a
+ * category: the label is what the counter and the pricing bench show,
+ * not an identity, and today's "50-55%" reading differently next season
+ * should not require a new row.
+ */
+export async function savePriceBand(input: {
+  id: string | null;
+  label: string;
+  loPercent: number;
+  hiPercent: number;
+  active: boolean;
+}): Promise<Result<string>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("save_price_band", {
+    p_id: input.id,
+    p_label: input.label,
+    p_lo_bps: Math.round(input.loPercent * 100),
+    p_hi_bps: Math.round(input.hiPercent * 100),
+    p_active: input.active,
+  });
+  if (error) return err(toMessage(error));
+  revalidatePath(ROUTES.pricingSettings);
+  revalidatePath(ROUTES.pricing);
+  return ok(String(data));
+}
+
+/** Refused, with the reason, unless nothing past or present uses the band. */
+export async function deletePriceBand(id: string): Promise<Result<string>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("delete_price_band", { p_id: id });
+  if (error) return err(toMessage(error));
+  revalidatePath(ROUTES.pricingSettings);
+  revalidatePath(ROUTES.pricing);
+  return ok(String(data));
+}

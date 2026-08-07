@@ -426,6 +426,7 @@ export async function searchCatalog(
     item_id: string; barcode: string | null; name: string;
     design_code: string | null; category: string | null; qty: number;
     price_paise: number; mrp_paise: number; gst_rate: number;
+    photo_path: string | null;
   };
 
   return ok(
@@ -439,6 +440,7 @@ export async function searchCatalog(
       price_paise: Number(r.price_paise ?? 0),
       mrp_paise: Number(r.mrp_paise ?? 0),
       gst_rate: Number(r.gst_rate ?? 3),
+      photoPath: r.photo_path ?? null,
     })),
   );
 }
@@ -693,4 +695,18 @@ export async function fetchBillBenefits(
     Number(d.line_discount_paise ?? 0) + Number(d.invoice_discount_paise ?? 0);
 
   return ok({ gifts, schemePaise, schemeNames: [...names] });
+}
+
+/**
+ * Cheapest possible round trip, used to tell whether the shop's
+ * connection is really back.
+ *
+ * navigator.onLine only reports whether a network interface is up. A
+ * counter joined to the shop Wi-Fi while the broadband is down reads as
+ * ONLINE by that measure, which is precisely the situation this system
+ * exists to survive. So the counter believes an actual answer from the
+ * server over the browser's opinion.
+ */
+export async function pingServer(): Promise<Result<number>> {
+  return ok(Date.now());
 }

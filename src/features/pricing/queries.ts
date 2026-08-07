@@ -44,6 +44,49 @@ export async function listBands(): Promise<PriceBand[]> {
   }));
 }
 
+export interface EditableBand extends PriceBand {
+  active: boolean;
+  /** Live rules or the default setting pointing at this band. */
+  liveUses: number;
+  /** Items priced under this band in the past. Blocks a delete even
+   *  once live_uses is zero — the history still means something. */
+  historyUses: number;
+}
+
+/**
+ * Every band, active or not, for the settings editor.
+ *
+ * listBands() stays filtered to active bands because that is what
+ * pricing itself should offer. The editor needs the turned-off ones too
+ * — an owner reviewing bands has to be able to see and reactivate one,
+ * not just add new ones forever because the old one looks gone.
+ */
+export async function listAllBands(): Promise<EditableBand[]> {
+  const supabase = await createClient();
+  const [bandsRes, usageRes] = await Promise.all([
+    supabase
+      .from("price_bands")
+      .select("id, label, lo_bps, hi_bps, active, sort_order")
+      .order("sort_order"),
+    supabase.from("price_bands_usage").select("id, live_uses, history_uses"),
+  ]);
+  if (bandsRes.error) return [];
+
+  const usage = new Map(
+    (usageRes.data ?? []).map((u) => [u.id, { live: Number(u.live_uses ?? 0), hist: Number(u.history_uses ?? 0) }]),
+  );
+
+  return (bandsRes.data ?? []).map((b) => ({
+    id: b.id,
+    label: b.label,
+    loBps: b.lo_bps,
+    hiBps: b.hi_bps,
+    active: b.active,
+    liveUses: usage.get(b.id)?.live ?? 0,
+    historyUses: usage.get(b.id)?.hist ?? 0,
+  }));
+}
+
 export async function getPricingSettings(): Promise<PricingSettings | null> {
   const supabase = await createClient();
   const { data, error } = await supabase

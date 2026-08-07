@@ -21,7 +21,12 @@ import { Simulator } from "@/features/discounts/Simulator";
 
 export const metadata: Metadata = { title: "Discounts" };
 
-export default async function DiscountsPage() {
+export default async function DiscountsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ edit?: string }>;
+}) {
+  const { edit = "" } = await searchParams;
   const user = await requireUser();
   if (!can(user, "discount.manage")) {
     return (
@@ -31,6 +36,11 @@ export default async function DiscountsPage() {
       />
     );
   }
+
+  // Editing an existing offer is owner-only; discount.manage already
+  // resolves to the owner, so this is the same gate named honestly at
+  // the point it is used.
+  const canEdit = can(user, "discount.manage");
 
   const [schemes, settings, locations, scope, items, attrs] = await Promise.all([
     listSchemes(),
@@ -128,9 +138,23 @@ export default async function DiscountsPage() {
                             {formatDate(s.startsOn)} – {formatDate(s.endsOn)}
                           </td>
                           <td className="px-3 py-2">
-                            <Badge tone={live ? "done" : done ? "neutral" : "pending"}>
-                              {live ? "Running" : done ? "Finished" : "Scheduled"}
-                            </Badge>
+                            <div className="flex items-center gap-2">
+                              <Badge tone={live ? "done" : done ? "neutral" : "pending"}>
+                                {live ? "Running" : done ? "Finished" : "Scheduled"}
+                              </Badge>
+                              {/* Owner only. A running campaign gets
+                                  extended far more often than replaced,
+                                  and a second overlapping offer is the
+                                  worst way to do that. */}
+                              {canEdit && (
+                                <Link
+                                  href={`${ROUTES.discounts}?edit=${s.id}`}
+                                  className="text-2xs text-text-muted hover:text-brand hover:underline"
+                                >
+                                  edit
+                                </Link>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -145,6 +169,7 @@ export default async function DiscountsPage() {
         </div>
 
         <SchemeForm
+          editing={canEdit && edit ? (schemes.find((x) => x.id === edit) ?? null) : null}
           categories={scope.categories}
           itemTypes={scope.itemTypes}
           vendors={scope.vendors}

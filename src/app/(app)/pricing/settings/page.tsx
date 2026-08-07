@@ -6,8 +6,9 @@ import { ROUTES } from "@/config/nav";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
-import { getPricingSettings, listBands } from "@/features/pricing/queries";
+import { getPricingSettings, listAllBands, listBands } from "@/features/pricing/queries";
 import { PricingSettingsForm } from "@/features/pricing/PricingSettingsForm";
+import { PriceBandsEditor } from "@/features/pricing/PriceBandsEditor";
 import { formatPaise } from "@/lib/money";
 
 export const metadata: Metadata = { title: "Pricing settings" };
@@ -18,7 +19,11 @@ export default async function PricingSettingsPage() {
     return <EmptyState title="Pricing is owner-only" />;
   }
 
-  const [settings, bands] = await Promise.all([getPricingSettings(), listBands()]);
+  const [settings, bands, allBands] = await Promise.all([
+    getPricingSettings(),
+    listBands(),
+    listAllBands(),
+  ]);
   if (!settings) return <EmptyState title="Pricing settings are missing." />;
 
   return (
@@ -37,6 +42,8 @@ export default async function PricingSettingsPage() {
       />
 
       <div className="grid gap-4 lg:grid-cols-2">
+        <PriceBandsEditor bands={allBands} />
+
         <PricingSettingsForm settings={settings} bands={bands} />
 
         <Card>

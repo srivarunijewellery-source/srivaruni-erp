@@ -1,5 +1,8 @@
 "use client";
 
+import { useRouter } from "next/navigation";
+import { ROUTES } from "@/config/nav";
+
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
@@ -9,8 +12,7 @@ import { parsePercentToBps } from "@/lib/pricing";
 import { saveScheme } from "./actions";
 import type {
   AttributeOption, Category, DiscountScope, DiscountValueKind,
-  ItemTypeOption, StoreLocation,
-} from "@/types/domain";
+  ItemTypeOption, StoreLocation, DiscountScheme } from "@/types/domain";
 
 interface Target {
   categoryId?: string | null;
@@ -42,6 +44,7 @@ export function SchemeForm({
   locations,
   maxPercentBps,
   maxDays,
+  editing,
 }: {
   categories: Category[];
   itemTypes: ItemTypeOption[];
@@ -55,20 +58,55 @@ export function SchemeForm({
   locations: StoreLocation[];
   maxPercentBps: number;
   maxDays: number;
+  /** An existing scheme being changed. Owner only. */
+  editing?: DiscountScheme | null;
 }) {
+  const router = useRouter();
   const today = new Date().toISOString().slice(0, 10);
 
-  const [name, setName] = useState("");
-  const [scope, setScope] = useState<DiscountScope>("selection");
-  const [valueKind, setValueKind] = useState<DiscountValueKind>("percent");
-  const [valueText, setValueText] = useState("");
-  const [startsOn, setStartsOn] = useState(today);
-  const [endsOn, setEndsOn] = useState(today);
-  const [minBillText, setMinBillText] = useState("");
-  const [maxDiscountText, setMaxDiscountText] = useState("");
-  const [priority, setPriority] = useState("100");
-  const [locationIds, setLocationIds] = useState<string[]>([]);
-  const [targets, setTargets] = useState<Target[]>([]);
+  /**
+   * Loaded from the scheme being edited, or blank for a new one.
+   *
+   * A running campaign gets extended far more often than it gets
+   * replaced -- the festival ran long, the stock did not move -- and
+   * forcing a new scheme for that would leave two overlapping offers
+   * fighting over the same bill.
+   */
+  const [name, setName] = useState(editing?.name ?? "");
+  const [scope, setScope] = useState<DiscountScope>(editing?.scope ?? "selection");
+  const [valueKind, setValueKind] = useState<DiscountValueKind>(
+    editing?.valueKind ?? "percent",
+  );
+  const [valueText, setValueText] = useState(
+    editing
+      ? editing.valueKind === "percent"
+        ? String((editing.valueBps ?? 0) / 100)
+        : String((editing.valuePaise ?? 0) / 100)
+      : "",
+  );
+  const [startsOn, setStartsOn] = useState(editing?.startsOn ?? today);
+  const [endsOn, setEndsOn] = useState(editing?.endsOn ?? today);
+  const [minBillText, setMinBillText] = useState(
+    editing?.minBillPaise ? String(editing.minBillPaise / 100) : "",
+  );
+  const [maxDiscountText, setMaxDiscountText] = useState(
+    editing?.maxDiscountPaise ? String(editing.maxDiscountPaise / 100) : "",
+  );
+  const [priority, setPriority] = useState(String(editing?.priority ?? 100));
+  const [locationIds, setLocationIds] = useState<string[]>(
+    editing?.locationIds ?? [],
+  );
+  const [targets, setTargets] = useState<Target[]>(
+    // Prefilled when editing. saveScheme replaces the target list
+    // wholesale, so starting empty would silently strip the products an
+    // offer applies to and quietly widen it to everything.
+    (editing?.targets ?? []).map((t) => ({
+      categoryId: t.categoryId ?? undefined,
+      itemTypeId: t.itemTypeId ?? undefined,
+      vendorId: t.vendorId ?? undefined,
+      itemId: t.itemId ?? undefined,
+    })),
+  );
   const [draft, setDraft] = useState<Target>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -90,6 +128,7 @@ export function SchemeForm({
   async function submit() {
     setBusy(true); setError(null); setMsg(null);
     const res = await saveScheme({
+      id: editing?.id,
       name,
       scope,
       valueKind,
@@ -106,6 +145,13 @@ export function SchemeForm({
     });
     setBusy(false);
     if (!res.ok) { setError(res.error); return; }
+
+    if (editing) {
+      setMsg("Offer updated.");
+      router.push(ROUTES.discounts);
+      return;
+    }
+
     setMsg("Offer saved.");
     setName(""); setValueText(""); setTargets([]); setMinBillText("");
     setMaxDiscountText("");
@@ -113,7 +159,18 @@ export function SchemeForm({
 
   return (
     <Card>
-      <CardHeader><h2 className="font-medium">New offer</h2></CardHeader>
+      <CardHeader className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="font-medium">{editing ? `Editing ${editing.name}` : "New offer"}</h2>
+        {editing && (
+          <button
+            type="button"
+            onClick={() => router.push(ROUTES.discounts)}
+            className="text-2xs text-text-muted hover:text-brand"
+          >
+            cancel and start a new one
+          </button>
+        )}
+      </CardHeader>
       <CardBody className="space-y-3">
         <div>
           <Label htmlFor="dname">Name</Label>

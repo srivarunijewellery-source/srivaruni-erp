@@ -228,3 +228,130 @@ export async function updateItemCategory(formData: FormData): Promise<Result> {
   await revalidateInwardCosts(parsed.data.inwardId);
   return ok(undefined);
 }
+
+/**
+ * Renames an item while pricing it.
+ *
+ * Pricing is the first time anyone reads a new piece properly, and the
+ * vendor's shorthand ("black beads 19526") is what the counter will
+ * search on and what prints on the customer's bill. Fixing it here saves
+ * a trip to the product page, which in practice means it never gets
+ * fixed at all.
+ */
+export async function renameInwardItem(formData: FormData): Promise<Result> {
+  const itemId = String(formData.get("itemId") ?? "");
+  const inwardId = String(formData.get("inwardId") ?? "");
+  const name = String(formData.get("name") ?? "").trim();
+
+  if (!itemId || !inwardId) return err("Missing item.");
+  if (name.length < 2) return err("Give the item a name.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("rename_item", {
+    p_item: itemId,
+    p_name: name,
+  });
+  if (error) return err(toMessage(error));
+
+  await revalidateInwardCosts(inwardId);
+  return ok(undefined);
+}
+
+/**
+ * Attaches photos to an item during pricing.
+ *
+ * Photos arrive already uploaded to storage — the browser sends the file
+ * straight to the bucket, so this only records where it landed. The
+ * first photo on an item becomes primary; a partial unique index makes
+ * sure only one ever holds that flag, so this checks rather than
+ * assumes.
+ */
+export async function addItemPhotos(
+  itemId: string,
+  inwardId: string,
+  paths: string[],
+): Promise<Result> {
+  if (paths.length === 0) return ok(undefined);
+
+  const supabase = await createClient();
+  const { data: staff } = await supabase.rpc("get_current_staff");
+  const staffId = Array.isArray(staff) ? staff[0]?.staff_id : null;
+
+  const { count } = await supabase
+    .from("item_photos")
+    .select("id", { count: "exact", head: true })
+    .eq("item_id", itemId);
+
+  const existing = count ?? 0;
+
+  const { error } = await supabase.from("item_photos").insert(
+    paths.map((path, i) => ({
+      item_id: itemId,
+      storage_path: path,
+      is_primary: existing === 0 && i === 0,
+      sort_order: existing + i,
+      uploaded_by: staffId,
+    })),
+  );
+  if (error) return err(toMessage(error));
+
+  await revalidateInwardCosts(inwardId);
+  return ok(undefined);
+}
+
+/** Removes a photo. The item keeps its remaining photos and its primary. */
+export async function removeItemPhoto(
+  photoId: string,
+  inwardId: string,
+): Promise<Result> {
+  const supabase = await createClient();
+
+  const { data: photo } = await supabase
+    .from("item_photos")
+    .select("item_id, is_primary")
+    .eq("id", photoId)
+    .maybeSingle();
+
+  const { error } = await supabase.from("item_photos").delete().eq("id", photoId);
+  if (error) return err(toMessage(error));
+
+  // Losing the primary leaves an item with photos but no thumbnail, so
+  // the next one in order is promoted.
+  if (photo?.is_primary) {
+    const { data: next } = await supabase
+      .from("item_photos")
+      .select("id")
+      .eq("item_id", photo.item_id)
+      .order("sort_order")
+      .limit(1)
+      .maybeSingle();
+
+    if (next) {
+      await supabase.from("item_photos").update({ is_primary: true }).eq("id", next.id);
+    }
+  }
+
+  await revalidateInwardCosts(inwardId);
+  return ok(undefined);
+}
+
+/** Photos on an item, so the pricing editor can show and remove them. */
+export async function listItemPhotos(
+  itemId: string,
+): Promise<Result<Array<{ id: string; storagePath: string; isPrimary: boolean }>>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("item_photos")
+    .select("id, storage_path, is_primary")
+    .eq("item_id", itemId)
+    .order("sort_order");
+
+  if (error) return err(toMessage(error));
+  return ok(
+    (data ?? []).map((r) => ({
+      id: r.id,
+      storagePath: r.storage_path,
+      isPrimary: r.is_primary,
+    })),
+  );
+}

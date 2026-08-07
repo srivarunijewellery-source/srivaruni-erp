@@ -10,6 +10,8 @@ export interface PosCatalogItem {
   price_paise: number;
   mrp_paise: number;
   gst_rate: number;
+  /** Storage path of the primary photo, or null if none has been added. */
+  photoPath: string | null;
 }
 
 /** Everything sellable at a store, for the counter to cache locally. */
@@ -22,6 +24,7 @@ export async function getPosCatalog(locationId: string): Promise<PosCatalogItem[
     item_id: string; barcode: string | null; name: string;
     design_code: string | null; category: string | null; qty: number;
     price_paise: number; mrp_paise: number; gst_rate: number;
+    photo_path: string | null;
   };
   return ((data ?? []) as Row[]).map((r) => ({
     item_id: r.item_id,
@@ -33,6 +36,7 @@ export async function getPosCatalog(locationId: string): Promise<PosCatalogItem[
     price_paise: Number(r.price_paise ?? 0),
     mrp_paise: Number(r.mrp_paise ?? 0),
     gst_rate: Number(r.gst_rate ?? 3),
+    photoPath: r.photo_path ?? null,
   }));
 }
 

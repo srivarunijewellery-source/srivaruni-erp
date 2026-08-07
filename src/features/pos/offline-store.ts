@@ -29,6 +29,8 @@ export interface CatalogItem {
   price_paise: number;
   mrp_paise: number;
   gst_rate: number;
+  /** Storage path of the primary photo, or null if the item has none. */
+  photoPath: string | null;
 }
 
 export interface QueuedSale {

@@ -29,6 +29,9 @@ export function DiscountSettingsForm({ settings }: { settings: DiscountSettings 
     approval: pct(settings.requireApprovalAboveBps),
     neverBelowCost: settings.neverBelowCost,
     allowStacking: settings.allowStacking,
+    exclusiveBenefits: settings.exclusiveBenefits,
+    stackGifts: settings.stackGifts,
+    autoApplySchemes: settings.autoApplySchemes,
   });
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -45,6 +48,9 @@ export function DiscountSettingsForm({ settings }: { settings: DiscountSettings 
       maxPercentOwnerBps: bps(f.owner),
       maxCampaignDays: Number(f.days),
       allowStacking: f.allowStacking,
+      exclusiveBenefits: f.exclusiveBenefits,
+      stackGifts: f.stackGifts,
+      autoApplySchemes: f.autoApplySchemes,
       neverBelowCost: f.neverBelowCost,
       minMarginBps: bps(f.minMargin),
       requireReasonAboveBps: bps(f.reason),
@@ -120,6 +126,47 @@ export function DiscountSettingsForm({ settings }: { settings: DiscountSettings 
               the pricing screen instead.
             </p>
           </div>
+
+          <label className="flex items-start gap-2 text-sm">
+            <input type="checkbox" className="mt-0.5" checked={f.exclusiveBenefits}
+                   onChange={(e) => set("exclusiveBenefits", e.target.checked)} />
+            <span>
+              One benefit per bill
+              <span className="block text-2xs text-text-muted">
+                A bill claims a discount, or a coupon, or gifts — not two of them.
+                Taking one at the counter greys out the others. Off lets them combine,
+                which is how a bill ends up giving away more than any single offer
+                intended.
+              </span>
+            </span>
+          </label>
+
+          <label className="flex items-start gap-2 text-sm">
+            <input type="checkbox" className="mt-0.5" checked={f.stackGifts}
+                   onChange={(e) => set("stackGifts", e.target.checked)} />
+            <span>
+              Gifts stack with each other
+              <span className="block text-2xs text-text-muted">
+                Two offers earning two different free pieces is the ordinary case, so
+                this stays on even when benefits are otherwise exclusive. Off awards
+                only the best single gift.
+              </span>
+            </span>
+          </label>
+
+          <label className="flex items-start gap-2 text-sm">
+            <input type="checkbox" className="mt-0.5" checked={f.autoApplySchemes}
+                   onChange={(e) => set("autoApplySchemes", e.target.checked)} />
+            <span>
+              Apply scheme discounts automatically
+              <span className="block text-2xs text-text-muted">
+                Off (recommended): the counter is shown what the bill qualifies for and
+                decides. A scheme that drops the total the moment a piece is scanned
+                takes that decision away from the person standing in front of the
+                customer, who often has a reason not to give it.
+              </span>
+            </span>
+          </label>
 
           <label className="flex items-start gap-2 text-sm">
             <input type="checkbox" className="mt-0.5" checked={f.allowStacking}

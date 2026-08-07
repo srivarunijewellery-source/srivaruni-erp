@@ -1,24 +1,31 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { ROUTES } from "@/config/nav";
 import { DocumentPricingBar } from "./DocumentPricingBar";
 import { saveInwardDiscount } from "./bulkPricingActions";
 import type { PriceBand } from "@/types/domain";
 import {
+  addItemPhotos,
+  listItemPhotos,
+  removeItemPhoto,
+  renameInwardItem,
   savePricingLine,
   saveAdditionalCost,
   updateItemAttributes,
   updateItemCategory,
 } from "./pricingActions";
+import { createClient as createBrowserClient } from "@/lib/supabase/client";
+import { downscale } from "@/lib/photos";
+import { STORAGE_BUCKETS } from "@/config/app";
 import { updateInwardLineQty } from "./actions";
 import { PhotoThumb } from "@/components/ui/PhotoThumb";
 import { Barcode } from "@/components/ui/Barcode";
 import { Tag } from "@/components/ui/Tag";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
-import { NarrowInput, Label, Select } from "@/components/ui/Field";
+import { NarrowInput, Input, Label, Select, FieldError } from "@/components/ui/Field";
 import { itemPhotoUrl } from "@/lib/storage";
 import { formatPaise, parseRupeesToPaise } from "@/lib/money";
 import type { PricingLine, AdditionalCost, InwardTaxSummary } from "./pricing";
@@ -493,14 +500,93 @@ function AttributeModal({
   onClose: () => void;
 }) {
   const [pending, start] = useTransition();
+  const [name, setName] = useState(line.name);
+  const [shots, setShots] = useState<
+    Array<{ id: string; storagePath: string; isPrimary: boolean }>
+  >([]);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // The row only carries the primary photo's path, not the ids needed to
+  // remove one, so the full set is read when the editor opens.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const r = await listItemPhotos(line.itemId);
+      if (!cancelled && r.ok) setShots(r.data);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [line.itemId]);
 
   const save = (fd: FormData) =>
     start(async () => {
+      setError(null);
       fd.set("itemId", line.itemId);
       fd.set("inwardId", inwardId);
-      await updateItemAttributes(fd);
+
+      // Name first: if it is rejected the attributes are untouched,
+      // which is easier to reason about than a half-applied save.
+      if (name.trim() !== line.name) {
+        const rn = await renameInwardItem(fd);
+        if (!rn.ok) {
+          setError(rn.error);
+          return;
+        }
+      }
+
+      const r = await updateItemAttributes(fd);
+      if (!r.ok) {
+        setError(r.error);
+        return;
+      }
       onClose();
     });
+
+  /**
+   * Photos go straight from the browser to the bucket; the server only
+   * records where they landed. Same downscale as the capture dialog, so
+   * the catalogue does not end up half thumbnails and half 5MB phone
+   * originals.
+   */
+  async function handleFiles(files: FileList | null) {
+    if (!files?.length) return;
+    setUploading(true);
+    setError(null);
+    const supabase = createBrowserClient();
+    const added: string[] = [];
+
+    try {
+      for (const file of Array.from(files)) {
+        const compressed = await downscale(file);
+        const path = `${inwardId}/${crypto.randomUUID()}.jpg`;
+        const { error: upErr } = await supabase.storage
+          .from(STORAGE_BUCKETS.itemPhotos)
+          .upload(path, compressed, { contentType: "image/jpeg", upsert: false });
+        if (upErr) throw new Error(upErr.message);
+        added.push(path);
+      }
+
+      const r = await addItemPhotos(line.itemId, inwardId, added);
+      if (!r.ok) throw new Error(r.error);
+
+      const fresh = await listItemPhotos(line.itemId);
+      if (fresh.ok) setShots(fresh.data);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Photo upload failed.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function dropPhoto(id: string) {
+    start(async () => {
+      const r = await removeItemPhoto(id, inwardId);
+      if (r.ok) setShots((p) => p.filter((x) => x.id !== id));
+      else setError(r.error);
+    });
+  }
 
   const fields = [
     { name: "colourId", label: "Colour", value: line.colourId, opts: options.colours },
@@ -512,6 +598,59 @@ function AttributeModal({
   return (
     <Modal title={line.name} onClose={onClose} width="max-w-lg">
       <form action={save} className="space-y-3">
+        <div>
+          <Label htmlFor="itemName">Name</Label>
+          <Input
+            id="itemName"
+            name="name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            minLength={2}
+            required
+          />
+          <p className="mt-1 text-2xs text-text-muted">
+            What the counter searches on and what prints on the customer&rsquo;s bill.
+            Vendor shorthand is worth fixing now — it rarely gets fixed later.
+          </p>
+        </div>
+
+        <div>
+          <Label htmlFor="itemPhotos">Photos</Label>
+          {shots.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-2">
+              {shots.map((ph) => (
+                <div key={ph.id} className="relative">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={itemPhotoUrl(ph.storagePath) ?? ""}
+                    alt=""
+                    className="size-16 rounded-control border border-border object-cover"
+                  />
+                  <button
+                    type="button"
+                    aria-label="Remove photo"
+                    disabled={pending}
+                    onClick={() => dropPhoto(ph.id)}
+                    className="absolute -right-1.5 -top-1.5 size-5 rounded-full border border-border bg-surface text-2xs leading-none hover:border-status-danger-fg hover:text-status-danger-fg"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <input
+            id="itemPhotos"
+            type="file"
+            accept="image/*"
+            multiple
+            disabled={uploading}
+            onChange={(e) => void handleFiles(e.target.files)}
+            className="text-2xs"
+          />
+          {uploading && <p className="mt-1 text-2xs text-text-muted">Uploading…</p>}
+        </div>
+
         <div className="grid grid-cols-2 gap-3">
           {fields.map((f) => (
             <div key={f.name}>
@@ -525,9 +664,10 @@ function AttributeModal({
             </div>
           ))}
         </div>
+        {error && <FieldError>{error}</FieldError>}
         <div className="flex gap-2">
-          <Button type="submit" variant="primary" disabled={pending}>
-            {pending ? "Saving…" : "Save attributes"}
+          <Button type="submit" variant="primary" disabled={pending || uploading}>
+            {pending ? "Saving…" : "Save"}
           </Button>
           <Button type="button" variant="ghost" onClick={onClose}>
             Cancel

@@ -372,6 +372,12 @@ export interface DiscountTarget {
 }
 
 export interface DiscountSettings {
+  /** One of discount / coupon / gift per bill. */
+  exclusiveBenefits: boolean;
+  /** Several gift offers may land on the same bill. */
+  stackGifts: boolean;
+  /** Schemes reduce the total automatically instead of being offered. */
+  autoApplySchemes: boolean;
   maxPercentStaffBps: number;
   maxPercentManagerBps: number;
   maxPercentOwnerBps: number;

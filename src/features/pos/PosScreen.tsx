@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
+import { PhotoThumb } from "@/components/ui/PhotoThumb";
+import { itemPhotoUrl } from "@/lib/storage";
 import { ROUTES } from "@/config/nav";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select } from "@/components/ui/Field";
@@ -12,14 +14,19 @@ import {
   markQueueError,
   queueSale,
   readCatalog,
+  readLocalHolds,
   readQueue,
+  removeLocalHold,
+  saveLocalHold,
   removeFromQueue,
   saveCatalog,
   type CatalogItem,
   type QueuedSale,
 } from "./offline-store";
+import { attempt, quietly } from "./net";
 import {
   finaliseSale,
+  pingServer,
   syncOfflineSales,
   holdSale,
   resumeHold,
@@ -68,6 +75,8 @@ export interface CartLine {
   discountInput?: string;
   /** Null means "whoever is on the bill" — resolved at save. */
   soldBy?: string | null;
+  /** Storage path of the item's primary photo, if it has one. */
+  photoPath: string | null;
 }
 
 export interface Permissions {
@@ -94,6 +103,8 @@ export function PosScreen({
   canCloseRegister,
   expenseAccounts,
   initialDrawer,
+  exclusiveBenefits,
+  stackGifts,
   permissions,
   staffName,
   shopName,
@@ -117,6 +128,10 @@ export function PosScreen({
   canCloseRegister: boolean;
   expenseAccounts: ExpenseAccount[];
   initialDrawer: Drawer | null;
+  /** One of discount / coupon / gift per bill. From discount settings. */
+  exclusiveBenefits: boolean;
+  /** Several gift offers may land on the same bill. */
+  stackGifts: boolean;
   permissions: Permissions;
   staffName: string;
   shopName: string;
@@ -180,18 +195,55 @@ export function PosScreen({
   /** Credit notes the customer on this bill is holding. */
   const [creditPaise, setCreditPaise] = useState(0);
   const [benefits, setBenefits] = useState<BillBenefits | null>(null);
+  /** Whether the counter has taken the scheme / the gifts on this bill. */
+  const [schemeTaken, setSchemeTaken] = useState(false);
+  const [giftsTaken, setGiftsTaken] = useState(false);
 
   /* ------------------------------------------------ connectivity + cache */
 
+  /**
+   * Connectivity is decided by real round trips, not navigator.onLine.
+   *
+   * A counter joined to the shop Wi-Fi while the broadband is down reads
+   * as ONLINE to the browser -- exactly the case this whole system
+   * exists to survive. So the browser's events are treated as a hint
+   * that something changed, and an actual call to the server is what
+   * settles it.
+   */
   useEffect(() => {
-    setOnline(navigator.onLine);
-    const up = () => setOnline(true);
-    const down = () => setOnline(false);
-    window.addEventListener("online", up);
-    window.addEventListener("offline", down);
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    async function probe() {
+      // Interface down is conclusive: no point spending a request.
+      if (!navigator.onLine) {
+        if (!cancelled) setOnline(false);
+        return false;
+      }
+      const r = await attempt(() => pingServer());
+      if (!cancelled) setOnline(r.ok);
+      return r.ok;
+    }
+
+    // Poll while down so the counter recovers on its own; back off to a
+    // slow heartbeat once up, which also catches the silent case where
+    // the line drops with no browser event at all.
+    async function loop() {
+      const up = await probe();
+      if (cancelled) return;
+      timer = setTimeout(loop, up ? 60_000 : 5_000);
+    }
+
+    void loop();
+
+    const nudge = () => void probe();
+    window.addEventListener("online", nudge);
+    window.addEventListener("offline", nudge);
     return () => {
-      window.removeEventListener("online", up);
-      window.removeEventListener("offline", down);
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+      window.removeEventListener("online", nudge);
+      window.removeEventListener("offline", nudge);
     };
   }, []);
 
@@ -202,11 +254,37 @@ export function PosScreen({
     (async () => {
       try {
         if (initialCatalog.length > 0) await saveCatalog(initialCatalog);
-        const [items, at, q] = await Promise.all([readCatalog(), catalogSyncedAt(), readQueue()]);
+        const [items, at, q, localHolds] = await Promise.all([
+          readCatalog(),
+          catalogSyncedAt(),
+          readQueue(),
+          readLocalHolds(),
+        ]);
         if (cancelled) return;
         setCatalog(items);
         setSyncedAt(at);
         setQueue(q);
+
+        // Carts parked while offline have to survive a reload -- a
+        // counter machine that refreshes and loses three parked bills is
+        // worse than having no hold button at all. Merged rather than
+        // replacing, so server-side holds stay listed too.
+        if (localHolds.length > 0) {
+          setHolds((existing) => {
+            const known = new Set(existing.map((h) => h.id));
+            const extra = localHolds
+              .filter((h) => !known.has(h.id))
+              .map((h) => ({
+                id: h.id,
+                label: h.label,
+                heldAt: new Date(h.at).toISOString(),
+                customerName: null,
+                lineCount: h.lines.reduce((n, l) => n + l.qty, 0),
+                totalPaise: 0,
+              }));
+            return [...extra, ...existing];
+          });
+        }
       } catch {
         // Private browsing or a storage quota refusal. The screen still
         // works online; it just cannot survive going offline.
@@ -237,8 +315,14 @@ export function PosScreen({
       session_id: s.session_id,
     }));
 
-    const res = await syncOfflineSales(payload);
-    if (!res.ok) return;
+    // A failed drain must not throw out of here: this runs from a timer
+    // and on reconnect, and an unhandled rejection would stop the retry
+    // loop dead with sales still sitting in the queue.
+    const res = await attempt(() => syncOfflineSales(payload));
+    if (!res.ok) {
+      if (res.offline) setOnline(false);
+      return;
+    }
 
     let sent = 0;
     for (const r of res.data) {
@@ -254,10 +338,24 @@ export function PosScreen({
     if (sent > 0) setNotice(`${sent} offline sale${sent === 1 ? "" : "s"} sent.`);
   }, []);
 
-  // Send anything queued as soon as the connection returns.
+  /**
+   * Send anything queued as soon as the connection returns, and keep
+   * trying.
+   *
+   * Firing only on the online transition was not enough: if that one
+   * attempt failed — server briefly up but unhappy, a sale rejected for
+   * a reason that later resolves — nothing ever tried again and the
+   * queue sat there until someone noticed and pressed the button. Now it
+   * retries on a slow timer for as long as anything is waiting.
+   */
   useEffect(() => {
-    if (online) void drainQueue();
-  }, [online, drainQueue]);
+    if (!online) return;
+    void drainQueue();
+    if (queue.length === 0) return;
+
+    const t = setInterval(() => void drainQueue(), 30_000);
+    return () => clearInterval(t);
+  }, [online, drainQueue, queue.length]);
 
   /**
    * The scan box has to keep the caret, always.
@@ -326,9 +424,10 @@ export function PosScreen({
     }
     let cancelled = false;
     void (async () => {
-      const r = await fetchCustomerCredits(customer.id);
+      // Best effort: a blip must not put an error over a live bill.
+      const credits = await quietly(() => fetchCustomerCredits(customer.id));
       if (!cancelled) {
-        setCreditPaise(r.ok ? r.data.reduce((s, c) => s + c.balancePaise, 0) : 0);
+        setCreditPaise(credits ? credits.reduce((s, c) => s + c.balancePaise, 0) : 0);
       }
     })();
     return () => {
@@ -346,7 +445,7 @@ export function PosScreen({
     }
     let cancelled = false;
     const t = setTimeout(async () => {
-      const r = await fetchBillBenefits(
+      const r = await quietly(() => fetchBillBenefits(
         locationId,
         cart.map((l) => ({
           item_id: l.itemId,
@@ -355,18 +454,58 @@ export function PosScreen({
           discount_paise: l.discountPaise,
         })),
         cart.reduce((sum, l) => sum + l.unitPaise * l.qty - l.discountPaise, 0),
-      );
-      if (!cancelled && r.ok) setBenefits(r.data);
+      ));
+      if (!cancelled && r) {
+        // With gift stacking off, only the most valuable single offer is
+        // awarded. The setting existed but was never applied here, so
+        // turning it off changed nothing.
+        setBenefits(
+          stackGifts || r.gifts.length <= 1
+            ? r
+            : {
+                ...r,
+                gifts: [...r.gifts]
+                  .sort((a, b) => b.itemQty - a.itemQty)
+                  .slice(0, 1),
+              },
+        );
+      }
     }, 300);
     return () => {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [cart, locationId]);
+  }, [cart, locationId, stackGifts]);
+
+  /**
+   * A bill claims one family: a discount, a coupon, or gifts.
+   *
+   * Enforced here as well as in the database, because the counter has to
+   * make it visibly impossible rather than fail at the end. Gifts stack
+   * with EACH OTHER -- two offers earning two different free pieces is
+   * the ordinary case -- which is why they are one family, not many.
+   */
+  useEffect(() => {
+    if (!exclusiveBenefits) return;
+    if (coupon) {
+      setSchemeTaken(false);
+      setGiftsTaken(false);
+    } else if (schemeTaken) {
+      setGiftsTaken(false);
+    }
+  }, [coupon, schemeTaken, exclusiveBenefits]);
+
+  // Nothing earned survives the cart changing out from under it.
+  useEffect(() => {
+    if (cart.length === 0) {
+      setSchemeTaken(false);
+      setGiftsTaken(false);
+    }
+  }, [cart.length]);
 
   const refreshDrawer = useCallback(async () => {
-    const r = await fetchDrawer(sessionId);
-    if (r.ok) setDrawer(r.data);
+    const d = await quietly(() => fetchDrawer(sessionId));
+    if (d) setDrawer(d);
   }, [sessionId]);
 
   /* ------------------------------------------------------------- cart */
@@ -392,6 +531,7 @@ export function PosScreen({
             discountPaise: 0,
             gstRate: item.gst_rate,
             stockAtAdd: item.qty,
+            photoPath: item.photoPath,
           },
         ];
       });
@@ -430,13 +570,21 @@ export function PosScreen({
     setError(null);
     setNotice(`Looking up ${code}…`);
     start(async () => {
-      const r = await searchCatalog(locationId, code, 5);
-      const found =
-        r.ok
-          ? (r.data.find((i) => i.barcode?.toLowerCase() === code.toLowerCase()) ?? null)
-          : null;
-
+      const r = await attempt(() => searchCatalog(locationId, code, 5));
       setNotice(null);
+
+      // The line went down between the scan and the lookup. Say so
+      // rather than reporting a tag that exists as missing.
+      if (!r.ok && r.offline) {
+        setOnline(false);
+        setError(`Nothing found for "${code}" in this machine's copy, and the connection just dropped.`);
+        return;
+      }
+
+      const found = r.ok
+        ? (r.data.find((i) => i.barcode?.toLowerCase() === code.toLowerCase()) ?? null)
+        : null;
+
       if (!found) {
         setError(`Nothing found for "${code}".`);
         return;
@@ -482,8 +630,11 @@ export function PosScreen({
     let cancelled = false;
     // Debounced, or every keystroke is a round trip.
     const t = setTimeout(async () => {
-      const r = await searchCatalog(locationId, q, 30);
-      if (!cancelled && r.ok) setRemoteResults(r.data);
+      // Offline the local copy is all there is, and that is fine -- it
+      // holds everything in stock at this branch, which is everything
+      // sellable here anyway.
+      const hits = await quietly(() => searchCatalog(locationId, q, 30));
+      if (!cancelled && hits) setRemoteResults(hits);
     }, 220);
     return () => {
       cancelled = true;
@@ -524,16 +675,22 @@ export function PosScreen({
       couponPaise = Math.min(couponPaise, afterManual);
     }
 
-    const net = Math.max(0, afterManual - couponPaise);
+    // The scheme only comes off once someone has taken it. It was being
+    // shown and never subtracted, which looks exactly like a discount
+    // that does not work.
+    const scheme = schemeTaken ? Math.min(benefits?.schemePaise ?? 0, afterManual) : 0;
+
+    const net = Math.max(0, afterManual - couponPaise - scheme);
     return {
       gross,
       lineDisc,
       manual,
       couponPaise,
+      scheme,
       net,
       count: cart.reduce((s, l) => s + l.qty, 0),
     };
-  }, [cart, manualDiscount, manualMode, coupon]);
+  }, [cart, manualDiscount, manualMode, coupon, schemeTaken, benefits]);
 
   function setQty(itemId: string, qty: number) {
     setCart((prev) =>
@@ -677,9 +834,16 @@ export function PosScreen({
         session_id: sessionId,
       };
 
-      // Offline: bank it locally and move on. The customer is standing
-      // there; the sale must not wait on a network.
-      if (!navigator.onLine) {
+      /**
+       * Bank the sale on this machine and move on.
+       *
+       * Used both when we already know we are offline and when the send
+       * fails mid-flight. Sharing one path matters: the customer is
+       * standing at the counter either way, and two near-identical
+       * branches would drift until one of them stopped queueing
+       * something.
+       */
+      const bankLocally = async (why: string) => {
         await queueSale({
           ...input,
           customer_id: input.customer_id ?? null,
@@ -694,25 +858,48 @@ export function PosScreen({
           bill_label: `Offline · ${new Date().toLocaleTimeString("en-IN")}`,
         });
         setQueue(await readQueue());
-        setLastReceipt({ ...receipt, billNo: "OFFLINE" });
-        if (printAfter) printReceipt({ ...receipt, billNo: "OFFLINE" });
-        setNotice("Saved on this machine. It will send itself when the connection is back.");
+
+        const slip: ReceiptData = { ...receipt, billNo: "OFFLINE" };
+        setLastReceipt(slip);
+        if (printAfter) printReceipt(slip);
+
+        // Change is owed regardless of whether the server has heard
+        // about the sale yet.
+        setChangeDue(
+          changePaise > 0 ? { amount: changePaise, billNo: "OFFLINE" } : null,
+        );
+        setNotice(`${why} Saved on this machine — it will send itself when the connection is back.`);
         clearCart();
+      };
+
+      if (!online) {
+        await bankLocally("Offline.");
         return;
       }
 
-      const res = await finaliseSale(input);
-      if (!res.ok) {
-        setError(res.error);
+      // Believed online, but the connection can drop between the tap and
+      // the request. A thrown fetch here used to end the handler with no
+      // error and no queued sale — the sale simply vanished.
+      const attemptSale = await attempt(() => finaliseSale(input));
+
+      if (!attemptSale.ok) {
+        if (attemptSale.offline) {
+          setOnline(false);
+          await bankLocally("The connection dropped.");
+          return;
+        }
+        setError(attemptSale.error);
         return;
       }
+
+      const res = { ok: true as const, data: attemptSale.data };
 
       // Credit is spent against a bill that already exists, so this can
       // only happen now. A failure here leaves a real, paid bill behind,
       // so it is reported rather than thrown -- the sale stands and the
       // credit can be applied by hand.
       if (creditPaise > 0) {
-        const cr = await redeemCustomerCredit(res.data.id, creditPaise);
+        const cr = await attempt(() => redeemCustomerCredit(res.data.id, creditPaise));
         if (!cr.ok) {
           setError(
             `Sale ${res.data.billNo} went through, but the credit note could not be applied: ${cr.error}`,
@@ -741,19 +928,13 @@ export function PosScreen({
     if (cart.length === 0) return;
     start(async () => {
       const label = customer?.name ?? `${totals.count} items`;
-      const res = await holdSale(
-        uuid(),
-        locationId,
-        cart.map((l) => ({ item_id: l.itemId, qty: l.qty })),
-        label,
-        customer?.id ?? null,
-        sessionId,
-      );
-      if (res.ok) {
-        setNotice(`Held: ${label}`);
+      const localId = uuid();
+      const lines = cart.map((l) => ({ item_id: l.itemId, qty: l.qty }));
+
+      const addToList = (id: string) =>
         setHolds((h) => [
           {
-            id: res.data,
+            id,
             label,
             heldAt: new Date().toISOString(),
             customerName: customer?.name ?? null,
@@ -762,18 +943,102 @@ export function PosScreen({
           },
           ...h,
         ]);
+
+      /**
+       * Park the cart on this machine.
+       *
+       * The local hold store was written for exactly this and then never
+       * called, so holding a bill with the Wi-Fi down failed outright —
+       * the one moment a counter most needs to put a customer aside and
+       * serve the queue behind them.
+       */
+      const holdLocally = async (why: string) => {
+        await saveLocalHold({
+          id: localId,
+          label,
+          lines,
+          customer_id: customer?.id ?? null,
+          at: Date.now(),
+        });
+        addToList(localId);
+        setNotice(`${why} Parked on this machine.`);
         clearCart();
-      } else setError(res.error);
+      };
+
+      if (!online) {
+        await holdLocally("Offline.");
+        return;
+      }
+
+      const res = await attempt(() =>
+        holdSale(localId, locationId, lines, label, customer?.id ?? null, sessionId),
+      );
+
+      if (!res.ok) {
+        if (res.offline) {
+          setOnline(false);
+          await holdLocally("The connection dropped.");
+          return;
+        }
+        setError(res.error);
+        return;
+      }
+
+      setNotice(`Held: ${label}`);
+      addToList(res.data);
+      clearCart();
     });
   }
 
   function doResume(bill: HeldBill) {
     start(async () => {
-      const res = await resumeHold(bill.id);
-      if (!res.ok) {
-        setError(res.error);
+      /** Rebuilds cart lines from the cached catalogue. */
+      const rebuild = (lines: Array<{ item_id: string; qty: number }>) => {
+        const out: CartLine[] = [];
+        for (const l of lines) {
+          const item = catalog.find((c) => c.item_id === l.item_id);
+          if (!item) continue;
+          out.push({
+            itemId: item.item_id,
+            name: item.name,
+            barcode: item.barcode,
+            qty: l.qty,
+            unitPaise: item.price_paise,
+            discountPaise: 0,
+            gstRate: item.gst_rate,
+            stockAtAdd: item.qty,
+            photoPath: item.photoPath,
+          });
+        }
+        return out;
+      };
+
+      // A hold parked while the line was down exists only on this
+      // machine, so the server has never heard of its id.
+      const local = (await readLocalHolds()).find((h) => h.id === bill.id);
+      if (local) {
+        setCart(rebuild(local.lines));
+        if (local.customer_id) {
+          const c = await quietly(() => getCustomerAction(local.customer_id!));
+          if (c) setCustomer(c);
+        }
+        await removeLocalHold(local.id);
+        setHolds((h) => h.filter((x) => x.id !== local.id));
+        setNotice("Resumed.");
         return;
       }
+
+      const attemptResume = await attempt(() => resumeHold(bill.id));
+      if (!attemptResume.ok) {
+        setError(
+          attemptResume.offline
+            ? "That bill was parked on the server and cannot be reached while the connection is down."
+            : attemptResume.error,
+        );
+        return;
+      }
+      const res = { ok: true as const, data: attemptResume.data };
+
       const restored: CartLine[] = [];
       for (const l of res.data.lines) {
         const item = catalog.find((c) => c.item_id === l.item_id);
@@ -787,6 +1052,7 @@ export function PosScreen({
           discountPaise: 0,
           gstRate: item.gst_rate,
           stockAtAdd: item.qty,
+          photoPath: item.photoPath,
         });
       }
       setCart(restored);
@@ -809,6 +1075,10 @@ export function PosScreen({
   /* ------------------------------------------------------------- render */
 
   const staleMinutes = syncedAt ? Math.round((Date.now() - syncedAt) / 60000) : null;
+
+  /** Another benefit family already has this bill. */
+  const benefitLocked =
+    exclusiveBenefits && (Boolean(coupon) || schemeTaken || giftsTaken);
 
   /** Shop details a reprint needs, which do not change between bills. */
   const receiptHeader: ReceiptHeader = {
@@ -848,6 +1118,11 @@ export function PosScreen({
 
           <div className="flex items-center gap-2">
             <Badge tone={online ? "done" : "danger"}>{online ? "Online" : "Offline"}</Badge>
+            {!online && (
+              <span className="text-2xs text-text-muted">
+                Billing still works — sales are saved here and sent when the line is back.
+              </span>
+            )}
             {queue.length > 0 && (
               <Badge tone="pending">{queue.length} waiting to send</Badge>
             )}
@@ -890,9 +1165,14 @@ export function PosScreen({
                 have to close the register to find out. */}
             <button
               type="button"
+              disabled={!online}
               onClick={() => setShowDrawer(true)}
-              className="flex h-[var(--control-height-sm)] items-center gap-2 rounded-control border border-border px-3 text-left hover:bg-surface-sunken"
-              title="Put money in, take money out, or record a small expense"
+              className="flex h-[var(--control-height-sm)] items-center gap-2 rounded-control border border-border px-3 text-left hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-60"
+              title={
+                online
+                  ? "Put money in, take money out, or record a small expense"
+                  : "Drawer movements post to the books, so they wait for the connection."
+              }
             >
               <span className="text-2xs uppercase tracking-wide text-text-muted">
                 Drawer
@@ -902,7 +1182,17 @@ export function PosScreen({
               </span>
             </button>
 
-            <Button size="sm" variant="secondary" onClick={() => setShowReturn(true)}>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={!online}
+              title={
+                online
+                  ? undefined
+                  : "A return needs the original bill from the server. It will work again when the connection is back."
+              }
+              onClick={() => setShowReturn(true)}
+            >
               Return
             </Button>
 
@@ -959,11 +1249,17 @@ export function PosScreen({
                     {canCloseRegister && (
                       <button
                         type="button"
+                        disabled={!online}
+                        title={
+                          online
+                            ? undefined
+                            : "Closing counts the drawer against server figures, so it needs the connection."
+                        }
                         onClick={() => {
                           setShowMore(false);
                           setShowClose(true);
                         }}
-                        className="block w-full border-t border-border px-3 py-2 text-left text-sm text-status-danger-fg hover:bg-status-danger-bg"
+                        className="block w-full border-t border-border px-3 py-2 text-left text-sm text-status-danger-fg hover:bg-status-danger-bg disabled:cursor-not-allowed disabled:text-text-subtle disabled:hover:bg-transparent"
                       >
                         Close register…
                       </button>
@@ -1047,6 +1343,12 @@ export function PosScreen({
                     disabled={i.qty <= 0}
                     className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-55"
                   >
+                    {/* A picture is what stops "black beads" from being
+                        confused with the other three items also called
+                        "black beads" -- the barcode confirms the tag in
+                        hand, the photo confirms it before it is even
+                        scanned. */}
+                    <PhotoThumb src={itemPhotoUrl(i.photoPath)} alt={i.name} size={36} />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate">{i.name}</span>
                       <span className="block truncate font-mono text-2xs text-text-subtle">
@@ -1081,6 +1383,7 @@ export function PosScreen({
             <ul className="divide-y divide-border">
               {cart.map((l) => (
                 <li key={l.itemId} className="flex flex-wrap items-center gap-3 px-3 py-3">
+                  <PhotoThumb src={itemPhotoUrl(l.photoPath)} alt={l.name} size={36} />
                   <div className="min-w-40 flex-1">
                     <p className="truncate text-sm font-medium">{l.name}</p>
                     <p className="text-2xs text-text-muted">
@@ -1271,7 +1574,10 @@ export function PosScreen({
           coupon={coupon}
           onCoupon={setCoupon}
           canCoupon={permissions.canCoupon}
-          couponBlocked={totals.lineDisc + totals.manual > 0}
+          couponBlocked={
+            exclusiveBenefits &&
+            (totals.lineDisc + totals.manual > 0 || schemeTaken || giftsTaken)
+          }
           loadExtras={lookupCustomerExtras}
           cartTotalPaise={totals.net}
         />
@@ -1308,9 +1614,9 @@ export function PosScreen({
                 <div className="flex items-center justify-between gap-2 py-1">
                   <span className="text-text-muted">
                     Bill discount
-                    {coupon && (
+                    {benefitLocked && (
                       <span className="ml-1.5 text-2xs text-text-subtle">
-                        blocked by the coupon
+                        blocked by the {coupon ? "coupon" : schemeTaken ? "scheme" : "gift"}
                       </span>
                     )}
                   </span>
@@ -1318,15 +1624,15 @@ export function PosScreen({
                     <Input
                       type="number"
                       min={0}
-                      value={coupon ? "" : manualDiscount}
+                      value={benefitLocked ? "" : manualDiscount}
                       // A bill claims ONE of the three: a gift, a coupon,
                       // or a discount. The database refuses a bill that
                       // carries a coupon and a discount together, so the
                       // counter must not be able to build one.
-                      disabled={Boolean(coupon)}
+                      disabled={benefitLocked}
                       title={
-                        coupon
-                          ? "Remove the coupon first. A bill takes a coupon or a discount, not both."
+                        benefitLocked
+                          ? "Take that benefit off first. A bill claims one of discount, coupon or gift."
                           : undefined
                       }
                       onChange={(e) => setManualDiscount(e.target.value)}
@@ -1357,29 +1663,85 @@ export function PosScreen({
                 }
               />
             )}
+            {totals.scheme > 0 && (
+              <div className="mt-1 flex items-baseline justify-between text-sm">
+                <span className="text-text-muted">Scheme discount</span>
+                <span className="tnum font-mono text-status-done-fg">
+                  − {formatPaise(totals.scheme)}
+                </span>
+              </div>
+            )}
+
             {benefits && (benefits.gifts.length > 0 || benefits.schemePaise > 0) && (
               <div className="mt-2 space-y-1.5 rounded-control border border-border bg-surface-sunken px-3 py-2">
+                {/* A scheme is OFFERED here, not applied. It was being
+                    displayed and never taken off the total, which reads
+                    as a broken discount; and applying it silently takes
+                    the decision away from whoever is facing the
+                    customer. Both are settings. */}
                 {benefits.schemePaise > 0 && (
-                  <div className="flex items-baseline justify-between gap-2 text-sm">
-                    <span className="min-w-0 truncate text-text-muted">
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                    <span className="min-w-0 flex-1 truncate text-text-muted">
                       {benefits.schemeNames.join(", ") || "Scheme discount"}
                     </span>
                     <span className="tnum shrink-0 font-mono text-status-done-fg">
                       − {formatPaise(benefits.schemePaise)}
                     </span>
+                    {schemeTaken ? (
+                      <button
+                        type="button"
+                        onClick={() => setSchemeTaken(false)}
+                        className="shrink-0 rounded-control border border-border px-2 py-0.5 text-2xs hover:bg-surface"
+                      >
+                        applied — undo
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={Boolean(coupon) || giftsTaken}
+                        title={
+                          coupon
+                            ? "This bill already has a coupon."
+                            : giftsTaken
+                              ? "This bill is taking gifts."
+                              : undefined
+                        }
+                        onClick={() => setSchemeTaken(true)}
+                        className="shrink-0 rounded-control border border-brand px-2 py-0.5 text-2xs text-brand hover:bg-brand-subtle disabled:cursor-not-allowed disabled:border-border disabled:text-text-subtle"
+                      >
+                        apply
+                      </button>
+                    )}
                   </div>
                 )}
-                {benefits.gifts.map((g) => (
-                  <div
-                    key={g.name + g.itemName}
-                    className="flex items-baseline justify-between gap-2 text-sm"
-                  >
-                    <span className="min-w-0 truncate text-text-muted">{g.name}</span>
-                    <span className="shrink-0 text-2xs text-status-done-fg">
-                      free {g.itemQty} × {g.itemName}
-                    </span>
+
+                {benefits.gifts.length > 0 && (
+                  <div className="space-y-1">
+                    {benefits.gifts.map((g) => (
+                      <div
+                        key={g.name + g.itemName}
+                        className="flex items-baseline justify-between gap-2 text-sm"
+                      >
+                        <span className="min-w-0 truncate text-text-muted">{g.name}</span>
+                        <span className="shrink-0 text-2xs text-status-done-fg">
+                          free {g.itemQty} × {g.itemName}
+                        </span>
+                      </div>
+                    ))}
+                    <label className="flex items-center gap-2 text-2xs text-text-muted">
+                      <input
+                        type="checkbox"
+                        checked={giftsTaken}
+                        disabled={Boolean(coupon) || schemeTaken}
+                        onChange={(e) => setGiftsTaken(e.target.checked)}
+                        className="size-3.5 accent-[var(--color-brand)]"
+                      />
+                      Giving {benefits.gifts.length > 1 ? "these gifts" : "this gift"}
+                      {benefits.gifts.length > 1 && " — gifts stack with each other"}
+                    </label>
                   </div>
-                ))}
+                )}
+
                 <p className="text-2xs text-text-subtle">
                   Tell the customer — a gift nobody is offered is not an offer.
                 </p>

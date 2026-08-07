@@ -15,6 +15,7 @@ import {
   listSellers,
 } from "@/features/pos/queries";
 import { PosScreen } from "@/features/pos/PosScreen";
+import { getDiscountSettings } from "@/features/discounts/queries";
 import { RegisterGate } from "@/features/pos/RegisterGate";
 
 export const metadata: Metadata = { title: "Counter" };
@@ -96,12 +97,14 @@ export default async function PosPage({
     );
   }
 
-  const [catalog, holds, sellers, expenseAccounts, drawer, bizRes] = await Promise.all([
+  const [catalog, holds, sellers, expenseAccounts, drawer, discountSettings, bizRes] =
+    await Promise.all([
     getPosCatalog(locationId),
     listHeldBills(locationId),
     listSellers(locationId),
     listExpenseAccounts(),
     getDrawer(session.id),
+    getDiscountSettings(),
     supabase
       .from("business_settings")
       .select("legal_name, gstin, invoice_terms, invoice_footer, home_state")
@@ -136,6 +139,8 @@ export default async function PosPage({
       canChooseBranch={canChooseBranch}
       expenseAccounts={expenseAccounts}
       initialDrawer={drawer}
+      exclusiveBenefits={discountSettings?.exclusiveBenefits ?? true}
+      stackGifts={discountSettings?.stackGifts ?? true}
       staffName={user.name}
       shopName={bizRes.data?.legal_name ?? "Sri Varuni Fashion Jewellery"}
       // A branch may hold its own GSTIN when registered in another

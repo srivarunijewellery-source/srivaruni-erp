@@ -42,6 +42,7 @@ export const ROUTES = {
   whatsapp: "/comms/whatsapp",
   roles: "/team/roles",
   settings: "/settings",
+  masters: "/settings/masters",
   company: "/settings/company",
   pos: "/pos",
   sales: "/sales",
@@ -174,6 +175,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     items: [
       { href: ROUTES.settings,         label: "All settings" },
       { href: ROUTES.company,          label: "Company",           requires: "settings.manage" },
+      { href: ROUTES.masters,          label: "Categories & attributes", requires: "catalog.manage" },
       { href: ROUTES.roles,            label: "Roles",             requires: "roles.manage" },
       { href: ROUTES.pricingSettings,  label: "Pricing settings",  requires: "pricing.manage" },
       { href: ROUTES.discountSettings, label: "Discount settings", requires: "discount.manage" },
