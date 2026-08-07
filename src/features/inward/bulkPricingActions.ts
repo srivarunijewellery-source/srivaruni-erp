@@ -67,11 +67,14 @@ async function loadLines(inwardId: string) {
 /**
  * Read a purchase rate off each product title.
  *
- * Only DDMMYYYY is a valid stamp (plus the 7-digit form where the day or
- * month lost a leading zero). parse_design_code returns nothing for
- * anything else, and a line that cannot be read is reported, never
- * guessed at — a refused parse costs one typed rate, a wrong one costs a
- * mispriced carton.
+ * The stamp may be DDMMYYYY, DDMMYY, or the 7-digit form where the day
+ * lost its leading zero. A two-digit year is read as 20YY and then put
+ * through the same sanity window as a four-digit one, which is what
+ * stops every six-digit run turning into a date.
+ *
+ * parse_design_code returns nothing for anything else, and a line that
+ * cannot be read is reported, never guessed at — a refused parse costs
+ * one typed rate, a wrong one costs a mispriced carton.
  */
 export async function applyRatesFromTitles(
   inwardId: string,
@@ -122,7 +125,7 @@ export async function applyRatesFromTitles(
       refused++;
       out.push({
         lineId: line.id, itemName: name, ok: false,
-        reason: "No valid DDMMYYYY code in the title — type the rate by hand",
+        reason: "No readable date code in the title — type the rate by hand",
       });
       continue;
     }

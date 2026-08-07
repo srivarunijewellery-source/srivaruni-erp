@@ -93,8 +93,10 @@ export function VendorPricingCard({
               <span>
                 A date is glued onto the code
                 <span className="block text-2xs text-text-muted">
-                  Eight digits as DDMMYYYY, or seven when the day is a single
-                  figure. Both are read.
+                  DDMMYYYY, DDMMYY, or the seven-digit form when the day
+                  lost its leading zero. All three are read; where two of
+                  them fit, the longer year wins and the alternative is
+                  shown so you can settle it.
                 </span>
               </span>
             </label>

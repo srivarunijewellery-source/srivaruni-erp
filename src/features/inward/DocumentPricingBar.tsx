@@ -67,7 +67,7 @@ export function DocumentPricingBar({
           {canReadCodes ? (
             <>
               {vendor!.name} · code × <span className="tnum">{vendor!.codeMultiple}</span> ·
-              date read as DDMMYYYY
+              date read as DDMMYYYY or DDMMYY
             </>
           ) : (
             <>
