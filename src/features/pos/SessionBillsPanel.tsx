@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/Field";
 import { formatPaise } from "@/lib/money";
 import { fetchBillForReprint, fetchSessionBills } from "./actions";
 import { printReceipt, type ReceiptData } from "./receipt";
-import type { SessionBill } from "./queries";
+import type { Seller, SessionBill } from "./queries";
+import { BillActions } from "./BillActions";
 
 /** The parts of a slip that come from the shop, not from the bill. */
 export type ReceiptHeader = Pick<
@@ -36,11 +37,16 @@ export function SessionBillsPanel({
   sessionId,
   terminal,
   header,
+  sellers,
+  canAmend,
   onClose,
 }: {
   sessionId: string;
   terminal: string;
   header: ReceiptHeader;
+  sellers: Seller[];
+  /** Manager or owner. Amendments are theirs to make. */
+  canAmend: boolean;
   onClose: () => void;
 }) {
   const [bills, setBills] = useState<SessionBill[] | null>(null);
@@ -48,6 +54,8 @@ export function SessionBillsPanel({
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [acting, setActing] = useState<SessionBill | null>(null);
+  const [done, setDone] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -160,6 +168,12 @@ export function SessionBillsPanel({
                   >
                     {busy === b.billId ? "..." : "Print"}
                   </Button>
+
+                  {canAmend && b.status === "final" && (
+                    <Button size="sm" variant="ghost" onClick={() => setActing(b)}>
+                      Change
+                    </Button>
+                  )}
                 </li>
               ))}
             </ul>
@@ -173,12 +187,35 @@ export function SessionBillsPanel({
         )}
 
         {error && <p className="text-sm text-status-danger-fg">{error}</p>}
+        {done && (
+          <p className="rounded-control bg-status-done-bg px-3 py-2 text-sm text-status-done-fg">
+            {done}
+          </p>
+        )}
 
         <p className="text-2xs text-text-subtle">
           This counter only. Once the register is closed these stop showing here — ask a
           manager for anything older.
         </p>
       </div>
+
+      {acting && (
+        <BillActions
+          bill={acting}
+          sellers={sellers}
+          onClose={() => setActing(null)}
+          onDone={(msg) => {
+            setDone(msg);
+            setActing(null);
+            // The list is now stale -- a corrected bill has a new number
+            // and the old one is cancelled.
+            void (async () => {
+              const r = await fetchSessionBills(sessionId);
+              if (r.ok) setBills(r.data);
+            })();
+          }}
+        />
+      )}
     </Modal>
   );
 }

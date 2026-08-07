@@ -20,7 +20,39 @@ export interface ReceiptLine {
   hsn?: string | null;
 }
 
+export interface PrintSettings {
+  paperMm: number;
+  printWidthMm: number;
+  sideMarginMm: number;
+  baseFontPx: number;
+  boldBody: boolean;
+  showSavings: boolean;
+  showGstBlock: boolean;
+  showBarcode: boolean;
+  footerFeedMm: number;
+  layout: "standard" | "compact" | "detailed";
+}
+
+export const DEFAULT_PRINT: PrintSettings = {
+  paperMm: 80,
+  printWidthMm: 72,
+  // Not zero. The driver adds a TOP margin, not side margins, which is
+  // why the first real print came out with the left column clipped.
+  sideMarginMm: 3,
+  baseFontPx: 12,
+  // A thermal head under-burns thin strokes, so normal-weight text
+  // prints grey. Bold is the single most effective legibility fix and
+  // costs nothing.
+  boldBody: true,
+  showSavings: true,
+  showGstBlock: true,
+  showBarcode: true,
+  footerFeedMm: 6,
+  layout: "standard",
+};
+
 export interface ReceiptData {
+  print?: PrintSettings;
   shopName: string;
   gstin: string | null;
   locationName: string;
@@ -107,6 +139,7 @@ function inWords(paise: number): string {
 }
 
 export function receiptHtml(d: ReceiptData): string {
+  const cfg = d.print ?? DEFAULT_PRINT;
   // Customers count what is in the bag against what is on the slip, so
   // the piece count is worth stating rather than leaving them to add up
   // the quantity column.
@@ -146,20 +179,36 @@ export function receiptHtml(d: ReceiptData): string {
 <html><head><meta charset="utf-8" />
 <title>${esc(d.billNo)}</title>
 <style>
-  /* 80mm paper, ~72mm printable. Margins at zero because the printer
-     driver adds its own and doubling them shrinks the text.
+  /* Sizes come from print settings, because the right numbers depend on
+     the printer and the only way to find them is to print one and look.
 
      Everything here has to survive a 1-bit thermal head: there are no
      greys, so a solid reversed block prints crisply while a light rule
-     or a tint either prints black or vanishes. That is why the emphasis
-     below is done with filled bands rather than shading. */
-  @page { size: 80mm auto; margin: 0; }
+     or a tint either prints black or vanishes. Hence filled bands rather
+     than shading, solid rules rather than dashed, and bold body text --
+     the head under-burns thin strokes, which is what made the first real
+     print come out grey. */
+  @page { size: ${cfg.paperMm}mm auto; margin: 0; }
   body {
-    width: 72mm; margin: 0 auto; padding: 3mm 0;
+    width: ${cfg.printWidthMm}mm;
+    margin: 0 auto;
+    /* Side padding is NOT zero. The driver supplies a top margin; it
+       does not supply side margins, and without these the first and last
+       characters of every row sit on the edge of the paper and get
+       clipped by the mechanism. */
+    padding: 3mm ${cfg.sideMarginMm}mm ${cfg.footerFeedMm}mm;
     font-family: "Courier New", Courier, monospace;
-    font-size: 11px; line-height: 1.35; color: #000;
+    font-size: ${cfg.baseFontPx}px;
+    ${cfg.boldBody ? "font-weight: 700;" : ""}
+    line-height: 1.4; color: #000;
     -webkit-font-smoothing: none;
+    /* Stops the browser thinning glyphs for screen, which is what makes
+       thermal output look washed out. */
+    print-color-adjust: exact; -webkit-print-color-adjust: exact;
   }
+  /* Every rule solid rather than hairline: a 1px light rule frequently
+     drops out of a thermal print altogether. */
+  hr { border: none; border-top: 1px solid #000; margin: 1.6mm 0; opacity: 1; }
   .c { text-align: center; }
   .b { font-weight: bold; }
   .sm { font-size: 9.5px; }
@@ -178,7 +227,6 @@ export function receiptHtml(d: ReceiptData): string {
     text-transform: uppercase; margin: 1mm 0 0.6mm;
   }
 
-  hr { border: none; border-top: 1px dashed #000; margin: 1.6mm 0; }
   .solid { border-top: 1px solid #000; }
 
   table { width: 100%; border-collapse: collapse; }
@@ -191,10 +239,13 @@ export function receiptHtml(d: ReceiptData): string {
   th.amt { text-align: right; }
   .n { width: 5mm; font-size: 9.5px; }
   .nm { word-break: break-word; }
+  /* The salesman name was printing as "LATHA (" -- the value column was
+     sized for money and truncated anything longer. Let it wrap. */
+  .val { text-align: right; word-break: break-word; }
   .q { font-size: 9.5px; }
   .amt { text-align: right; white-space: nowrap; }
   .item { padding-top: 1mm; }
-  .lastrow td { padding-bottom: 1mm; border-bottom: 1px dotted #000; }
+  .lastrow td { padding-bottom: 1mm; border-bottom: 1px solid #000; }
 
   /* The total, reversed out so it is the first thing the eye lands on. */
   .totalbox {
@@ -207,8 +258,8 @@ export function receiptHtml(d: ReceiptData): string {
   .totalbox .val { font-size: 16px; }
 
   .saved {
-    text-align: center; font-weight: bold; font-size: 10px;
-    border: 1px dashed #000; padding: 1mm; margin: 1mm 0;
+    text-align: center; font-weight: 700; font-size: 11px;
+    border: 1px solid #000; padding: 1.2mm; margin: 1.2mm 0;
   }
   .totals { margin-top: 1.4mm; }
   .words { font-size: 9px; text-align: center; margin-bottom: 1mm; }

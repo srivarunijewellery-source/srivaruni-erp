@@ -733,3 +733,109 @@ export async function recordBillGifts(
   if (error) return err(toMessage(error));
   return ok((data ?? {}) as Record<string, unknown>);
 }
+
+/* ------------------------------------------------------------------ */
+/* Correcting a bill at the counter                                     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Who sold it. Invoice level, or one line.
+ *
+ * Reassigning the invoice moves any line that was following the bill,
+ * but leaves lines explicitly given to someone else alone — otherwise a
+ * deliberate split would be silently flattened.
+ */
+export async function setBillSalesman(
+  billId: string,
+  staffId: string,
+  lineId: string | null = null,
+): Promise<Result<string>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("bill_set_salesman", {
+    p_bill: billId,
+    p_staff: staffId,
+    p_line: lineId,
+  });
+  if (error) return err(toMessage(error));
+  revalidatePath(ROUTES.pos);
+  return ok(String((data as Record<string, unknown>)?.salesman ?? ""));
+}
+
+export async function setBillCustomer(
+  billId: string,
+  customerId: string | null,
+): Promise<Result<string>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("bill_set_customer", {
+    p_bill: billId,
+    p_customer: customerId,
+  });
+  if (error) return err(toMessage(error));
+  revalidatePath(ROUTES.pos);
+  return ok(String((data as Record<string, unknown>)?.customer ?? ""));
+}
+
+/** How it was settled. The total is fixed; only the split changes. */
+export async function setBillPayments(
+  billId: string,
+  payments: Array<{ method: string; amount_paise: number; reference?: string }>,
+): Promise<Result<string>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("bill_set_payments", {
+    p_bill: billId,
+    p_payments: payments,
+  });
+  if (error) return err(toMessage(error));
+  revalidatePath(ROUTES.pos);
+  return ok(String((data as Record<string, unknown>)?.payment_mode ?? ""));
+}
+
+/**
+ * Editing the lines. Cancels the bill and reissues a corrected one, and
+ * emails the owner — this is the only counter action that moves money
+ * after a sale is done.
+ */
+export async function editBill(
+  billId: string,
+  lines: Array<{
+    item_id: string;
+    qty: number;
+    unit_price_paise: number;
+    discount_paise: number;
+    sold_by?: string | null;
+  }>,
+  payments: Array<{ method: string; amount_paise: number; reference?: string }>,
+  reason: string,
+): Promise<
+  Result<{
+    newBillNo: string;
+    cancelledBillNo: string;
+    oldTotalPaise: number;
+    newTotalPaise: number;
+  }>
+> {
+  if (lines.length === 0) return err("A corrected bill still needs at least one line.");
+  if (!reason.trim()) return err("Say why it is being corrected — the owner is told.");
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("edit_bill", {
+    p_bill: billId,
+    p_lines: lines,
+    p_payments: payments,
+    p_reason: reason.trim(),
+  });
+  if (error) return err(toMessage(error));
+
+  // Best effort: the correction has already happened, so a comms hiccup
+  // must not be reported as a failure.
+  await pokeDispatchBestEffort();
+
+  const d = (data ?? {}) as Record<string, unknown>;
+  revalidatePath(ROUTES.pos);
+  return ok({
+    newBillNo: String(d.new_bill_no ?? ""),
+    cancelledBillNo: String(d.cancelled_bill_no ?? ""),
+    oldTotalPaise: Number(d.old_total_paise ?? 0),
+    newTotalPaise: Number(d.new_total_paise ?? 0),
+  });
+}

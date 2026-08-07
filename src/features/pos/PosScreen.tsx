@@ -1925,6 +1925,8 @@ export function PosScreen({
           sessionId={sessionId}
           terminal={terminal}
           header={receiptHeader}
+          sellers={sellers}
+          canAmend={canCloseRegister}
           onClose={() => {
             setShowBills(false);
             refocusScan();
