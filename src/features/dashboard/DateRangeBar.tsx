@@ -1,19 +1,21 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { Card, CardBody } from "@/components/ui/Card";
-import { Input, Label } from "@/components/ui/Field";
 
 /**
- * The window everything on the dashboard is measured over.
+ * The window everything on the page is measured over.
  *
- * This was missing entirely: the page read `from` and `to` off the URL
- * but never rendered a control to set them, so the only window available
- * was whatever the default happened to be. Asking "what sold this week"
- * was impossible without hand-editing the address bar.
+ * Presets first and prominent, because a date pair is a fiddly way to
+ * say "yesterday" and it is what people want nine times out of ten. The
+ * exact dates are behind a toggle for the tenth.
  *
- * Presets first, because a date pair is a fiddly way to say "yesterday".
+ * The chosen range is ALWAYS restated in words underneath. A native date
+ * input renders in the browser's own locale — on a machine set to US
+ * English it shows 08/07/2026 for the 7th of August, and no amount of
+ * CSS changes that. Writing "07 Aug 2026" beneath it removes the
+ * ambiguity without fighting the platform.
  */
 export function DateRangeBar({
   basePath,
@@ -22,14 +24,13 @@ export function DateRangeBar({
   to,
 }: {
   basePath: string;
-  /** Everything else in the URL, preserved so a preset does not wipe the
-   *  tab you are on or the filters you set. */
   params: Record<string, string>;
   from: string;
   to: string;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
+  const [custom, setCustom] = useState(false);
 
   const iso = (d: Date) => d.toISOString().slice(0, 10);
 
@@ -40,72 +41,130 @@ export function DateRangeBar({
     start(() => router.push(`${basePath}?${qs.toString()}`));
   }
 
-  function preset(days: number) {
-    const end = new Date();
-    const startD = new Date();
-    startD.setDate(startD.getDate() - days);
-    go(iso(startD), iso(end));
-  }
-
-  function thisMonth() {
-    const now = new Date();
-    go(iso(new Date(now.getFullYear(), now.getMonth(), 1)), iso(now));
-  }
-
-  const PRESETS: Array<[string, () => void]> = [
-    ["Today", () => preset(0)],
-    ["7 days", () => preset(7)],
-    ["30 days", () => preset(30)],
-    ["This month", thisMonth],
-    ["12 months", () => preset(365)],
+  /** Presets described by what they produce, so the active one can be
+   *  detected by comparing rather than remembered in state. */
+  const presets: Array<[string, () => [string, string]]> = [
+    ["Today", () => { const d = new Date(); return [iso(d), iso(d)]; }],
+    ["Yesterday", () => {
+      const d = new Date(); d.setDate(d.getDate() - 1);
+      return [iso(d), iso(d)];
+    }],
+    ["7 days", () => {
+      const e = new Date(); const s = new Date(); s.setDate(s.getDate() - 6);
+      return [iso(s), iso(e)];
+    }],
+    ["30 days", () => {
+      const e = new Date(); const s = new Date(); s.setDate(s.getDate() - 29);
+      return [iso(s), iso(e)];
+    }],
+    ["This month", () => {
+      const n = new Date();
+      return [iso(new Date(n.getFullYear(), n.getMonth(), 1)), iso(n)];
+    }],
+    ["Last month", () => {
+      const n = new Date();
+      return [
+        iso(new Date(n.getFullYear(), n.getMonth() - 1, 1)),
+        iso(new Date(n.getFullYear(), n.getMonth(), 0)),
+      ];
+    }],
+    ["This year", () => {
+      const n = new Date();
+      return [iso(new Date(n.getFullYear(), 0, 1)), iso(n)];
+    }],
+    ["12 months", () => {
+      const e = new Date(); const s = new Date();
+      s.setMonth(s.getMonth() - 12);
+      return [iso(s), iso(e)];
+    }],
   ];
+
+  const pretty = (d: string) => {
+    if (!d) return "—";
+    const [y, m, day] = d.split("-");
+    const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    return `${day} ${months[Number(m) - 1] ?? ""} ${y}`;
+  };
+
+  const days =
+    from && to
+      ? Math.round(
+          (new Date(to).getTime() - new Date(from).getTime()) / 86400000,
+        ) + 1
+      : 0;
 
   return (
     <Card className="mb-4">
-      <CardBody className="flex flex-wrap items-end gap-3">
-        <div>
-          <Label htmlFor="dash-from">From</Label>
-          <Input
-            id="dash-from"
-            type="date"
-            value={from}
-            disabled={pending}
-            onChange={(e) => go(e.target.value, to)}
-            className="w-40"
-          />
-        </div>
-        <div>
-          <Label htmlFor="dash-to">To</Label>
-          <Input
-            id="dash-to"
-            type="date"
-            value={to}
-            disabled={pending}
-            onChange={(e) => go(from, e.target.value)}
-            className="w-40"
-          />
-        </div>
-
+      <CardBody className="space-y-2.5">
         <div className="flex flex-wrap gap-1.5">
-          {PRESETS.map(([label, fn]) => (
-            <button
-              key={label}
-              type="button"
-              disabled={pending}
-              onClick={fn}
-              className="rounded-control border border-border px-3 py-1.5 text-2xs hover:border-brand hover:text-brand disabled:opacity-50"
-            >
-              {label}
-            </button>
-          ))}
+          {presets.map(([label, fn]) => {
+            const [f, t] = fn();
+            const active = f === from && t === to;
+            return (
+              <button
+                key={label}
+                type="button"
+                disabled={pending}
+                onClick={() => go(f, t)}
+                className={`rounded-full px-3 py-1.5 text-2xs transition-colors disabled:opacity-50 ${
+                  active
+                    ? "bg-brand text-brand-fg"
+                    : "border border-border hover:border-brand hover:text-brand"
+                }`}
+              >
+                {label}
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            onClick={() => setCustom((c) => !c)}
+            className={`rounded-full px-3 py-1.5 text-2xs transition-colors ${
+              custom
+                ? "bg-surface-sunken"
+                : "border border-border hover:border-brand hover:text-brand"
+            }`}
+          >
+            {custom ? "Hide dates" : "Pick dates"}
+          </button>
         </div>
 
-        {pending && (
-          <span className="flex items-center gap-1.5 text-2xs text-text-muted">
-            <span className="size-2 animate-pulse rounded-full bg-brand" />
-            Loading…
-          </span>
+        {custom && (
+          <div className="flex flex-wrap items-center gap-2 border-t border-border pt-2.5">
+            <input
+              type="date"
+              value={from}
+              max={to || undefined}
+              disabled={pending}
+              onChange={(e) => go(e.target.value, to)}
+              className="h-9 rounded-control border border-border bg-surface px-2 font-mono text-sm"
+            />
+            <span className="text-2xs text-text-muted">to</span>
+            <input
+              type="date"
+              value={to}
+              min={from || undefined}
+              disabled={pending}
+              onChange={(e) => go(from, e.target.value)}
+              className="h-9 rounded-control border border-border bg-surface px-2 font-mono text-sm"
+            />
+          </div>
         )}
+
+        <p className="flex flex-wrap items-center gap-2 text-2xs text-text-muted">
+          <span className="font-medium text-text">
+            {pretty(from)} &ndash; {pretty(to)}
+          </span>
+          <span>
+            {days} day{days === 1 ? "" : "s"}
+          </span>
+          {pending && (
+            <span className="flex items-center gap-1.5 text-brand">
+              <span className="size-2 animate-pulse rounded-full bg-brand" />
+              updating
+            </span>
+          )}
+        </p>
       </CardBody>
     </Card>
   );

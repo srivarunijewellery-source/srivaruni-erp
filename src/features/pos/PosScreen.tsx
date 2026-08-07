@@ -844,7 +844,13 @@ export function PosScreen({
       branchAddress,
       branchPhone,
       billNo: "—",
-      dateText: new Date().toLocaleString("en-IN"),
+      // "07 Aug 2026, 12:50 pm" rather than "7/8/2026" -- a numeric date
+      // on a customer's receipt is ambiguous to anyone who reads month
+      // first, and there is no cost to spelling it.
+      dateText: new Date().toLocaleString("en-IN", {
+        day: "2-digit", month: "short", year: "numeric",
+        hour: "2-digit", minute: "2-digit",
+      }),
       // One field listing everyone credited on this invoice. The bill's
       // salesman first, then anyone who took a line, de-duplicated --
       // the customer wants to know who served them, not the mechanics
