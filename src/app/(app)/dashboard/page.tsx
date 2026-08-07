@@ -14,6 +14,7 @@ import {
   DIMENSIONS,
   getExpensePivot,
   getBenefitsGiven,
+  getItemsSold,
   getSalesByPeriod,
   getSalesPivot,
   type Dimension,
@@ -21,6 +22,7 @@ import {
 } from "@/features/dashboard/queries";
 import { TrendChart } from "@/features/dashboard/TrendChart";
 import { PivotTable } from "@/features/dashboard/PivotTable";
+import { SoldItemsGrid } from "@/features/dashboard/SoldItemsGrid";
 
 export const metadata: Metadata = { title: "Dashboard" };
 
@@ -28,6 +30,7 @@ const GRAINS: Grain[] = ["day", "week", "month", "year"];
 const TABS = [
   { key: "sales", label: "Sales" },
   { key: "expenses", label: "Expenses" },
+  { key: "items", label: "What sold" },
   { key: "benefits", label: "Given away" },
 ] as const;
 
@@ -66,7 +69,9 @@ export default async function DashboardPage({
 
   const sp = await searchParams;
   const tab =
-    sp.tab === "expenses" || sp.tab === "benefits" ? sp.tab : "sales";
+    sp.tab === "expenses" || sp.tab === "benefits" || sp.tab === "items"
+      ? sp.tab
+      : "sales";
   // Twelve months, not five.
   //
   // A five-month default silently hid everything before March and made a
@@ -83,7 +88,8 @@ export default async function DashboardPage({
 
   const loc = location || null;
 
-  const [stores, points, salesPivot, expensePivot, benefits] = await Promise.all([
+  const [stores, points, salesPivot, expensePivot, benefits, soldItems] =
+    await Promise.all([
     listStores(),
     tab === "sales" ? getSalesByPeriod(from, to, loc, grain) : Promise.resolve([]),
     tab === "sales"
@@ -93,6 +99,7 @@ export default async function DashboardPage({
       ? getExpensePivot(from, to, loc)
       : Promise.resolve({ months: [], rows: [], totals: {}, grandTotalPaise: 0 }),
     tab === "benefits" ? getBenefitsGiven(from, to, loc) : Promise.resolve([]),
+    tab === "items" ? getItemsSold(from, to, loc, 200) : Promise.resolve([]),
   ]);
 
   // What each kind of giveaway actually cost. A coupon and a discount
@@ -222,6 +229,41 @@ export default async function DashboardPage({
                 label={DIMENSIONS.find((d) => d.key === dimension)?.label ?? "Category"}
                 showMargin
               />
+            </CardBody>
+          </Card>
+        </>
+      ) : tab === "items" ? (
+        <>
+          <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Metric
+              label="Pieces sold"
+              value={String(soldItems.reduce((s, i) => s + i.qtySold, 0))}
+              hint={`${soldItems.length} different designs`}
+            />
+            <Metric
+              label="Revenue"
+              value={formatPaise(soldItems.reduce((s, i) => s + i.revenuePaise, 0))}
+            />
+            <Metric
+              label="Margin"
+              value={formatPaise(soldItems.reduce((s, i) => s + i.marginPaise, 0))}
+            />
+            <Metric
+              label="Sold out"
+              value={String(soldItems.filter((i) => i.qtyRemaining === 0).length)}
+              hint="designs with none left"
+            />
+          </div>
+
+          <Card>
+            <CardHeader className="flex flex-wrap items-baseline justify-between gap-2">
+              <span className="font-medium">What sold, best first</span>
+              <span className="text-2xs text-text-muted">
+                top {soldItems.length} by revenue
+              </span>
+            </CardHeader>
+            <CardBody className="p-0">
+              <SoldItemsGrid items={soldItems} />
             </CardBody>
           </Card>
         </>

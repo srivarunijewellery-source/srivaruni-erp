@@ -383,8 +383,16 @@ export function PosScreen({
     const onKey = (e: KeyboardEvent) => {
       // A modal owns the keyboard while it is up.
       if (document.querySelector('[role="dialog"]')) return;
+      // Ctrl/Cmd combinations are copy, paste, find, reload. Pulling
+      // focus on those breaks the shortcut and clears the selection the
+      // person was about to copy.
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (isTyping()) return;
+
+      // Mid-selection, leave the caret where it is.
+      const sel = window.getSelection();
+      if (sel && !sel.isCollapsed) return;
+
       if (e.key.length !== 1 && e.key !== "Enter") return;
       el()?.focus();
     };
@@ -410,13 +418,22 @@ export function PosScreen({
    * can legitimately type into or operate keeps the focus it was just
    * given.
    */
-  const refocusOnDeadSpace = useCallback((e: React.MouseEvent) => {
-    const el = e.target as HTMLElement | null;
-    if (el?.closest("input, select, textarea, button, a, label, [contenteditable]")) {
-      return;
-    }
-    refocusScan();
-  }, [refocusScan]);
+  const refocusOnDeadSpace = useCallback(
+    (e: React.MouseEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (el?.closest("input, select, textarea, button, a, label, [contenteditable]")) {
+        return;
+      }
+      // Someone highlighting a bill number to copy it is not idle
+      // clicking, and stealing the caret mid-selection wipes the
+      // highlight. If there IS a selection, leave them alone.
+      const sel = window.getSelection();
+      if (sel && !sel.isCollapsed) return;
+
+      refocusScan();
+    },
+    [refocusScan],
+  );
 
   useEffect(() => {
     if (!customer) {
@@ -1330,7 +1347,9 @@ export function PosScreen({
             onChange={(e) => setSearch(e.target.value)}
             placeholder="or search by name / design code"
             aria-label="Search the catalogue"
-            className="h-12 min-w-56 flex-1 rounded-control border-2 border-border bg-surface px-3 text-base leading-none placeholder:text-text-subtle focus:border-brand focus:shadow-[var(--control-ring)] focus:outline-none"
+            // Same font as the scan box beside it. Two different
+            // typefaces in one control pair reads as an accident.
+            className="h-12 min-w-56 flex-1 rounded-control border-2 border-border bg-surface px-3 font-mono text-base leading-none tracking-wide placeholder:text-text-subtle focus:border-brand focus:shadow-[var(--control-ring)] focus:outline-none"
           />
         </div>
 

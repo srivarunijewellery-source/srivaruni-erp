@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { Card, CardBody } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select } from "@/components/ui/Field";
@@ -46,6 +46,10 @@ export function FilterBar({
 }) {
   const router = useRouter();
   const [q, setQ] = useState(value[searchKey] ?? "");
+  // Filtering re-renders on the server, which takes a beat. Without a
+  // pending state nothing on screen changes and it reads as broken --
+  // people click again, which queues another render and makes it worse.
+  const [pending, startTransition] = useTransition();
 
   function apply(next: Record<string, string>) {
     const merged = { ...value, ...next };
@@ -54,7 +58,7 @@ export function FilterBar({
       if (v) params.set(k, v);
     }
     const qs = params.toString();
-    router.push(qs ? `${basePath}?${qs}` : basePath);
+    startTransition(() => router.push(qs ? `${basePath}?${qs}` : basePath));
   }
 
   const anySet = Object.entries(value).some(([, v]) => Boolean(v));
@@ -62,6 +66,15 @@ export function FilterBar({
   return (
     <Card className="mb-4">
       <CardBody className="space-y-3">
+        {pending && (
+          <div
+            aria-live="polite"
+            className="flex items-center gap-2 rounded-control bg-surface-sunken px-3 py-1.5 text-2xs text-text-muted"
+          >
+            <span className="size-2 animate-pulse rounded-full bg-brand" />
+            Filtering…
+          </div>
+        )}
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {selects.map((s) => (
             <div key={s.key}>
@@ -70,7 +83,7 @@ export function FilterBar({
                 id={`f-${s.key}`}
                 value={value[s.key] ?? ""}
                 onChange={(e) => apply({ [s.key]: e.target.value })}
-                disabled={s.options.length === 0}
+                disabled={pending || s.options.length === 0}
               >
                 <option value="">
                   {s.options.length === 0 ? "Nothing to filter by" : s.allLabel}
@@ -101,8 +114,8 @@ export function FilterBar({
               placeholder={searchPlaceholder}
             />
           </div>
-          <Button type="submit" variant="secondary">
-            Search
+          <Button type="submit" variant="secondary" disabled={pending}>
+            {pending ? "Searching…" : "Search"}
           </Button>
 
           {extra}

@@ -239,3 +239,66 @@ export async function getBenefitsGiven(
     costPaise: Number(r.cost_paise ?? 0),
   }));
 }
+
+/* ------------------------------------------------------------------ */
+/* What actually sold                                                   */
+/* ------------------------------------------------------------------ */
+
+export interface SoldItem {
+  itemId: string;
+  barcode: string | null;
+  name: string;
+  photoPath: string | null;
+  category: string | null;
+  stone: string | null;
+  vendor: string | null;
+  qtySold: number;
+  bills: number;
+  customers: number;
+  revenuePaise: number;
+  costPaise: number;
+  marginPaise: number;
+  qtyRemaining: number;
+  sellingPricePaise: number;
+}
+
+/**
+ * One row per piece sold in the window, with its photo.
+ *
+ * The pivots answer "which category earned most". This answers "which
+ * PIECE", which for jewellery is the question actually asked — a design
+ * either moves or it does not, and the picture is how you recognise it.
+ */
+export async function getItemsSold(
+  from: string,
+  to: string,
+  location: string | null,
+  limit = 200,
+): Promise<SoldItem[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("dash_items_sold", {
+    p_from: from,
+    p_to: to,
+    p_location: location,
+    p_limit: limit,
+  });
+  if (error) return [];
+
+  return ((data ?? []) as Array<Record<string, unknown>>).map((r) => ({
+    itemId: String(r.item_id),
+    barcode: r.barcode ? String(r.barcode) : null,
+    name: String(r.name ?? "Item"),
+    photoPath: r.photo_path ? String(r.photo_path) : null,
+    category: r.category ? String(r.category) : null,
+    stone: r.stone ? String(r.stone) : null,
+    vendor: r.vendor ? String(r.vendor) : null,
+    qtySold: Number(r.qty_sold ?? 0),
+    bills: Number(r.bills ?? 0),
+    customers: Number(r.customers ?? 0),
+    revenuePaise: Number(r.revenue_paise ?? 0),
+    costPaise: Number(r.cost_paise ?? 0),
+    marginPaise: Number(r.margin_paise ?? 0),
+    qtyRemaining: Number(r.qty_remaining ?? 0),
+    sellingPricePaise: Number(r.selling_price_paise ?? 0),
+  }));
+}

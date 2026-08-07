@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import { formatPaise } from "@/lib/money";
 import type { PeriodPoint } from "./queries";
 
@@ -11,6 +14,8 @@ import type { PeriodPoint } from "./queries";
  * free and renders on the server with no client bundle at all.
  */
 export function TrendChart({ points }: { points: PeriodPoint[] }) {
+  const [hover, setHover] = useState<number | null>(null);
+
   if (points.length === 0) {
     return (
       <p className="px-4 py-10 text-center text-sm text-text-muted">
@@ -63,6 +68,19 @@ export function TrendChart({ points }: { points: PeriodPoint[] }) {
 
         {points.map((p, i) => (
           <g key={p.bucket}>
+            {/* A full-height invisible strip, not just the bar: aiming at
+                a 4px-tall bar for a thin month is not a thing anyone
+                should have to do. */}
+            <rect
+              x={padL + slot * i}
+              y={padT}
+              width={slot}
+              height={innerH}
+              fill={hover === i ? "var(--color-surface-sunken)" : "transparent"}
+              onMouseEnter={() => setHover(i)}
+              onMouseLeave={() => setHover(null)}
+              style={{ cursor: "pointer" }}
+            />
             <rect
               x={x(i)}
               y={y(p.revenuePaise)}
@@ -70,18 +88,18 @@ export function TrendChart({ points }: { points: PeriodPoint[] }) {
               height={Math.max(1, padT + innerH - y(p.revenuePaise))}
               rx="3"
               fill="var(--color-brand)"
-              opacity="0.85"
-            >
-              <title>
-                {p.label}: {formatPaise(p.revenuePaise)} on {p.bills} bills
-              </title>
-            </rect>
+              opacity={hover === null || hover === i ? 0.9 : 0.4}
+              pointerEvents="none"
+            />
             <text
               x={x(i) + barW / 2}
               y={H - 9}
               textAnchor="middle"
               fontSize="10"
-              fill="var(--color-text-muted)"
+              fill={
+                hover === i ? "var(--color-text)" : "var(--color-text-muted)"
+              }
+              pointerEvents="none"
             >
               {p.label}
             </text>
@@ -99,17 +117,54 @@ export function TrendChart({ points }: { points: PeriodPoint[] }) {
             key={`m-${p.bucket}`}
             cx={x(i) + barW / 2}
             cy={y(p.marginPaise)}
-            r="3"
+            r={hover === i ? 5 : 3}
             fill="var(--color-surface)"
             stroke="var(--color-status-done-fg)"
             strokeWidth="2"
-          >
-            <title>
-              {p.label} margin: {formatPaise(p.marginPaise)}
-            </title>
-          </circle>
+            pointerEvents="none"
+          />
         ))}
       </svg>
+
+      {/* The readout sits under the chart rather than floating over it:
+          a tooltip that covers the next bar is worse than no tooltip,
+          and this one works on a touchscreen too. */}
+      <div className="min-h-9 px-2 py-1">
+        {hover !== null && points[hover] ? (
+          <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-2xs">
+            <span className="font-medium">{points[hover]!.label}</span>
+            <span>
+              Revenue{" "}
+              <span className="tnum font-mono text-text">
+                {formatPaise(points[hover]!.revenuePaise)}
+              </span>
+            </span>
+            <span>
+              Margin{" "}
+              <span className="tnum font-mono text-status-done-fg">
+                {formatPaise(points[hover]!.marginPaise)}
+              </span>
+              {points[hover]!.revenuePaise > 0 && (
+                <span className="text-text-muted">
+                  {" "}
+                  ({(
+                    (points[hover]!.marginPaise / points[hover]!.revenuePaise) *
+                    100
+                  ).toFixed(1)}
+                  %)
+                </span>
+              )}
+            </span>
+            <span className="text-text-muted">
+              {points[hover]!.bills} bills · {points[hover]!.qty} pieces
+            </span>
+          </div>
+        ) : (
+          <span className="text-2xs text-text-subtle">
+            Point at a bar for the detail.
+          </span>
+        )}
+      </div>
 
       <div className="flex flex-wrap gap-4 px-2 text-2xs text-text-muted">
         <span className="flex items-center gap-1.5">

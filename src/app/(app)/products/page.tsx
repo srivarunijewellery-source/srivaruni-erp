@@ -13,6 +13,7 @@ import {
   listItemFormOptions,
   listStores,
 } from "@/features/inward/queries";
+import { listVendorOptions } from "@/features/vendors/queries";
 
 export const metadata: Metadata = { title: "Products" };
 
@@ -24,6 +25,8 @@ export default async function ProductsPage({
     category?: string;
     itemType?: string;
     plating?: string;
+    stone?: string;
+    vendor?: string;
     status?: string;
     location?: string;
     stock?: string;
@@ -34,17 +37,21 @@ export default async function ProductsPage({
     category = "",
     itemType = "",
     plating = "",
+    stone = "",
+    vendor = "",
     status = "",
     location = "",
     stock = "",
   } = await searchParams;
 
   const user = await requireUser();
-  const [rows, categories, options, stores] = await Promise.all([
+  const [rows, categories, options, stores, vendors] = await Promise.all([
     listProducts(q, {
       categoryId: category,
       itemTypeId: itemType,
       platingId: plating,
+      stoneId: stone,
+      vendorId: vendor,
       status,
       locationId: location,
       stock,
@@ -52,6 +59,7 @@ export default async function ProductsPage({
     listCategories(),
     listItemFormOptions(),
     listStores(),
+    listVendorOptions(),
   ]);
 
   // Pricing columns are owner-only. The database enforces the same rule:
@@ -65,7 +73,9 @@ export default async function ProductsPage({
     ? options.itemTypes.filter((t) => t.categoryId === category)
     : options.itemTypes;
 
-  const filtered = Boolean(q || category || itemType || plating || status || location || stock);
+  const filtered = Boolean(
+    q || category || itemType || plating || stone || vendor || status || location || stock,
+  );
 
   return (
     <>
@@ -87,7 +97,7 @@ export default async function ProductsPage({
 
       <FilterBar
         basePath={ROUTES.products}
-        value={{ q, category, itemType, plating, status, location, stock }}
+        value={{ q, category, itemType, plating, stone, vendor, status, location, stock }}
         searchLabel="Search name or tag"
         searchPlaceholder="Scan a tag or type an item name"
         selects={[
@@ -117,6 +127,18 @@ export default async function ProductsPage({
             label: "Plating",
             allLabel: "All plating",
             options: options.platings.map((p) => ({ value: p.id, label: p.value })),
+          },
+          {
+            key: "stone",
+            label: "Stone",
+            allLabel: "All stones",
+            options: options.stones.map((o) => ({ value: o.id, label: o.value })),
+          },
+          {
+            key: "vendor",
+            label: "Vendor",
+            allLabel: "All vendors",
+            options: vendors.map((v) => ({ value: v.id, label: v.name })),
           },
           {
             key: "stock",

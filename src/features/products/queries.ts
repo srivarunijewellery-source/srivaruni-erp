@@ -32,6 +32,11 @@ export interface ProductFilters {
   categoryId?: string;
   itemTypeId?: string;
   platingId?: string;
+  /** Stone is how the old system's "brand" carried over, so it is one of
+   *  the more useful cuts in this catalogue. */
+  stoneId?: string;
+  /** Recovered from the old material inward, so worth filtering on. */
+  vendorId?: string;
   status?: string;
   /** Only items with stock at this location. */
   locationId?: string;
@@ -91,6 +96,8 @@ export async function listProducts(
   if (filters.categoryId) q = q.eq("category_id", filters.categoryId);
   if (filters.itemTypeId) q = q.eq("item_type_id", filters.itemTypeId);
   if (filters.platingId) q = q.eq("plating_id", filters.platingId);
+  if (filters.stoneId) q = q.eq("stone_id", filters.stoneId);
+  if (filters.vendorId) q = q.eq("vendor_id", filters.vendorId);
   if (filters.status) q = q.eq("status", filters.status);
 
   const term = query.trim();

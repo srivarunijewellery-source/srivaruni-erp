@@ -176,3 +176,15 @@ export async function getVendorBalance(id: string): Promise<VendorBalance | null
     creditUnappliedPaise: Number(data.credit_unapplied_paise ?? 0),
   };
 }
+
+/** Just id and name, for filter dropdowns. */
+export async function listVendorOptions(): Promise<Array<{ id: string; name: string }>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("vendors")
+    .select("id, name")
+    .eq("active", true)
+    .order("name");
+  if (error) return [];
+  return data ?? [];
+}
