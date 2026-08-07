@@ -76,26 +76,30 @@ export function FilterBar({
           </div>
         )}
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {selects.map((s) => (
+          {/* A dropdown with nothing in it is not a filter, it is a dead
+              control taking up a slot. Dropped unless it is currently
+              holding a value, in which case it has to stay so the value
+              can be cleared. */}
+          {selects
+            .filter((s) => s.options.length > 0 || value[s.key])
+            .map((s) => (
             <div key={s.key}>
               <Label htmlFor={`f-${s.key}`}>{s.label}</Label>
               <Select
                 id={`f-${s.key}`}
                 value={value[s.key] ?? ""}
                 onChange={(e) => apply({ [s.key]: e.target.value })}
-                disabled={pending || s.options.length === 0}
+                disabled={pending}
               >
-                <option value="">
-                  {s.options.length === 0 ? "Nothing to filter by" : s.allLabel}
-                </option>
+                <option value="">{s.allLabel}</option>
                 {s.options.map((o) => (
                   <option key={o.value} value={o.value}>
                     {o.label}
                   </option>
                 ))}
               </Select>
-            </div>
-          ))}
+              </div>
+            ))}
         </div>
 
         <form
