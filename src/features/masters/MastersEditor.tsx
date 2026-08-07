@@ -7,10 +7,13 @@ import { Input, Label, Select } from "@/components/ui/Field";
 import { Badge } from "@/components/ui/Badge";
 import {
   deleteMaster,
+  mergeAttributeOption,
+  mergeCategory,
   saveAttributeOption,
   saveCategory,
   saveItemType,
 } from "./actions";
+import { ValueList } from "./ValueList";
 import type { CategoryRow, MasterRow, MastersData, TypeRow } from "./queries";
 
 type AttrKey = "colour" | "plating" | "stone" | "size";
@@ -119,113 +122,59 @@ function Categories({
   onError: (m: string | null) => void;
 }) {
   const [pending, start] = useTransition();
-  const [name, setName] = useState("");
-  const [hsn, setHsn] = useState("7117");
-  const [gst, setGst] = useState("3");
-  const [markup, setMarkup] = useState("2.5");
-  const [edit, setEdit] = useState<Record<string, string>>({});
 
-  const save = (row: CategoryRow, next: string) =>
+  const run = (fn: () => Promise<{ ok: boolean; error?: string }>) =>
     start(async () => {
       onError(null);
-      const r = await saveCategory({
-        id: row.id,
-        name: next,
-        hsn: row.hsn,
-        gstRate: row.gstRate,
-        markupMultiplier: row.markupMultiplier,
-        active: row.active,
-      });
-      if (!r.ok) onError(r.error);
+      const r = await fn();
+      if (!r.ok) onError(r.error ?? "That did not work.");
     });
+
+  const base = (c: CategoryRow) => ({
+    id: c.id,
+    hsn: c.hsn,
+    gstRate: c.gstRate,
+    markupMultiplier: c.markupMultiplier,
+  });
 
   return (
     <Card>
-      <CardHeader className="font-medium">Categories</CardHeader>
-      <CardBody className="space-y-3">
-        <ul className="divide-y divide-border rounded-card border border-border">
-          {rows.map((c) => (
-            <li key={c.id} className="flex flex-wrap items-center gap-2 px-3 py-2">
-              <Input
-                value={edit[c.id] ?? c.value}
-                onChange={(e) => setEdit((p) => ({ ...p, [c.id]: e.target.value }))}
-                onBlur={(e) => {
-                  if (e.target.value.trim() !== c.value) save(c, e.target.value);
-                }}
-                className="h-8 min-w-40 flex-1 text-sm"
-              />
-              <span className="font-mono text-2xs text-text-subtle">
-                HSN {c.hsn} · {c.gstRate}% · ×{c.markupMultiplier}
-              </span>
-              {!c.active && <Badge tone="neutral">off</Badge>}
-              <RowActions
-                kind="category"
-                id={c.id}
-                uses={c.uses}
-                active={c.active}
-                onError={onError}
-                onToggle={() =>
-                  start(async () => {
-                    const r = await saveCategory({
-                      id: c.id,
-                      name: c.value,
-                      hsn: c.hsn,
-                      gstRate: c.gstRate,
-                      markupMultiplier: c.markupMultiplier,
-                      active: !c.active,
-                    });
-                    if (!r.ok) onError(r.error);
-                  })
-                }
-              />
-            </li>
-          ))}
-        </ul>
-
-        <div className="flex flex-wrap items-end gap-2">
-          <div className="min-w-40 flex-1">
-            <Label htmlFor="newCat">New category</Label>
-            <Input
-              id="newCat"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Long Haram"
-            />
-          </div>
-          <div>
-            <Label htmlFor="newHsn">HSN</Label>
-            <Input id="newHsn" value={hsn} onChange={(e) => setHsn(e.target.value)} className="w-24 font-mono" />
-          </div>
-          <div>
-            <Label htmlFor="newGst">GST %</Label>
-            <Input id="newGst" value={gst} onChange={(e) => setGst(e.target.value)} className="w-20 font-mono" />
-          </div>
-          <div>
-            <Label htmlFor="newMk">Markup</Label>
-            <Input id="newMk" value={markup} onChange={(e) => setMarkup(e.target.value)} className="w-20 font-mono" />
-          </div>
-          <Button
-            variant="secondary"
-            disabled={pending || name.trim().length < 2}
-            onClick={() =>
-              start(async () => {
-                onError(null);
-                const r = await saveCategory({
-                  id: null,
-                  name,
-                  hsn,
-                  gstRate: Number(gst) || 3,
-                  markupMultiplier: Number(markup) || 2.5,
-                  active: true,
-                });
-                if (r.ok) setName("");
-                else onError(r.error);
-              })
-            }
-          >
-            Add
-          </Button>
-        </div>
+      <CardHeader className="flex flex-wrap items-baseline justify-between gap-2">
+        <span className="font-medium">Categories</span>
+        <span className="text-2xs text-text-muted">
+          {rows.length} values · number is how many items use it
+        </span>
+      </CardHeader>
+      <CardBody>
+        <ValueList
+          rows={rows}
+          pending={pending}
+          addLabel="Add category"
+          onRename={(id, next) => {
+            const c = rows.find((x) => x.id === id);
+            if (!c) return;
+            run(() => saveCategory({ ...base(c), name: next, active: c.active }));
+          }}
+          onToggle={(r) => {
+            const c = rows.find((x) => x.id === r.id);
+            if (!c) return;
+            run(() => saveCategory({ ...base(c), name: c.value, active: !c.active }));
+          }}
+          onDelete={(r) => run(() => deleteMaster(r.kind, r.id))}
+          onMerge={(from, into) => run(() => mergeCategory(from, into))}
+          onAdd={(name) =>
+            run(() =>
+              saveCategory({
+                id: null,
+                name,
+                hsn: "7117",
+                gstRate: 3,
+                markupMultiplier: 2.5,
+                active: true,
+              }),
+            )
+          }
+        />
       </CardBody>
     </Card>
   );
@@ -370,89 +319,51 @@ function Attributes({
   onError: (m: string | null) => void;
 }) {
   const [pending, start] = useTransition();
-  const [value, setValue] = useState("");
-  const [edit, setEdit] = useState<Record<string, string>>({});
+
+  const run = (fn: () => Promise<{ ok: boolean; error?: string }>) =>
+    start(async () => {
+      onError(null);
+      const r = await fn();
+      if (!r.ok) onError(r.error ?? "That did not work.");
+    });
 
   return (
     <Card>
-      <CardHeader className="font-medium">{label}</CardHeader>
-      <CardBody className="space-y-3">
-        <ul className="divide-y divide-border rounded-card border border-border">
-          {rows.map((a) => (
-            <li key={a.id} className="flex flex-wrap items-center gap-2 px-3 py-2">
-              <Input
-                value={edit[a.id] ?? a.value}
-                onChange={(e) => setEdit((p) => ({ ...p, [a.id]: e.target.value }))}
-                onBlur={(e) => {
-                  if (e.target.value.trim() !== a.value) {
-                    start(async () => {
-                      const r = await saveAttributeOption({
-                        id: a.id,
-                        key: attrKey,
-                        value: e.target.value,
-                        active: a.active,
-                      });
-                      if (!r.ok) onError(r.error);
-                    });
-                  }
-                }}
-                className="h-8 min-w-36 flex-1 text-sm"
-              />
-              {!a.active && <Badge tone="neutral">off</Badge>}
-              <RowActions
-                kind={`attr:${attrKey}`}
-                id={a.id}
-                uses={a.uses}
-                active={a.active}
-                onError={onError}
-                onToggle={() =>
-                  start(async () => {
-                    const r = await saveAttributeOption({
-                      id: a.id,
-                      key: attrKey,
-                      value: a.value,
-                      active: !a.active,
-                    });
-                    if (!r.ok) onError(r.error);
-                  })
-                }
-              />
-            </li>
-          ))}
-          {rows.length === 0 && (
-            <li className="px-3 py-3 text-sm text-text-muted">Nothing here yet.</li>
-          )}
-        </ul>
-
-        <div className="flex flex-wrap items-end gap-2">
-          <div className="min-w-36 flex-1">
-            <Label htmlFor={`new-${attrKey}`}>Add {label.toLowerCase()}</Label>
-            <Input
-              id={`new-${attrKey}`}
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-            />
-          </div>
-          <Button
-            variant="secondary"
-            disabled={pending || value.trim().length < 1}
-            onClick={() =>
-              start(async () => {
-                onError(null);
-                const r = await saveAttributeOption({
-                  id: null,
-                  key: attrKey,
-                  value,
-                  active: true,
-                });
-                if (r.ok) setValue("");
-                else onError(r.error);
-              })
-            }
-          >
-            Add
-          </Button>
-        </div>
+      <CardHeader className="flex flex-wrap items-baseline justify-between gap-2">
+        <span className="font-medium">{label}</span>
+        <span className="text-2xs text-text-muted">{rows.length} values</span>
+      </CardHeader>
+      <CardBody>
+        <ValueList
+          rows={rows}
+          pending={pending}
+          addLabel={`Add ${label.toLowerCase()}`}
+          onRename={(id, next) =>
+            run(() =>
+              saveAttributeOption({
+                id,
+                key: attrKey,
+                value: next,
+                active: rows.find((x) => x.id === id)?.active ?? true,
+              }),
+            )
+          }
+          onToggle={(r) =>
+            run(() =>
+              saveAttributeOption({
+                id: r.id,
+                key: attrKey,
+                value: r.value,
+                active: !r.active,
+              }),
+            )
+          }
+          onDelete={(r) => run(() => deleteMaster(r.kind, r.id))}
+          onMerge={(from, into) => run(() => mergeAttributeOption(from, into))}
+          onAdd={(value) =>
+            run(() => saveAttributeOption({ id: null, key: attrKey, value, active: true }))
+          }
+        />
       </CardBody>
     </Card>
   );

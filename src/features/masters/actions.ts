@@ -94,3 +94,50 @@ export async function deleteMaster(kind: string, id: string): Promise<Result<str
   done();
   return ok(String(data));
 }
+
+/**
+ * Folds one master value into another.
+ *
+ * Not a delete: every item pointing at the loser is repointed at the
+ * winner first, inside one database function, so the order can never be
+ * got wrong and no stock is orphaned. The old name is kept in the audit
+ * log, because "where did the matilu category go" is a question someone
+ * asks months later.
+ */
+export async function mergeCategory(
+  fromId: string,
+  intoId: string,
+): Promise<Result<{ from: string; into: string; itemsMoved: number }>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("merge_category", {
+    p_from: fromId,
+    p_into: intoId,
+  });
+  if (error) return err(toMessage(error));
+  const d = (data ?? {}) as Record<string, unknown>;
+  done();
+  return ok({
+    from: String(d.from ?? ""),
+    into: String(d.into ?? ""),
+    itemsMoved: Number(d.items_moved ?? 0),
+  });
+}
+
+export async function mergeAttributeOption(
+  fromId: string,
+  intoId: string,
+): Promise<Result<{ from: string; into: string; itemsMoved: number }>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("merge_attribute_option", {
+    p_from: fromId,
+    p_into: intoId,
+  });
+  if (error) return err(toMessage(error));
+  const d = (data ?? {}) as Record<string, unknown>;
+  done();
+  return ok({
+    from: String(d.from ?? ""),
+    into: String(d.into ?? ""),
+    itemsMoved: Number(d.items_moved ?? 0),
+  });
+}
