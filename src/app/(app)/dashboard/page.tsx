@@ -119,7 +119,10 @@ export default async function DashboardPage({
     tab === "benefits" ? getBenefitsGiven(from, to, loc) : Promise.resolve([]),
     tab === "items"
       ? getItemsSold(from, to, loc, itemFilters, PAGE, page * PAGE)
-      : Promise.resolve({ items: [], total: 0 }),
+      : Promise.resolve({
+          items: [], total: 0, totalRevenuePaise: 0,
+          totalMarginPaise: 0, totalQty: 0, totalSoldOut: 0,
+        }),
     tab === "items" ? listItemFormOptions() : Promise.resolve(null),
     tab === "items" ? listVendorOptions() : Promise.resolve([]),
   ]);
@@ -313,22 +316,25 @@ export default async function DashboardPage({
       ) : tab === "items" ? (
         <>
           <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {/* All four describe every matching piece, not the page. */}
             <Metric
               label="Pieces sold"
-              value={String(soldItems.reduce((s, i) => s + i.qtySold, 0))}
-              hint={`${soldItems.length} different designs`}
+              value={String(sold.totalQty)}
+              hint={`${soldTotal} different designs`}
             />
-            <Metric
-              label="Revenue"
-              value={formatPaise(soldItems.reduce((s, i) => s + i.revenuePaise, 0))}
-            />
+            <Metric label="Revenue" value={formatPaise(sold.totalRevenuePaise)} />
             <Metric
               label="Margin"
-              value={formatPaise(soldItems.reduce((s, i) => s + i.marginPaise, 0))}
+              value={formatPaise(sold.totalMarginPaise)}
+              hint={
+                sold.totalRevenuePaise > 0
+                  ? `${((sold.totalMarginPaise / sold.totalRevenuePaise) * 100).toFixed(1)}%`
+                  : undefined
+              }
             />
             <Metric
               label="Sold out"
-              value={String(soldItems.filter((i) => i.qtyRemaining === 0).length)}
+              value={String(sold.totalSoldOut)}
               hint="designs with none left"
             />
           </div>

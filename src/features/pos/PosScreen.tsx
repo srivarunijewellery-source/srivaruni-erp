@@ -562,6 +562,9 @@ export function PosScreen({
     const code = raw.trim();
     if (!code) return;
 
+    // The local copy only knows items.barcode. A tag printed by the old
+    // system may carry its product_id or batch number instead, which
+    // only the server can resolve -- so a local miss is not a verdict.
     const hit =
       catalog.find((i) => i.barcode === code) ??
       catalog.find((i) => i.barcode?.toLowerCase() === code.toLowerCase());
@@ -599,18 +602,39 @@ export function PosScreen({
         return;
       }
 
+      // pos_search returns the single resolved item for an exact code,
+      // alias included. Requiring the returned barcode to equal what was
+      // scanned would throw that away -- the whole point is that the tag
+      // says something different from items.barcode.
       const found = r.ok
-        ? (r.data.find((i) => i.barcode?.toLowerCase() === code.toLowerCase()) ?? null)
+        ? (r.data.find((i) => i.barcode?.toLowerCase() === code.toLowerCase()) ??
+           (r.data.length === 1 ? r.data[0]! : null))
         : null;
 
       if (!found) {
         setError(`Nothing found for "${code}".`);
         return;
       }
-      if (found.qty <= 0) {
-        setError(`${found.name} (${code}) is not in stock at ${locationName}.`);
+
+      // "Nothing found" was being shown for three different problems, only
+      // one of which is a missing tag. The other two are answerable at the
+      // counter, so they say what is actually wrong.
+      if (found.price_paise <= 0) {
+        setError(
+          `${found.name} (${code}) has no price yet, so it cannot be sold. Ask for it to be priced.`,
+        );
         return;
       }
+
+      if (found.qty <= 0) {
+        // Not a refusal. The piece is in the customer's hand; our count
+        // being wrong is our problem, not a reason to lose the sale. The
+        // stock ledger records the discrepancy either way.
+        setNotice(
+          `Our count says none left of ${found.name} — selling it anyway. Worth a stock check.`,
+        );
+      }
+
       addItem(found);
     });
   }

@@ -52,7 +52,11 @@ export function FilterBar({
   const [pending, startTransition] = useTransition();
 
   function apply(next: Record<string, string>) {
-    const merged = { ...value, ...next };
+    // Narrowing a filter while on page 3 of the old result leaves you on
+    // a page that no longer exists, so the grid comes back empty and it
+    // looks as though the filter matched nothing. Any filter change goes
+    // back to the first page.
+    const merged = { ...value, ...next, page: "" };
     const params = new URLSearchParams();
     for (const [k, v] of Object.entries(merged)) {
       if (v) params.set(k, v);
@@ -61,7 +65,11 @@ export function FilterBar({
     startTransition(() => router.push(qs ? `${basePath}?${qs}` : basePath));
   }
 
-  const anySet = Object.entries(value).some(([, v]) => Boolean(v));
+  // "tab", "from", "to" and the like are context, not filters -- if they
+  // counted, Clear would appear permanently and clearing would throw you
+  // back to a default window you did not ask for.
+  const CONTEXT = new Set(["tab", "from", "to", "grain", "dimension", "page"]);
+  const anySet = Object.entries(value).some(([k, v]) => Boolean(v) && !CONTEXT.has(k));
 
   return (
     <Card className="mb-4">
@@ -130,7 +138,15 @@ export function FilterBar({
               variant="ghost"
               onClick={() => {
                 setQ("");
-                router.push(basePath);
+                // Keep the window and the tab; clear only the filters.
+                const keep = new URLSearchParams();
+                for (const [k, v] of Object.entries(value)) {
+                  if (v && CONTEXT.has(k) && k !== "page") keep.set(k, v);
+                }
+                const qs = keep.toString();
+                startTransition(() =>
+                  router.push(qs ? `${basePath}?${qs}` : basePath),
+                );
               }}
             >
               Clear

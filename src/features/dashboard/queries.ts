@@ -279,8 +279,15 @@ export interface SoldItemFilters {
 
 export interface SoldItemsPage {
   items: SoldItem[];
-  /** How many match the filters in total, not just on this page. */
+  /** Everything below describes the WHOLE filtered set, not the page.
+   *  Summing the page is how the revenue card came to disagree with the
+   *  bills: it was quietly reporting "revenue of the 48 biggest
+   *  sellers". */
   total: number;
+  totalRevenuePaise: number;
+  totalMarginPaise: number;
+  totalQty: number;
+  totalSoldOut: number;
 }
 
 export async function getItemsSold(
@@ -304,11 +311,21 @@ export async function getItemsSold(
     p_limit: limit,
     p_offset: offset,
   });
-  if (error) return { items: [], total: 0 };
+  if (error) {
+    return {
+      items: [], total: 0, totalRevenuePaise: 0,
+      totalMarginPaise: 0, totalQty: 0, totalSoldOut: 0,
+    };
+  }
 
   const rows = (data ?? []) as Array<Record<string, unknown>>;
+  const head = rows[0];
   return {
-    total: rows.length > 0 ? Number(rows[0]!.total_matching ?? 0) : 0,
+    total: head ? Number(head.total_matching ?? 0) : 0,
+    totalRevenuePaise: head ? Number(head.total_revenue_paise ?? 0) : 0,
+    totalMarginPaise: head ? Number(head.total_margin_paise ?? 0) : 0,
+    totalQty: head ? Number(head.total_qty ?? 0) : 0,
+    totalSoldOut: head ? Number(head.total_sold_out ?? 0) : 0,
     items: rows.map((r) => ({
       itemId: String(r.item_id),
       barcode: r.barcode ? String(r.barcode) : null,
