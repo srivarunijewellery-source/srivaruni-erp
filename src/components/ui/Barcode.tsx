@@ -11,8 +11,12 @@ export function Barcode({ code, className }: { code: string; className?: string 
   return (
     <span
       className={cn(
-        "tnum inline-block whitespace-nowrap rounded-sm bg-surface-sunken px-1.5 py-0.5",
-        "font-mono text-2xs tracking-tight text-text-muted",
+        // shrink-0 matters: inside a flex row the chip was being squeezed
+        // and its last characters clipped, which on a tag code reads as a
+        // different tag rather than a truncated one. It keeps its full
+        // width and the row wraps instead.
+        "tnum inline-block shrink-0 whitespace-nowrap rounded-sm bg-surface-sunken",
+        "px-2 py-0.5 font-mono text-2xs tracking-tight text-text-muted",
         className,
       )}
     >

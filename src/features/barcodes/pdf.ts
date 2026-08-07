@@ -40,6 +40,24 @@ export interface LabelData {
   qty: number;
 }
 
+/**
+ * The quiet zone is part of the symbol, not decoration.
+ *
+ * Code 128 requires at least 10 blank modules either side of the bars.
+ * A scanner uses that blank run to find where the symbol starts and
+ * ends; without it, a reader that clips even slightly into the first bar
+ * reads a short code or nothing at all. The old call rendered bars
+ * edge-to-edge and left the margin to whatever the page layout happened
+ * to give -- 1.3mm, under spec, and shrinking further whenever the
+ * barcode was scaled to fit a narrow panel.
+ *
+ * paddingwidth is in modules, so baking it into the PNG means the quiet
+ * zone scales with the bars and survives any later resize. At scale 4
+ * that is 40px of white each side of a 404px symbol, which is exactly
+ * the 10X the spec asks for.
+ */
+const QUIET_ZONE_MODULES = 10;
+
 async function barcodePng(value: string): Promise<{ bytes: Buffer; w: number; h: number }> {
   const bytes = await bwipjs.toBuffer({
     bcid: "code128",
@@ -47,6 +65,7 @@ async function barcodePng(value: string): Promise<{ bytes: Buffer; w: number; h:
     height: 8,
     includetext: false,
     scale: 4,
+    paddingwidth: QUIET_ZONE_MODULES,
   });
   return { bytes, w: bytes.readUInt32BE(16), h: bytes.readUInt32BE(20) };
 }
@@ -127,11 +146,17 @@ export async function generateLabelsPdf(
       const barTop = labelH - pad;
       const barBottom = pad + codeSize + 2;
       const barH = Math.max(mm(4.5), barTop - barBottom);
-      const barMaxW = leftW - 2 * pad;
+      // Extra clearance from the fold: the crease sits at the right edge
+      // of this panel, and a fold running through the quiet zone ruins
+      // the read as surely as trimming through it.
+      const foldClearance = mm(1.2);
+      const barMaxW = leftW - 2 * pad - foldClearance;
       const barW = Math.min((png.w / png.h) * barH, barMaxW);
 
       page.drawImage(image, {
-        x: (leftW - barW) / 2,
+        // Centred in the space left AFTER the fold clearance, so the
+        // symbol drifts away from the crease rather than toward it.
+        x: (leftW - foldClearance - barW) / 2,
         y: barBottom,
         width: barW,
         height: barH,

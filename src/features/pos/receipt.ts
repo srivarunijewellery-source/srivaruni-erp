@@ -107,6 +107,11 @@ function inWords(paise: number): string {
 }
 
 export function receiptHtml(d: ReceiptData): string {
+  // Customers count what is in the bag against what is on the slip, so
+  // the piece count is worth stating rather than leaving them to add up
+  // the quantity column.
+  const pieces = d.lines.reduce((n, l) => n + l.qty, 0);
+
   const hasSplit =
     (d.cgstPaise ?? 0) > 0 || (d.sgstPaise ?? 0) > 0 || (d.igstPaise ?? 0) > 0;
 
@@ -117,10 +122,10 @@ export function receiptHtml(d: ReceiptData): string {
       const rest = names.slice(1);
       return `
 <tr>
-  <td class="n">${i + 1}</td>
-  <td colspan="2" class="nm">${esc(first)}</td>
+  <td class="n item">${i + 1}</td>
+  <td colspan="2" class="nm b item">${esc(first)}</td>
 </tr>${rest.map((r) => `<tr><td></td><td colspan="2" class="nm">${esc(r)}</td></tr>`).join("")}
-<tr>
+<tr class="lastrow">
   <td></td>
   <td class="q">${l.qty} &times; ${rupees(l.unitPaise)}</td>
   <td class="amt">${rupees(l.totalPaise)}</td>
@@ -142,37 +147,84 @@ export function receiptHtml(d: ReceiptData): string {
 <title>${esc(d.billNo)}</title>
 <style>
   /* 80mm paper, ~72mm printable. Margins at zero because the printer
-     driver adds its own and doubling them shrinks the text. */
+     driver adds its own and doubling them shrinks the text.
+
+     Everything here has to survive a 1-bit thermal head: there are no
+     greys, so a solid reversed block prints crisply while a light rule
+     or a tint either prints black or vanishes. That is why the emphasis
+     below is done with filled bands rather than shading. */
   @page { size: 80mm auto; margin: 0; }
   body {
     width: 72mm; margin: 0 auto; padding: 3mm 0;
     font-family: "Courier New", Courier, monospace;
     font-size: 11px; line-height: 1.35; color: #000;
+    -webkit-font-smoothing: none;
   }
   .c { text-align: center; }
   .b { font-weight: bold; }
-  .big { font-size: 15px; letter-spacing: 0.5px; }
   .sm { font-size: 9.5px; }
-  hr { border: none; border-top: 1px dashed #000; margin: 1.8mm 0; }
+  .xs { font-size: 8.5px; }
+
+  /* Shop name reversed out of a solid band -- the one treatment that
+     always renders cleanly and gives the slip an identity at a glance. */
+  .band {
+    background: #000; color: #fff;
+    padding: 1.4mm 1mm; margin-bottom: 1.2mm;
+    text-align: center; font-weight: bold;
+    font-size: 15px; letter-spacing: 1px;
+  }
+  .kicker {
+    text-align: center; font-size: 8.5px; letter-spacing: 2px;
+    text-transform: uppercase; margin: 1mm 0 0.6mm;
+  }
+
+  hr { border: none; border-top: 1px dashed #000; margin: 1.6mm 0; }
   .solid { border-top: 1px solid #000; }
+
   table { width: 100%; border-collapse: collapse; }
-  td { vertical-align: top; padding: 0; }
+  td, th { vertical-align: top; padding: 0; }
+  th {
+    font-size: 8.5px; text-transform: uppercase; letter-spacing: 0.6px;
+    text-align: left; font-weight: bold;
+    border-bottom: 1px solid #000; padding-bottom: 0.6mm;
+  }
+  th.amt { text-align: right; }
   .n { width: 5mm; font-size: 9.5px; }
   .nm { word-break: break-word; }
   .q { font-size: 9.5px; }
   .amt { text-align: right; white-space: nowrap; }
-  .tot td { font-size: 14px; font-weight: bold; padding: 1mm 0; }
-  .head { padding: 1mm 0; }
+  .item { padding-top: 1mm; }
+  .lastrow td { padding-bottom: 1mm; border-bottom: 1px dotted #000; }
+
+  /* The total, reversed out so it is the first thing the eye lands on. */
+  .totalbox {
+    background: #000; color: #fff;
+    padding: 1.4mm 1.5mm; margin: 1.4mm 0 1mm;
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-weight: bold;
+  }
+  .totalbox .lbl { font-size: 9.5px; letter-spacing: 1.2px; }
+  .totalbox .val { font-size: 16px; }
+
+  .saved {
+    text-align: center; font-weight: bold; font-size: 10px;
+    border: 1px dashed #000; padding: 1mm; margin: 1mm 0;
+  }
+  .totals { margin-top: 1.4mm; }
+  .words { font-size: 9px; text-align: center; margin-bottom: 1mm; }
+  .thanks {
+    text-align: center; font-size: 11px; font-weight: bold;
+    letter-spacing: 1px; margin-top: 1.5mm;
+  }
 </style></head>
 <body>
-  <div class="c b big">${esc(d.shopName)}</div>
+  <div class="band">${esc(d.shopName)}</div>
   <div class="c sm">${esc(d.locationName)}</div>
   ${d.branchAddress ? `<div class="c sm">${esc(d.branchAddress)}</div>` : ""}
   ${d.branchPhone ? `<div class="c sm">Ph ${esc(d.branchPhone)}</div>` : ""}
-  ${d.gstin ? `<div class="c sm">GSTIN ${esc(d.gstin)}</div>` : ""}
+  ${d.gstin ? `<div class="c xs">GSTIN ${esc(d.gstin)}</div>` : ""}
+  <div class="kicker">Tax Invoice</div>
   <hr class="solid" />
-  <div class="c b">TAX INVOICE</div>
-  <hr />
   <table class="sm">
     <tr><td>Invoice</td><td class="amt b">${esc(d.billNo)}</td></tr>
     <tr><td>Date</td><td class="amt">${esc(d.dateText)}</td></tr>
@@ -182,27 +234,41 @@ export function receiptHtml(d: ReceiptData): string {
     ${d.customerGstin ? `<tr><td>Cust GSTIN</td><td class="amt">${esc(d.customerGstin)}</td></tr>` : ""}
   </table>
   <hr />
-  <table>${rows}</table>
-  <hr class="solid" />
   <table>
-    <tr><td colspan="2">Subtotal</td><td class="amt">${rupees(d.grossPaise)}</td></tr>
+    <tr>
+      <th class="n">#</th>
+      <th>Item</th>
+      <th class="amt">Amount</th>
+    </tr>
+    ${rows}
+  </table>
+  <table class="sm totals">
+    <tr><td colspan="2">Subtotal (${pieces} item${pieces === 1 ? "" : "s"})</td><td class="amt">${rupees(d.grossPaise)}</td></tr>
     ${d.discountPaise > 0
       ? `<tr><td colspan="2">Discount</td><td class="amt">-${rupees(d.discountPaise)}</td></tr>` : ""}
     ${hasSplit ? `<tr><td colspan="2" class="q">Taxable value</td><td class="amt q">${rupees(d.taxablePaise ?? 0)}</td></tr>` : ""}
     ${(d.cgstPaise ?? 0) > 0 ? `<tr><td colspan="2" class="q">CGST</td><td class="amt q">${rupees(d.cgstPaise ?? 0)}</td></tr>` : ""}
     ${(d.sgstPaise ?? 0) > 0 ? `<tr><td colspan="2" class="q">SGST</td><td class="amt q">${rupees(d.sgstPaise ?? 0)}</td></tr>` : ""}
     ${(d.igstPaise ?? 0) > 0 ? `<tr><td colspan="2" class="q">IGST</td><td class="amt q">${rupees(d.igstPaise ?? 0)}</td></tr>` : ""}
-    <tr class="tot"><td colspan="2">TOTAL</td><td class="amt">${rupees(d.totalPaise)}</td></tr>
   </table>
-  <div class="sm">Rupees ${esc(inWords(d.totalPaise))} only</div>
+
+  <div class="totalbox">
+    <span class="lbl">TOTAL</span>
+    <span class="val">${rupees(d.totalPaise)}</span>
+  </div>
+  <div class="words">Rupees ${esc(inWords(d.totalPaise))} only</div>
+  ${d.discountPaise > 0
+    ? `<div class="saved">You saved ${rupees(d.discountPaise)} on this bill</div>` : ""}
   <hr />
   <table class="sm">${pays}</table>
   ${d.upiId ? `<hr /><div class="c sm">UPI ${esc(d.upiId)}</div>` : ""}
   <hr />
-  ${d.terms ? `<div class="sm">${esc(d.terms)}</div><hr />` : ""}
-  <div class="c">${esc(d.footer ?? "Thank you, do visit again")}</div>
-  <div class="c sm">Prices are inclusive of GST</div>
-  <div class="c" style="margin-top:4mm">.</div>
+  ${d.terms ? `<div class="xs">${esc(d.terms)}</div><hr />` : ""}
+  <div class="thanks">${esc(d.footer ?? "Thank you, do visit again")}</div>
+  <div class="c xs">Prices are inclusive of GST</div>
+  <div class="c xs">${esc(d.billNo)} &middot; ${esc(d.dateText)}</div>
+  <!-- Trailing space so the tear-off does not cut the last line. -->
+  <div class="c" style="margin-top:5mm">.</div>
 </body></html>`;
 }
 
