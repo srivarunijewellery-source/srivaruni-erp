@@ -52,6 +52,7 @@ import {
   searchCatalog,
 } from "./actions";
 import { getCustomerAction } from "./customer-actions";
+import { fetchCustomerCard } from "@/features/customers/card-actions";
 import type {
   Branch,
   CustomerHit,
@@ -195,6 +196,9 @@ export function PosScreen({
   );
   /** Credit notes the customer on this bill is holding. */
   const [creditPaise, setCreditPaise] = useState(0);
+  /** How many bills this customer already has. The slip says "your 8th
+   *  visit", so this is their count PLUS the one being rung. */
+  const [customerBills, setCustomerBills] = useState(0);
   const [benefits, setBenefits] = useState<BillBenefits | null>(null);
   /** Whether the counter has taken the scheme / the gifts on this bill. */
   const [schemeTaken, setSchemeTaken] = useState(false);
@@ -438,14 +442,19 @@ export function PosScreen({
   useEffect(() => {
     if (!customer) {
       setCreditPaise(0);
+      setCustomerBills(0);
       return;
     }
     let cancelled = false;
     void (async () => {
       // Best effort: a blip must not put an error over a live bill.
-      const credits = await quietly(() => fetchCustomerCredits(customer.id));
+      const [credits, card] = await Promise.all([
+        quietly(() => fetchCustomerCredits(customer.id)),
+        quietly(() => fetchCustomerCard(customer.id)),
+      ]);
       if (!cancelled) {
         setCreditPaise(credits ? credits.reduce((s, c) => s + c.balancePaise, 0) : 0);
+        setCustomerBills(card ? card.summary.bills : 0);
       }
     })();
     return () => {
@@ -815,6 +824,10 @@ export function PosScreen({
     );
 
     const receipt: ReceiptData = {
+      // Their existing bills plus this one: a first-time buyer gets no
+      // line at all, which is right -- "your 1st visit" is a strange
+      // thing to tell someone.
+      visitNumber: customer ? customerBills + 1 : null,
       shopName,
       gstin,
       locationName,

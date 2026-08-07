@@ -53,6 +53,9 @@ export const DEFAULT_PRINT: PrintSettings = {
 
 export interface ReceiptData {
   print?: PrintSettings;
+  /** Which visit this is for the customer. A small, true, personal
+   *  line — "your 7th visit" is worth more than any slogan. */
+  visitNumber?: number | null;
   shopName: string;
   gstin: string | null;
   locationName: string;
@@ -109,6 +112,17 @@ function wrap(text: string, width = 22): string[] {
 
 /** Amount in words — Indian convention, because a tax invoice is
  *  expected to carry it and customers do check it. */
+/** 1st, 2nd, 3rd, 4th. The teens are the exception that catches people. */
+function ordinal(n: number): string {
+  const rem100 = n % 100;
+  if (rem100 >= 11 && rem100 <= 13) return `${n}th`;
+  const rem10 = n % 10;
+  if (rem10 === 1) return `${n}st`;
+  if (rem10 === 2) return `${n}nd`;
+  if (rem10 === 3) return `${n}rd`;
+  return `${n}th`;
+}
+
 function inWords(paise: number): string {
   const ones = ["", "one", "two", "three", "four", "five", "six", "seven", "eight",
     "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen",
@@ -216,11 +230,34 @@ export function receiptHtml(d: ReceiptData): string {
 
   /* Shop name reversed out of a solid band -- the one treatment that
      always renders cleanly and gives the slip an identity at a glance. */
+  /* The masthead. A reversed block is the only "graphic" a thermal head
+     renders perfectly every time -- solid black, no halftone, no thin
+     strokes to under-burn. So the identity is built from bands and rules
+     rather than anything delicate. */
   .band {
     background: #000; color: #fff;
-    padding: 1.4mm 1mm; margin-bottom: 1.2mm;
+    padding: 2mm 1mm 1.6mm; margin-bottom: 1.2mm;
     text-align: center; font-weight: bold;
-    font-size: 15px; letter-spacing: 1px;
+    font-size: 16px; letter-spacing: 1.5px; line-height: 1.15;
+  }
+  .band .sub {
+    display: block; font-size: 8px; letter-spacing: 3px;
+    font-weight: normal; margin-top: 1mm; opacity: 1;
+  }
+
+  /* A rule with a diamond in the middle. Built from a border and one
+     character, so there is no image to smudge and nothing to align. */
+  .orn {
+    display: flex; align-items: center; gap: 2mm;
+    margin: 1.8mm 0; font-size: 8px;
+  }
+  .orn::before, .orn::after {
+    content: ""; flex: 1; border-top: 1px solid #000;
+  }
+
+  .visit {
+    text-align: center; font-size: 9.5px; font-weight: bold;
+    letter-spacing: 0.4px; margin: 1mm 0;
   }
   .kicker {
     text-align: center; font-size: 8.5px; letter-spacing: 2px;
@@ -269,11 +306,16 @@ export function receiptHtml(d: ReceiptData): string {
   }
 </style></head>
 <body>
-  <div class="band">${esc(d.shopName)}</div>
-  <div class="c sm">${esc(d.locationName)}</div>
+  <div class="band">
+    ${esc(d.shopName)}
+    <span class="sub">FASHION JEWELLERY</span>
+  </div>
+  <div class="c sm b">${esc(d.locationName)}</div>
   ${d.branchAddress ? `<div class="c sm">${esc(d.branchAddress)}</div>` : ""}
   ${d.branchPhone ? `<div class="c sm">Ph ${esc(d.branchPhone)}</div>` : ""}
   ${d.gstin ? `<div class="c xs">GSTIN ${esc(d.gstin)}</div>` : ""}
+
+  ${cfg.layout === "compact" ? "" : `<div class="orn">&#9670;</div>`}
   <div class="kicker">Tax Invoice</div>
   <hr class="solid" />
   <table class="sm">
@@ -297,10 +339,11 @@ export function receiptHtml(d: ReceiptData): string {
     <tr><td colspan="2">Subtotal (${pieces} item${pieces === 1 ? "" : "s"})</td><td class="amt">${rupees(d.grossPaise)}</td></tr>
     ${d.discountPaise > 0
       ? `<tr><td colspan="2">Discount</td><td class="amt">-${rupees(d.discountPaise)}</td></tr>` : ""}
-    ${hasSplit ? `<tr><td colspan="2" class="q">Taxable value</td><td class="amt q">${rupees(d.taxablePaise ?? 0)}</td></tr>` : ""}
-    ${(d.cgstPaise ?? 0) > 0 ? `<tr><td colspan="2" class="q">CGST</td><td class="amt q">${rupees(d.cgstPaise ?? 0)}</td></tr>` : ""}
-    ${(d.sgstPaise ?? 0) > 0 ? `<tr><td colspan="2" class="q">SGST</td><td class="amt q">${rupees(d.sgstPaise ?? 0)}</td></tr>` : ""}
-    ${(d.igstPaise ?? 0) > 0 ? `<tr><td colspan="2" class="q">IGST</td><td class="amt q">${rupees(d.igstPaise ?? 0)}</td></tr>` : ""}
+    ${hasSplit && cfg.showGstBlock && cfg.layout !== "compact"
+      ? `<tr><td colspan="2" class="q">Taxable value</td><td class="amt q">${rupees(d.taxablePaise ?? 0)}</td></tr>` : ""}
+    ${(d.cgstPaise ?? 0) > 0 && cfg.showGstBlock ? `<tr><td colspan="2" class="q">CGST</td><td class="amt q">${rupees(d.cgstPaise ?? 0)}</td></tr>` : ""}
+    ${(d.sgstPaise ?? 0) > 0 && cfg.showGstBlock ? `<tr><td colspan="2" class="q">SGST</td><td class="amt q">${rupees(d.sgstPaise ?? 0)}</td></tr>` : ""}
+    ${(d.igstPaise ?? 0) > 0 && cfg.showGstBlock ? `<tr><td colspan="2" class="q">IGST</td><td class="amt q">${rupees(d.igstPaise ?? 0)}</td></tr>` : ""}
   </table>
 
   <div class="totalbox">
@@ -308,13 +351,17 @@ export function receiptHtml(d: ReceiptData): string {
     <span class="val">${rupees(d.totalPaise)}</span>
   </div>
   <div class="words">Rupees ${esc(inWords(d.totalPaise))} only</div>
-  ${d.discountPaise > 0
+  ${d.visitNumber && d.visitNumber > 1 && cfg.layout !== "compact"
+    ? `<div class="visit">Your ${ordinal(d.visitNumber)} visit with us &#9829;</div>`
+    : ""}
+  ${d.discountPaise > 0 && cfg.showSavings
     ? `<div class="saved">You saved ${rupees(d.discountPaise)} on this bill</div>` : ""}
   <hr />
   <table class="sm">${pays}</table>
   ${d.upiId ? `<hr /><div class="c sm">UPI ${esc(d.upiId)}</div>` : ""}
   <hr />
   ${d.terms ? `<div class="xs">${esc(d.terms)}</div><hr />` : ""}
+  ${cfg.layout === "compact" ? "" : `<div class="orn">&#9670;</div>`}
   <div class="thanks">${esc(d.footer ?? "Thank you, do visit again")}</div>
   <div class="c xs">Prices are inclusive of GST</div>
   <div class="c xs">${esc(d.billNo)} &middot; ${esc(d.dateText)}</div>
