@@ -20,7 +20,7 @@ export type Capability =
   | "inward.create"
   | "inward.submit"
   | "inward.approve"
-  | "inward.viewCost"
+  | "cost.view"
   | "transfer.request"
   | "transfer.pick"
   | "transfer.approve"
@@ -60,7 +60,7 @@ const RULES: Record<Capability, (r: Role) => boolean> = {
 
   // Cost is not merely hidden in the UI: RLS returns zero rows from the
   // cost tables for anyone but the owner, so it never crosses the wire.
-  "inward.viewCost": isOwner,
+  "cost.view": isOwner,
 
   "transfer.request": () => true,
 

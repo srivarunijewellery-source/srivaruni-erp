@@ -21,7 +21,7 @@ export const metadata: Metadata = { title: "Payments" };
 export default async function PaymentsPage() {
   const user = await requireUser();
 
-  if (!can(user, "inward.viewCost")) {
+  if (!can(user, "cost.view")) {
     return (
       <EmptyState
         title="Payments are owner-only"

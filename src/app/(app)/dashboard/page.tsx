@@ -67,7 +67,13 @@ export default async function DashboardPage({
   const sp = await searchParams;
   const tab =
     sp.tab === "expenses" || sp.tab === "benefits" ? sp.tab : "sales";
-  const from = sp.from || monthsAgo(5);
+  // Twelve months, not five.
+  //
+  // A five-month default silently hid everything before March and made a
+  // freshly migrated database look half empty -- the data was all there,
+  // the window was just too narrow to show it. A year is the span an
+  // owner actually thinks in, and it covers a full festive cycle.
+  const from = sp.from || monthsAgo(12);
   const to = sp.to || new Date().toISOString().slice(0, 10);
   const location = sp.location || "";
   const grain = (GRAINS.includes(sp.grain as Grain) ? sp.grain : "month") as Grain;
@@ -180,7 +186,7 @@ export default async function DashboardPage({
             <Metric
               label="Margin"
               value={formatPaise(margin)}
-              hint={`${marginPct.toFixed(1)}% of revenue`}
+              hint={`${marginPct.toFixed(1)}% · revenue less landed cost`}
             />
             <Metric
               label="Average bill"

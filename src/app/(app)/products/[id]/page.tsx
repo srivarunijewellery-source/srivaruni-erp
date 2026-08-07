@@ -56,7 +56,7 @@ export default async function ProductDetailPage({
 
   if (!product) notFound();
 
-  const canEditPricing = can(user, "inward.viewCost");
+  const canEditPricing = can(user, "cost.view");
 
   return (
     <>

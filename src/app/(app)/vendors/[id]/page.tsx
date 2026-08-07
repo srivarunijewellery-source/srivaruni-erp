@@ -86,13 +86,13 @@ export default async function VendorDetailPage({
           )}
 
           {/* Credits are money owed, so the same gate as payments. */}
-          {can(user, "inward.viewCost") && (
+          {can(user, "cost.view") && (
             <div className="mt-4">
               <SettlementPanel vendorId={vendor.id} settlement={settlement} />
             </div>
           )}
 
-          {can(user, "inward.viewCost") && (
+          {can(user, "cost.view") && (
             <div className="mt-4">
               <CreditNotesCard
                 vendorId={vendor.id}

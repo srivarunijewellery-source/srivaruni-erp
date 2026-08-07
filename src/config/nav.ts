@@ -92,7 +92,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     items: [
       { href: ROUTES.inward,   label: "Inward" },
       { href: ROUTES.vendors,  label: "Vendors",  requires: "vendor.view" },
-      { href: ROUTES.payments, label: "Payments", requires: "inward.viewCost" },
+      { href: ROUTES.payments, label: "Payments", requires: "cost.view" },
     ],
   },
   {
@@ -197,7 +197,7 @@ export const NAV: readonly NavItem[] = [
   { href: ROUTES.adjustments, label: "Adjustments" },
   { href: ROUTES.products,  label: "Products" },
   { href: ROUTES.vendors,   label: "Vendors", requires: "vendor.view" },
-  { href: ROUTES.payments,  label: "Payments", requires: "inward.viewCost" },
+  { href: ROUTES.payments,  label: "Payments", requires: "cost.view" },
   { href: ROUTES.pricing,   label: "Pricing", requires: "pricing.manage" },
   { href: ROUTES.discounts, label: "Discounts", requires: "discount.manage" },
 ] as const;
