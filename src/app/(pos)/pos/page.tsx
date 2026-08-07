@@ -16,6 +16,8 @@ import {
 } from "@/features/pos/queries";
 import { PosScreen } from "@/features/pos/PosScreen";
 import { getDiscountSettings } from "@/features/discounts/queries";
+import { getPrintConfig } from "@/features/print/queries";
+import { instagramQr } from "@/features/pos/actions";
 import { RegisterGate } from "@/features/pos/RegisterGate";
 
 export const metadata: Metadata = { title: "Counter" };
@@ -97,7 +99,7 @@ export default async function PosPage({
     );
   }
 
-  const [catalog, holds, sellers, expenseAccounts, drawer, discountSettings, bizRes] =
+  const [catalog, holds, sellers, expenseAccounts, drawer, discountSettings, printConfig, bizRes] =
     await Promise.all([
     getPosCatalog(locationId),
     listHeldBills(locationId),
@@ -105,6 +107,7 @@ export default async function PosPage({
     listExpenseAccounts(),
     getDrawer(session.id),
     getDiscountSettings(),
+    getPrintConfig(),
     supabase
       .from("business_settings")
       .select("legal_name, gstin, invoice_terms, invoice_footer, home_state")
@@ -126,8 +129,14 @@ export default async function PosPage({
       .maybeSingle(),
   ]);
 
+  // Rendered once here rather than on every print: the link is fixed, so
+  // redrawing the same QR for each slip would be pure waste.
+  const qr = printConfig.qrUrl ? await instagramQr(printConfig.qrUrl) : null;
+
   return (
     <PosScreen
+      printConfig={printConfig}
+      qrDataUrl={qr && qr.ok ? qr.data : null}
       locationId={locationId}
       locationName={locationName}
       sessionId={session.id}

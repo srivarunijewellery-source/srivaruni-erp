@@ -37,6 +37,7 @@ import {
 import { PersonIcon } from "@/components/ui/Icon";
 import { PaymentPanel, type PaymentResult } from "./PaymentPanel";
 import type { BillBenefits } from "./actions";
+import type { PrintConfig } from "@/features/print/queries";
 import { CloseRegisterPanel } from "./CloseRegisterPanel";
 import { CustomerPanel } from "./CustomerPanel";
 import { DrawerPanel } from "./DrawerPanel";
@@ -107,6 +108,8 @@ export function PosScreen({
   initialDrawer,
   exclusiveBenefits,
   stackGifts,
+  printConfig,
+  qrDataUrl,
   permissions,
   staffName,
   shopName,
@@ -134,6 +137,10 @@ export function PosScreen({
   exclusiveBenefits: boolean;
   /** Several gift offers may land on the same bill. */
   stackGifts: boolean;
+  /** How the slip prints. Read once on the server. */
+  printConfig: PrintConfig;
+  /** The follow-us QR, rendered server-side because the link is fixed. */
+  qrDataUrl: string | null;
   permissions: Permissions;
   staffName: string;
   shopName: string;
@@ -824,6 +831,9 @@ export function PosScreen({
     );
 
     const receipt: ReceiptData = {
+      print: printConfig,
+      qrDataUrl,
+      qrHandle: printConfig.qrHandle,
       // Their existing bills plus this one: a first-time buyer gets no
       // line at all, which is right -- "your 1st visit" is a strange
       // thing to tell someone.
@@ -1158,6 +1168,9 @@ export function PosScreen({
 
   /** Shop details a reprint needs, which do not change between bills. */
   const receiptHeader: ReceiptHeader = {
+    print: printConfig,
+    qrDataUrl,
+    qrHandle: printConfig.qrHandle,
     shopName,
     gstin,
     locationName,

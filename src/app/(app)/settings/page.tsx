@@ -41,6 +41,12 @@ const SECTIONS: Section[] = [
         requires: "settings.manage",
       },
       {
+        href: ROUTES.printSettings,
+        label: "Print configuration",
+        hint: "How the customer's slip looks — typeface, margins, the QR, and what to show.",
+        requires: "settings.manage",
+      },
+      {
         href: ROUTES.roles,
         label: "Roles and permissions",
         hint: "What each role can see and do. Cost visibility is decided here.",

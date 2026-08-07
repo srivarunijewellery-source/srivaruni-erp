@@ -23,6 +23,9 @@ export type ReceiptHeader = Pick<
   | "terms"
   | "footer"
   | "upiId"
+  | "print"
+  | "qrDataUrl"
+  | "qrHandle"
 >;
 
 /**

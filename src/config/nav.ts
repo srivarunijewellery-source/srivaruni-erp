@@ -44,6 +44,7 @@ export const ROUTES = {
   insights: "/dashboard",
   settings: "/settings",
   masters: "/settings/masters",
+  printSettings: "/settings/print",
   company: "/settings/company",
   pos: "/pos",
   sales: "/sales",
@@ -180,6 +181,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     items: [
       { href: ROUTES.settings,         label: "All settings" },
       { href: ROUTES.company,          label: "Company",           requires: "settings.manage" },
+      { href: ROUTES.printSettings,    label: "Print configuration", requires: "settings.manage" },
       { href: ROUTES.masters,          label: "Categories & attributes", requires: "catalog.manage" },
       { href: ROUTES.roles,            label: "Roles",             requires: "roles.manage" },
       { href: ROUTES.pricingSettings,  label: "Pricing settings",  requires: "pricing.manage" },

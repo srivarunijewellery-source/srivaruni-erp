@@ -839,3 +839,29 @@ export async function editBill(
     newTotalPaise: Number(d.new_total_paise ?? 0),
   });
 }
+
+/**
+ * The Instagram QR, rendered once on the server.
+ *
+ * Generated here rather than in the browser because bwip-js is a
+ * server-side dependency, and because the link never changes — there is
+ * no reason to redraw the same image on every print. The page holds the
+ * result and hands it to the slip.
+ */
+export async function instagramQr(url: string): Promise<Result<string>> {
+  if (!url.trim()) return err("No link given.");
+  try {
+    const bwipjs = (await import("bwip-js")).default;
+    // Scale 4 gives modules chunky enough to survive a smudged thermal
+    // print; finer than that and the head blurs them together.
+    const png = await bwipjs.toBuffer({
+      bcid: "qrcode",
+      text: url.trim(),
+      scale: 4,
+      includetext: false,
+    });
+    return ok(`data:image/png;base64,${Buffer.from(png).toString("base64")}`);
+  } catch (e) {
+    return err(e instanceof Error ? e.message : "Could not make the QR code.");
+  }
+}

@@ -21,6 +21,10 @@ export interface ReceiptLine {
 }
 
 export interface PrintSettings {
+  /** Which typeface pairing. Editorial is a Georgia masthead over a
+   *  Helvetica body with monospaced figures — the money column still
+   *  aligns, everything else reads like type rather than a printout. */
+  fontFamily?: "editorial" | "mono" | "grotesk";
   paperMm: number;
   printWidthMm: number;
   sideMarginMm: number;
@@ -49,10 +53,15 @@ export const DEFAULT_PRINT: PrintSettings = {
   showBarcode: true,
   footerFeedMm: 6,
   layout: "standard",
+  fontFamily: "editorial",
 };
 
 export interface ReceiptData {
   print?: PrintSettings;
+  /** Instagram QR as a data URL, generated once on the server rather
+   *  than per print — the link never changes. */
+  qrDataUrl?: string | null;
+  qrHandle?: string | null;
   /** Which visit this is for the customer. A small, true, personal
    *  line — "your 7th visit" is worth more than any slogan. */
   visitNumber?: number | null;
@@ -203,6 +212,10 @@ export function receiptHtml(d: ReceiptData): string {
      the head under-burns thin strokes, which is what made the first real
      print come out grey. */
   @page { size: ${cfg.paperMm}mm auto; margin: 0; }
+  /* Only the MONEY is monospaced. Forcing a fixed-width font on names
+     and labels is what made the old slip read like a fax -- it wastes
+     paper and hurts legibility, and the only thing that actually needs
+     it is the amount column, where digits must line up. */
   body {
     width: ${cfg.printWidthMm}mm;
     margin: 0 auto;
@@ -211,7 +224,13 @@ export function receiptHtml(d: ReceiptData): string {
        characters of every row sit on the edge of the paper and get
        clipped by the mechanism. */
     padding: 3mm ${cfg.sideMarginMm}mm ${cfg.footerFeedMm}mm;
-    font-family: "Courier New", Courier, monospace;
+    font-family: ${
+      cfg.fontFamily === "mono"
+        ? '"Courier New", Courier, monospace'
+        : cfg.fontFamily === "grotesk"
+          ? '"Arial Narrow", Helvetica, Arial, sans-serif'
+          : 'Helvetica, Arial, "Helvetica Neue", sans-serif'
+    };
     font-size: ${cfg.baseFontPx}px;
     ${cfg.boldBody ? "font-weight: 700;" : ""}
     line-height: 1.4; color: #000;
@@ -234,11 +253,25 @@ export function receiptHtml(d: ReceiptData): string {
      renders perfectly every time -- solid black, no halftone, no thin
      strokes to under-burn. So the identity is built from bands and rules
      rather than anything delicate. */
+  /* Georgia for the name. A serif is the one thing on a thermal slip
+     that reads as considered rather than mechanical, and its strokes are
+     thick enough to burn solid where a hairline serif would break up. */
   .band {
     background: #000; color: #fff;
-    padding: 2mm 1mm 1.6mm; margin-bottom: 1.2mm;
-    text-align: center; font-weight: bold;
-    font-size: 16px; letter-spacing: 1.5px; line-height: 1.15;
+    padding: 2.2mm 1mm 1.8mm; margin-bottom: 1.2mm;
+    text-align: center;
+    font-family: ${
+      cfg.fontFamily === "mono"
+        ? '"Courier New", Courier, monospace'
+        : cfg.fontFamily === "grotesk"
+          ? 'Helvetica, Arial, sans-serif'
+          : 'Georgia, "Times New Roman", serif'
+    };
+    font-weight: ${cfg.fontFamily === "grotesk" ? 900 : 700};
+    font-size: 19px;
+    letter-spacing: ${cfg.fontFamily === "editorial" ? "0.3px" : "1px"};
+    ${cfg.fontFamily === "grotesk" ? "text-transform: uppercase;" : ""}
+    line-height: 1.1;
   }
   .band .sub {
     display: block; font-size: 8px; letter-spacing: 3px;
@@ -254,6 +287,20 @@ export function receiptHtml(d: ReceiptData): string {
   .orn::before, .orn::after {
     content: ""; flex: 1; border-top: 1px solid #000;
   }
+
+  .qr {
+    text-align: center; margin: 2mm 0 1mm;
+  }
+  .qr img {
+    width: 24mm; height: 24mm;
+    /* Stops the printer smoothing the modules into unreadable mush. */
+    image-rendering: pixelated;
+  }
+  .qr .cap {
+    display: block; font-size: 8.5px; letter-spacing: 1.5px;
+    text-transform: uppercase; margin-top: 1mm; font-weight: 700;
+  }
+  .qr .handle { display: block; font-size: 8px; margin-top: 0.4mm; }
 
   .visit {
     text-align: center; font-size: 9.5px; font-weight: bold;
@@ -281,6 +328,12 @@ export function receiptHtml(d: ReceiptData): string {
   .val { text-align: right; word-break: break-word; }
   .q { font-size: 9.5px; }
   .amt { text-align: right; white-space: nowrap; }
+  /* Everything numeric. Tabular figures keep the column straight without
+     making the whole slip monospaced. */
+  .tnum, .amt, .n, .q {
+    font-family: "Courier New", Courier, monospace;
+    font-variant-numeric: tabular-nums;
+  }
   .item { padding-top: 1mm; }
   .lastrow td { padding-bottom: 1mm; border-bottom: 1px solid #000; }
 
@@ -292,7 +345,10 @@ export function receiptHtml(d: ReceiptData): string {
     font-weight: bold;
   }
   .totalbox .lbl { font-size: 9.5px; letter-spacing: 1.2px; }
-  .totalbox .val { font-size: 16px; }
+  .totalbox .val {
+    font-size: 19px;
+    font-family: "Courier New", Courier, monospace;
+  }
 
   .saved {
     text-align: center; font-weight: 700; font-size: 11px;
@@ -361,6 +417,13 @@ export function receiptHtml(d: ReceiptData): string {
   ${d.upiId ? `<hr /><div class="c sm">UPI ${esc(d.upiId)}</div>` : ""}
   <hr />
   ${d.terms ? `<div class="xs">${esc(d.terms)}</div><hr />` : ""}
+  ${d.qrDataUrl && cfg.showBarcode
+    ? `<div class="qr">
+         <img src="${d.qrDataUrl}" alt="" />
+         <span class="cap">Follow us</span>
+         ${d.qrHandle ? `<span class="handle">${esc(d.qrHandle)}</span>` : ""}
+       </div>`
+    : ""}
   ${cfg.layout === "compact" ? "" : `<div class="orn">&#9670;</div>`}
   <div class="thanks">${esc(d.footer ?? "Thank you, do visit again")}</div>
   <div class="c xs">Prices are inclusive of GST</div>
