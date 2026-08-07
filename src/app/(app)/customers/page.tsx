@@ -13,6 +13,7 @@ import {
   listCustomerRows,
 } from "@/features/customers/queries";
 import { CustomerTable } from "@/features/customers/CustomerTable";
+import { MonthBars } from "@/features/customers/MonthBars";
 import { Button } from "@/components/ui/Button";
 import { listUpcomingOccasions } from "@/features/customers/queries";
 
@@ -23,18 +24,21 @@ const PAGE = 40;
 export default async function CustomersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; sort?: string; page?: string }>;
+  searchParams: Promise<{
+    q?: string; sort?: string; page?: string; from?: string; to?: string;
+  }>;
 }) {
   const user = await requireUser();
   if (!can(user, "customer.manage") && !can(user, "pos.sell")) {
     return <EmptyState title="You do not have access to customers" />;
   }
 
-  const { q = "", sort = "spend", page: pageRaw = "0" } = await searchParams;
+  const { q = "", sort = "spend", page: pageRaw = "0", from = "", to = "" } =
+    await searchParams;
   const page = Math.max(0, Number(pageRaw) || 0);
 
   const [list, overview, occasions] = await Promise.all([
-    listCustomerRows(q, sort, PAGE, page * PAGE),
+    listCustomerRows(q, sort, PAGE, page * PAGE, from || null, to || null),
     getCustomerOverview(),
     listUpcomingOccasions(),
   ]);
@@ -43,10 +47,8 @@ export default async function CustomersPage({
   const repeatPct =
     overview.withBills > 0 ? (overview.repeat / overview.withBills) * 100 : 0;
 
-  const peakRevenue = Math.max(1, ...overview.byMonth.map((m) => m.revenuePaise));
-
   const qs = (over: Record<string, string>) => {
-    const p = new URLSearchParams({ q, sort, page: String(page), ...over });
+    const p = new URLSearchParams({ q, sort, from, to, page: String(page), ...over });
     for (const [k, v] of [...p.entries()]) if (!v || v === "0") p.delete(k);
     const s = p.toString();
     return s ? `${ROUTES.customers}?${s}` : ROUTES.customers;
@@ -96,21 +98,12 @@ export default async function CustomersPage({
                 different people bought. A month where revenue holds up
                 on fewer customers is a different business than one where
                 it holds up on more. */}
-            <div className="flex items-end gap-1.5 overflow-x-auto pb-1">
-              {overview.byMonth.map((m) => (
-                <div key={m.key} className="flex min-w-12 flex-1 flex-col items-center gap-1">
-                  <span className="tnum text-2xs text-text-muted">{m.customers}</span>
-                  <div
-                    className="w-full rounded-t-sm bg-brand"
-                    style={{
-                      height: `${Math.max(4, (m.revenuePaise / peakRevenue) * 88)}px`,
-                    }}
-                    title={`${m.month}: ${formatPaise(m.revenuePaise)} from ${m.customers} customers`}
-                  />
-                  <span className="text-2xs text-text-subtle">{m.month}</span>
-                </div>
-              ))}
-            </div>
+            <MonthBars
+              months={overview.byMonth}
+              basePath={ROUTES.customers}
+              activeFrom={from}
+              params={{ q, sort }}
+            />
           </CardBody>
         </Card>
       )}
@@ -137,7 +130,7 @@ export default async function CustomersPage({
 
       <FilterBar
         basePath={ROUTES.customers}
-        value={{ q, sort, page: String(page) }}
+        value={{ q, sort, from, to, page: String(page) }}
         searchLabel="Find a customer"
         searchPlaceholder="Name or phone"
         selects={[

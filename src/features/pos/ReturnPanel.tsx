@@ -12,6 +12,8 @@ import {
   type ReturnableLine,
 } from "./actions";
 import type { SessionBill } from "./queries";
+import { findBillsForReturn, type ReturnableBill } from "./actions";
+import { formatDate } from "@/lib/format";
 
 interface Picked {
   qty: number;
@@ -34,15 +36,21 @@ interface Picked {
  */
 export function ReturnPanel({
   sessionId,
+  locationId,
   onClose,
   onDone,
 }: {
   sessionId: string;
+  /** Scopes the all-bills search to this branch. */
+  locationId: string;
   onClose: () => void;
   onDone?: (msg: string) => void;
 }) {
   const [pending, start] = useTransition();
   const [bills, setBills] = useState<SessionBill[]>([]);
+  /** Bills found by searching the whole history, not just this session. */
+  const [found, setFound] = useState<ReturnableBill[] | null>(null);
+  const [searching, setSearching] = useState(false);
   const [q, setQ] = useState("");
   const [bill, setBill] = useState<SessionBill | null>(null);
   const [lines, setLines] = useState<ReturnableLine[] | null>(null);
@@ -152,11 +160,83 @@ export function ReturnPanel({
               placeholder="Bill number, name or phone"
               autoFocus
             />
-            {bills.length === 0 ? (
+            {/* Anything typed here searches every bill ever rung, not
+                just this session. A return is normally days later, so
+                restricting it to today made the common case impossible. */}
+            <div className="flex gap-2">
+              <Button
+                variant="secondary"
+                disabled={searching || q.trim().length < 3}
+                onClick={() => {
+                  setSearching(true);
+                  void (async () => {
+                    const r = await findBillsForReturn(q, locationId);
+                    setFound(r.ok ? r.data : []);
+                    setSearching(false);
+                  })();
+                }}
+              >
+                {searching ? "Looking…" : "Search all bills"}
+              </Button>
+              {found && (
+                <Button variant="ghost" onClick={() => setFound(null)}>
+                  Back to this counter
+                </Button>
+              )}
+            </div>
+
+            {found ? (
+              found.length === 0 ? (
+                <p className="py-6 text-center text-sm text-text-muted">
+                  No bill matches that. Try the bill number, or the customer&rsquo;s
+                  phone.
+                </p>
+              ) : (
+                <ul className="divide-y divide-border rounded-card border border-border">
+                  {found.map((b) => (
+                    <li key={b.billId}>
+                      <button
+                        type="button"
+                        disabled={!b.returnable}
+                        onClick={() =>
+                          open({
+                            billId: b.billId,
+                            billNo: b.billNo,
+                            customerName: b.customerName,
+                            customerPhone: b.customerPhone,
+                            soldByName: b.soldByName,
+                            items: b.items,
+                            totalPaise: b.totalPaise,
+                            rungAt: b.billDate,
+                            status: "final",
+                            paymentMode: null,
+                          } as SessionBill)
+                        }
+                        className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-55"
+                      >
+                        <span className="min-w-0 flex-1">
+                          <span className="block font-mono text-sm font-medium">
+                            {b.billNo}
+                          </span>
+                          <span className="block truncate text-2xs text-text-muted">
+                            {formatDate(b.billDate)} · {b.customerName ?? "no customer"} ·{" "}
+                            {b.items} item{b.items === 1 ? "" : "s"}
+                            {b.returnedQty > 0 && ` · ${b.returnedQty} already returned`}
+                            {!b.returnable && " · nothing left to return"}
+                          </span>
+                        </span>
+                        <span className="tnum shrink-0 font-mono text-sm">
+                          {formatPaise(b.totalPaise)}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )
+            ) : bills.length === 0 ? (
               <p className="py-6 text-center text-sm text-text-muted">
-                Nothing rung on this counter yet. A return has to be against a bill from
-                this session — for an older bill, a manager can take it from the Sales
-                screen.
+                Nothing rung on this counter yet. Type a bill number or phone above and
+                search all bills.
               </p>
             ) : (
               <ul className="divide-y divide-border rounded-card border border-border">

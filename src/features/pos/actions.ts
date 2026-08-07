@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { listBillsBehind } from "./dashboard-queries";
 import { ROUTES } from "@/config/nav";
 import { err, ok, toMessage, type Result } from "@/lib/result";
 import { pokeDispatchBestEffort } from "@/lib/comms/poke";
@@ -864,4 +865,70 @@ export async function instagramQr(url: string): Promise<Result<string>> {
   } catch (e) {
     return err(e instanceof Error ? e.message : "Could not make the QR code.");
   }
+}
+
+export interface ReturnableBill {
+  billId: string;
+  billNo: string;
+  billDate: string;
+  customerName: string | null;
+  customerPhone: string | null;
+  soldByName: string | null;
+  items: number;
+  totalPaise: number;
+  locationCode: string | null;
+  returnedQty: number;
+  returnable: boolean;
+}
+
+/**
+ * Finds any past bill to return against.
+ *
+ * The panel could only see bills rung on the open session, which covers
+ * a customer coming back the same afternoon and nothing else. A return
+ * is normally days or weeks later, so the common case was the one it
+ * could not do. record_sales_return always accepted any final bill —
+ * the counter simply had no way to find one.
+ */
+export async function findBillsForReturn(
+  search: string,
+  locationId: string | null,
+): Promise<Result<ReturnableBill[]>> {
+  if (search.trim().length < 3) return ok([]);
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("find_bills_for_return", {
+    p_search: search.trim(),
+    p_location: locationId,
+    p_limit: 20,
+  });
+  if (error) return err(toMessage(error));
+
+  return ok(
+    ((data ?? []) as Array<Record<string, unknown>>).map((r) => ({
+      billId: String(r.bill_id),
+      billNo: String(r.bill_no),
+      billDate: String(r.bill_date),
+      customerName: r.customer_name ? String(r.customer_name) : null,
+      customerPhone: r.customer_phone ? String(r.customer_phone) : null,
+      soldByName: r.sold_by_name ? String(r.sold_by_name) : null,
+      items: Number(r.items ?? 0),
+      totalPaise: Number(r.total_paise ?? 0),
+      locationCode: r.location_code ? String(r.location_code) : null,
+      returnedQty: Number(r.returned_qty ?? 0),
+      returnable: Boolean(r.returnable),
+    })),
+  );
+}
+
+/** Bills behind a dashboard figure. */
+export async function fetchBillsBehind(opts: {
+  from: string;
+  to: string;
+  locationId?: string | null;
+  method?: string | null;
+  staffId?: string | null;
+  discountedOnly?: boolean;
+}): Promise<Result<Awaited<ReturnType<typeof listBillsBehind>>>> {
+  return ok(await listBillsBehind(opts));
 }

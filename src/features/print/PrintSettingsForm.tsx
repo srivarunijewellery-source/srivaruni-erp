@@ -41,6 +41,11 @@ export function PrintSettingsForm({ config }: { config: PrintConfig }) {
         footer_feed_mm: f.footerFeedMm,
         layout: f.layout,
         font_family: f.fontFamily,
+        masthead_name: f.mastheadName ?? "",
+        tagline: f.tagline ?? "",
+        show_tagline: f.showTagline,
+        address_font_px: f.addressFontPx,
+        item_font_px: f.itemFontPx,
         qr_url: f.qrUrl ?? "",
         qr_caption: f.qrCaption ?? "",
         qr_handle: f.qrHandle ?? "",
@@ -52,6 +57,43 @@ export function PrintSettingsForm({ config }: { config: PrintConfig }) {
 
   return (
     <div className="space-y-4">
+      <Card>
+        <CardHeader className="font-medium">The name at the top</CardHeader>
+        <CardBody className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <Label htmlFor="mast">Masthead</Label>
+            <Input
+              id="mast"
+              value={f.mastheadName ?? ""}
+              onChange={(e) => set("mastheadName", e.target.value)}
+              placeholder="Sri Varuni"
+            />
+            <p className="mt-1 text-2xs text-text-muted">
+              Branding, not the legal name. The full registered name still prints
+              on the invoice for GST — putting both in the masthead is what caused
+              &ldquo;Sri Varuni Fashion Jewellery&rdquo; over &ldquo;FASHION
+              JEWELLERY&rdquo;.
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="tag">Line under it</Label>
+            <Input
+              id="tag"
+              value={f.tagline ?? ""}
+              onChange={(e) => set("tagline", e.target.value)}
+              placeholder="FASHION JEWELLERY"
+            />
+            <div className="mt-2">
+              <Toggle
+                label="Show that line"
+                checked={f.showTagline ?? true}
+                onChange={(v) => set("showTagline", v)}
+              />
+            </div>
+          </div>
+        </CardBody>
+      </Card>
+
       <Card>
         <CardHeader className="font-medium">Look</CardHeader>
         <CardBody className="grid gap-3 sm:grid-cols-2">
@@ -165,6 +207,17 @@ export function PrintSettingsForm({ config }: { config: PrintConfig }) {
             hint="Below about 2mm the edges clip."
           />
           <Num label="Font size (px)" value={f.baseFontPx} onChange={(v) => set("baseFontPx", v)} />
+          <Num
+            label="Item name size (px)"
+            value={f.itemFontPx ?? 13}
+            onChange={(v) => set("itemFontPx", v)}
+          />
+          <Num
+            label="Address size (px)"
+            value={f.addressFontPx ?? 10}
+            onChange={(v) => set("addressFontPx", v)}
+            hint="Reference, not reading matter."
+          />
           <Num
             label="Feed after the slip (mm)"
             value={f.footerFeedMm}

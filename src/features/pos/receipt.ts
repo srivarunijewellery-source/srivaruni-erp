@@ -25,6 +25,14 @@ export interface PrintSettings {
    *  Helvetica body with monospaced figures — the money column still
    *  aligns, everything else reads like type rather than a printout. */
   fontFamily?: "editorial" | "mono" | "grotesk";
+  /** The masthead is branding; shopName is the legal entity for GST.
+   *  They are rarely the same words, which is why the slip was printing
+   *  "Sri Varuni Fashion Jewellery" over "FASHION JEWELLERY". */
+  mastheadName?: string | null;
+  tagline?: string | null;
+  showTagline?: boolean;
+  addressFontPx?: number;
+  itemFontPx?: number;
   paperMm: number;
   printWidthMm: number;
   sideMarginMm: number;
@@ -54,6 +62,11 @@ export const DEFAULT_PRINT: PrintSettings = {
   footerFeedMm: 6,
   layout: "standard",
   fontFamily: "editorial",
+  mastheadName: null,
+  tagline: null,
+  showTagline: true,
+  addressFontPx: 10,
+  itemFontPx: 13,
 };
 
 export interface ReceiptData {
@@ -306,6 +319,15 @@ export function receiptHtml(d: ReceiptData): string {
     text-align: center; font-size: 9.5px; font-weight: bold;
     letter-spacing: 0.4px; margin: 1mm 0;
   }
+  /* The address is reference material, not something anyone reads twice.
+     Smaller and tighter so three lines of it do not dominate the head of
+     the slip. */
+  .addr {
+    font-size: ${cfg.addressFontPx ?? 10}px;
+    line-height: 1.25;
+    margin: 0 auto;
+    max-width: 62mm;
+  }
   .kicker {
     text-align: center; font-size: 8.5px; letter-spacing: 2px;
     text-transform: uppercase; margin: 1mm 0 0.6mm;
@@ -334,7 +356,7 @@ export function receiptHtml(d: ReceiptData): string {
     font-family: "Courier New", Courier, monospace;
     font-variant-numeric: tabular-nums;
   }
-  .item { padding-top: 1mm; }
+  .item { padding-top: 1mm; font-size: ${cfg.itemFontPx ?? 13}px; }
   .lastrow td { padding-bottom: 1mm; border-bottom: 1px solid #000; }
 
   /* The total, reversed out so it is the first thing the eye lands on. */
@@ -363,13 +385,14 @@ export function receiptHtml(d: ReceiptData): string {
 </style></head>
 <body>
   <div class="band">
-    ${esc(d.shopName)}
-    <span class="sub">FASHION JEWELLERY</span>
+    ${esc(cfg.mastheadName || d.shopName)}
+    ${cfg.showTagline !== false && cfg.tagline
+      ? `<span class="sub">${esc(cfg.tagline)}</span>` : ""}
   </div>
-  <div class="c sm b">${esc(d.locationName)}</div>
-  ${d.branchAddress ? `<div class="c sm">${esc(d.branchAddress)}</div>` : ""}
-  ${d.branchPhone ? `<div class="c sm">Ph ${esc(d.branchPhone)}</div>` : ""}
-  ${d.gstin ? `<div class="c xs">GSTIN ${esc(d.gstin)}</div>` : ""}
+  <div class="c addr b">${esc(d.locationName)}</div>
+  ${d.branchAddress ? `<div class="c addr">${esc(d.branchAddress)}</div>` : ""}
+  ${d.branchPhone ? `<div class="c addr">Ph ${esc(d.branchPhone)}</div>` : ""}
+  ${d.gstin ? `<div class="c addr">GSTIN ${esc(d.gstin)}</div>` : ""}
 
   ${cfg.layout === "compact" ? "" : `<div class="orn">&#9670;</div>`}
   <div class="kicker">Tax Invoice</div>

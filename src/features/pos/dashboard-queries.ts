@@ -230,3 +230,70 @@ export async function getBillLines(billId: string): Promise<BillLineDetail[]> {
     soldByName: one(r.staff)?.name ?? null,
   }));
 }
+
+/**
+ * The bills behind a number on the dashboard.
+ *
+ * Reads from the database rather than filtering the "recent bills" list
+ * already on screen: that list is capped, so filtering it would quietly
+ * show a subset and call it the total.
+ */
+export async function listBillsBehind(opts: {
+  from: string;
+  to: string;
+  locationId?: string | null;
+  /** Narrows to one payment method, for the "how it was paid" cards. */
+  method?: string | null;
+  /** Narrows to one salesperson, for the "who sold what" rows. */
+  staffId?: string | null;
+  /** Only bills carrying a discount, for that card. */
+  discountedOnly?: boolean;
+}): Promise<RecentBill[]> {
+  const supabase = await createClient();
+
+  let q = supabase
+    .from("bills")
+    .select(
+      `id, bill_no, bill_date, total_paise, status, payment_mode,
+       customer_id, sold_by,
+       locations:location_id(code), customers:customer_id(name), staff:sold_by(name)`,
+    )
+    .eq("status", "final")
+    .gte("bill_date", opts.from)
+    .lte("bill_date", opts.to)
+    .order("bill_date", { ascending: false })
+    .limit(500);
+
+  if (opts.locationId) q = q.eq("location_id", opts.locationId);
+  if (opts.method) q = q.eq("payment_mode", opts.method);
+  if (opts.staffId) q = q.eq("sold_by", opts.staffId);
+  if (opts.discountedOnly) q = q.gt("discount_paise", 0);
+
+  const { data, error } = await q;
+  if (error) return [];
+
+  type Row = {
+    id: string; bill_no: string; bill_date: string; total_paise: number;
+    status: string; payment_mode: string | null;
+    customer_id: string | null; sold_by: string | null;
+    locations: { code: string } | { code: string }[] | null;
+    customers: { name: string } | { name: string }[] | null;
+    staff: { name: string } | { name: string }[] | null;
+  };
+  const one = <T,>(v: T | T[] | null): T | null =>
+    Array.isArray(v) ? (v[0] ?? null) : v;
+
+  return ((data ?? []) as unknown as Row[]).map((r) => ({
+    id: r.id,
+    customerId: r.customer_id ?? null,
+    soldById: r.sold_by ?? null,
+    billNo: r.bill_no,
+    billDate: r.bill_date,
+    locationCode: one(r.locations)?.code ?? null,
+    customerName: one(r.customers)?.name ?? null,
+    soldByName: one(r.staff)?.name ?? null,
+    totalPaise: Number(r.total_paise ?? 0),
+    status: r.status,
+    paymentMode: r.payment_mode,
+  }));
+}

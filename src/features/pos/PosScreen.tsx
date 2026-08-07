@@ -1964,6 +1964,7 @@ export function PosScreen({
       {showReturn && (
         <ReturnPanel
           sessionId={sessionId}
+          locationId={locationId}
           onDone={(msg) => {
             setNotice(`Return taken · ${msg}`);
             void refreshDrawer();

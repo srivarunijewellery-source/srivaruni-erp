@@ -13,6 +13,7 @@ import { formatDate } from "@/lib/format";
 import { ROUTES } from "@/config/nav";
 import { BillPeek } from "@/features/sales/BillPeek";
 import { CustomerPeek } from "@/features/customers/CustomerPeek";
+import { BillsBehind, type DrillSpec } from "./BillsBehind";
 import { BillSellerEditor } from "./BillSellerEditor";
 import type { Seller } from "./queries";
 import type {
@@ -52,6 +53,9 @@ export function SalesDashboard({
   const [peekCustomer, setPeekCustomer] = useState<{ id: string; name: string } | null>(
     null,
   );
+  // Every figure on this page is a sum of documents; this is how you get
+  // to them.
+  const [drill, setDrill] = useState<DrillSpec | null>(null);
   const [q, setQ] = useState(filters.q);
 
   /**
@@ -208,19 +212,60 @@ export function SalesDashboard({
       </Card>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat label="Revenue" value={formatPaise(totals.net)} big />
-        <Stat label="Bills" value={String(totals.bills)} />
+        <Stat
+          label="Revenue"
+          value={formatPaise(totals.net)}
+          big
+          onClick={() => setDrill({ title: "Every bill", from, to, locationId: filters.location || null })}
+        />
+        <Stat
+          label="Bills"
+          value={String(totals.bills)}
+          onClick={() => setDrill({ title: "Every bill", from, to, locationId: filters.location || null })}
+        />
+        {/* Pieces has no bill-level drill that would mean anything --
+            a piece count is not a list of bills -- so it stays plain
+            rather than opening something that answers a different
+            question than the one asked. */}
         <Stat label="Pieces sold" value={String(totals.items)} />
-        <Stat label="Discounts given" value={formatPaise(totals.disc)} />
+        <Stat
+          label="Discounts given"
+          value={formatPaise(totals.disc)}
+          onClick={() =>
+            setDrill({
+              title: "Bills carrying a discount",
+              from, to, locationId: filters.location || null, discountedOnly: true,
+            })
+          }
+        />
       </div>
 
       <Card>
         <CardHeader className="font-medium">How it was paid</CardHeader>
         <CardBody className="grid gap-3 sm:grid-cols-4">
-          <Stat label="Cash" value={formatPaise(totals.cash)} />
-          <Stat label="UPI" value={formatPaise(totals.upi)} />
-          <Stat label="Card" value={formatPaise(totals.card)} />
-          <Stat label="Other" value={formatPaise(totals.other)} />
+          {(
+            [
+              ["Cash", totals.cash, "cash"],
+              ["UPI", totals.upi, "upi"],
+              ["Card", totals.card, "card"],
+              ["Other", totals.other, null],
+            ] as const
+          ).map(([label, value, method]) => (
+            <Stat
+              key={label}
+              label={label}
+              value={formatPaise(value)}
+              onClick={
+                method
+                  ? () =>
+                      setDrill({
+                        title: `Paid by ${label.toLowerCase()}`,
+                        from, to, locationId: filters.location || null, method,
+                      })
+                  : undefined
+              }
+            />
+          ))}
         </CardBody>
       </Card>
 
@@ -286,9 +331,18 @@ export function SalesDashboard({
               {active.map((b) => (
                 <li key={b.locationId} className="flex flex-wrap items-center gap-3 px-4 py-3">
                   <div className="min-w-36 flex-1">
-                    <p className="text-sm font-medium">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setDrill({
+                          title: `${b.code} — ${b.name}`,
+                          from, to, locationId: b.locationId,
+                        })
+                      }
+                      className="text-left text-sm font-medium hover:text-brand hover:underline"
+                    >
                       {b.code} <span className="text-text-muted">{b.name}</span>
-                    </p>
+                    </button>
                     <p className="text-2xs text-text-muted">
                       {b.bills} bills · {b.items} pieces · cash {formatPaise(b.cashPaise)} ·
                       UPI {formatPaise(b.upiPaise)} · card {formatPaise(b.cardPaise)}
@@ -321,7 +375,20 @@ export function SalesDashboard({
               {sellers.map((s) => (
                 <li key={s.staffId} className="flex flex-wrap items-center gap-3 px-4 py-3">
                   <div className="min-w-36 flex-1">
-                    <p className="text-sm font-medium">{s.staffName}</p>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setDrill({
+                          title: `Sold by ${s.staffName}`,
+                          from, to,
+                          locationId: filters.location || null,
+                          staffId: s.staffId,
+                        })
+                      }
+                      className="text-left text-sm font-medium hover:text-brand hover:underline"
+                    >
+                      {s.staffName}
+                    </button>
                     <p className="text-2xs text-text-muted">
                       {s.pieces} pieces across {s.billsTouched} bill
                       {s.billsTouched === 1 ? "" : "s"}
@@ -434,6 +501,8 @@ export function SalesDashboard({
         <BillPeek billId={peek.id} billNo={peek.no} onClose={() => setPeek(null)} />
       )}
 
+      {drill && <BillsBehind spec={drill} onClose={() => setDrill(null)} />}
+
       {peekCustomer && (
         <CustomerPeek
           customerId={peekCustomer.id}
@@ -445,11 +514,35 @@ export function SalesDashboard({
   );
 }
 
-function Stat({ label, value, big }: { label: string; value: string; big?: boolean }) {
-  return (
-    <div className="rounded-card border border-border bg-surface p-3">
+function Stat({
+  label,
+  value,
+  big,
+  onClick,
+}: {
+  label: string;
+  value: string;
+  big?: boolean;
+  onClick?: () => void;
+}) {
+  const inner = (
+    <>
       <p className="text-2xs text-text-muted">{label}</p>
       <p className={`mt-0.5 font-mono ${big ? "text-2xl" : "text-lg"}`}>{value}</p>
-    </div>
+      {onClick && <p className="mt-0.5 text-2xs text-brand">see the bills &rsaquo;</p>}
+    </>
+  );
+
+  if (!onClick) {
+    return <div className="rounded-card border border-border bg-surface p-3">{inner}</div>;
+  }
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded-card border border-border bg-surface p-3 text-left transition-colors hover:border-brand"
+    >
+      {inner}
+    </button>
   );
 }

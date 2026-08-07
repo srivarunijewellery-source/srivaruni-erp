@@ -318,6 +318,8 @@ export async function listCustomerRows(
   sort: string,
   limit = 40,
   offset = 0,
+  from?: string | null,
+  to?: string | null,
 ): Promise<CustomerListPage> {
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("customer_list", {
@@ -325,6 +327,8 @@ export async function listCustomerRows(
     p_sort: sort || "spend",
     p_limit: limit,
     p_offset: offset,
+    p_from: from ?? null,
+    p_to: to ?? null,
   });
   if (error) return { rows: [], total: 0 };
 
@@ -347,23 +351,33 @@ export async function listCustomerRows(
   };
 }
 
+export interface MonthPoint {
+  month: string;
+  key: string;
+  from: string;
+  to: string;
+  bills: number;
+  customers: number;
+  revenuePaise: number;
+}
+
 export interface CustomerOverview {
   total: number;
   withBills: number;
   repeat: number;
   creditOut: number;
-  byMonth: Array<{
-    month: string;
-    key: string;
-    bills: number;
-    customers: number;
-    revenuePaise: number;
-  }>;
+  byMonth: MonthPoint[];
 }
 
-export async function getCustomerOverview(): Promise<CustomerOverview> {
+export async function getCustomerOverview(
+  from?: string | null,
+  to?: string | null,
+): Promise<CustomerOverview> {
   const supabase = await createClient();
-  const { data } = await supabase.rpc("customer_overview");
+  const { data } = await supabase.rpc("customer_overview", {
+    p_from: from ?? null,
+    p_to: to ?? null,
+  });
   const d = (data ?? {}) as Record<string, unknown>;
   return {
     total: Number(d.total ?? 0),
@@ -373,6 +387,8 @@ export async function getCustomerOverview(): Promise<CustomerOverview> {
     byMonth: ((d.by_month ?? []) as Array<Record<string, unknown>>).map((m) => ({
       month: String(m.month ?? ""),
       key: String(m.key ?? ""),
+      from: String(m.from ?? ""),
+      to: String(m.to ?? ""),
       bills: Number(m.bills ?? 0),
       customers: Number(m.customers ?? 0),
       revenuePaise: Number(m.revenue_paise ?? 0),
