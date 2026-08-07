@@ -9,7 +9,9 @@ import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FilterBar } from "@/components/ui/FilterBar";
 import { formatPaise } from "@/lib/money";
-import { listStores } from "@/features/inward/queries";
+import { listStores, listItemFormOptions } from "@/features/inward/queries";
+import { listVendorOptions } from "@/features/vendors/queries";
+import { DateRangeBar } from "@/features/dashboard/DateRangeBar";
 import {
   DIMENSIONS,
   getExpensePivot,
@@ -51,6 +53,12 @@ export default async function DashboardPage({
     location?: string;
     dimension?: string;
     grain?: string;
+    icat?: string;
+    istone?: string;
+    ivendor?: string;
+    isearch?: string;
+    isort?: string;
+    page?: string;
   }>;
 }) {
   const user = await requireUser();
@@ -88,7 +96,17 @@ export default async function DashboardPage({
 
   const loc = location || null;
 
-  const [stores, points, salesPivot, expensePivot, benefits, soldItems] =
+  const itemFilters = {
+    category: sp.icat ?? "",
+    stone: sp.istone ?? "",
+    vendor: sp.ivendor ?? "",
+    search: sp.isearch ?? "",
+    sort: sp.isort ?? "revenue",
+  };
+  const PAGE = 48;
+  const page = Math.max(0, Number(sp.page ?? 0) || 0);
+
+  const [stores, points, salesPivot, expensePivot, benefits, sold, itemOptions, vendors] =
     await Promise.all([
     listStores(),
     tab === "sales" ? getSalesByPeriod(from, to, loc, grain) : Promise.resolve([]),
@@ -99,8 +117,16 @@ export default async function DashboardPage({
       ? getExpensePivot(from, to, loc)
       : Promise.resolve({ months: [], rows: [], totals: {}, grandTotalPaise: 0 }),
     tab === "benefits" ? getBenefitsGiven(from, to, loc) : Promise.resolve([]),
-    tab === "items" ? getItemsSold(from, to, loc, 200) : Promise.resolve([]),
+    tab === "items"
+      ? getItemsSold(from, to, loc, itemFilters, PAGE, page * PAGE)
+      : Promise.resolve({ items: [], total: 0 }),
+    tab === "items" ? listItemFormOptions() : Promise.resolve(null),
+    tab === "items" ? listVendorOptions() : Promise.resolve([]),
   ]);
+
+  const soldItems = sold.items;
+  const soldTotal = sold.total;
+  const pages = Math.ceil(soldTotal / PAGE);
 
   // What each kind of giveaway actually cost. A coupon and a discount
   // cost their face value; a gift costs what the piece cost us, which is
@@ -120,12 +146,10 @@ export default async function DashboardPage({
 
   const qs = (over: Record<string, string>) => {
     const params = new URLSearchParams({
-      tab,
-      from,
-      to,
-      location,
-      dimension,
-      grain,
+      tab, from, to, location, dimension, grain,
+      icat: itemFilters.category, istone: itemFilters.stone,
+      ivendor: itemFilters.vendor, isearch: itemFilters.search,
+      isort: itemFilters.sort,
       ...over,
     });
     for (const [k, v] of [...params.entries()]) if (!v) params.delete(k);
@@ -155,11 +179,28 @@ export default async function DashboardPage({
         ))}
       </div>
 
+      <DateRangeBar
+        basePath={ROUTES.insights}
+        params={{ tab, location, dimension, grain, ...(tab === "items"
+          ? { icat: itemFilters.category, istone: itemFilters.stone,
+              ivendor: itemFilters.vendor, isearch: itemFilters.search,
+              isort: itemFilters.sort }
+          : {}) }}
+        from={from}
+        to={to}
+      />
+
       <FilterBar
         basePath={ROUTES.insights}
-        value={{ tab, from, to, location, dimension, grain }}
-        searchKey="_unused"
-        searchLabel="From / to are set below"
+        value={{
+          tab, from, to, location, dimension, grain,
+          icat: itemFilters.category, istone: itemFilters.stone,
+          ivendor: itemFilters.vendor, isearch: itemFilters.search,
+          isort: itemFilters.sort,
+        }}
+        searchKey={tab === "items" ? "isearch" : "_unused"}
+        searchLabel={tab === "items" ? "Find a piece" : "Search"}
+        searchPlaceholder={tab === "items" ? "Name or tag" : undefined}
         selects={[
           {
             key: "location",
@@ -167,6 +208,43 @@ export default async function DashboardPage({
             allLabel: "All branches",
             options: stores.map((s) => ({ value: s.id, label: `${s.code} — ${s.name}` })),
           },
+          ...(tab === "items" && itemOptions
+            ? [
+                {
+                  key: "icat",
+                  label: "Category",
+                  allLabel: "All categories",
+                  options: itemOptions.categories.map((c) => ({
+                    value: c.id,
+                    label: c.name,
+                  })),
+                },
+                {
+                  key: "istone",
+                  label: "Stone",
+                  allLabel: "All stones",
+                  options: itemOptions.stones.map((o) => ({
+                    value: o.id,
+                    label: o.value,
+                  })),
+                },
+                {
+                  key: "ivendor",
+                  label: "Vendor",
+                  allLabel: "All vendors",
+                  options: vendors.map((v) => ({ value: v.id, label: v.name })),
+                },
+                {
+                  key: "isort",
+                  label: "Sort by",
+                  allLabel: "Revenue",
+                  options: [
+                    { value: "qty", label: "Pieces sold" },
+                    { value: "margin", label: "Margin" },
+                  ],
+                },
+              ]
+            : []),
           ...(tab === "sales"
             ? [
                 {
@@ -259,11 +337,38 @@ export default async function DashboardPage({
             <CardHeader className="flex flex-wrap items-baseline justify-between gap-2">
               <span className="font-medium">What sold, best first</span>
               <span className="text-2xs text-text-muted">
-                top {soldItems.length} by revenue
+                {soldTotal === 0
+                  ? "nothing matches"
+                  : `showing ${page * PAGE + 1}\u2013${page * PAGE + soldItems.length} of ${soldTotal}`}
               </span>
             </CardHeader>
             <CardBody className="p-0">
               <SoldItemsGrid items={soldItems} />
+              {pages > 1 && (
+                <div className="flex items-center justify-between gap-3 border-t border-border px-3 py-2">
+                  <span className="text-2xs text-text-muted">
+                    Page {page + 1} of {pages}
+                  </span>
+                  <div className="flex gap-2">
+                    {page > 0 && (
+                      <Link
+                        href={qs({ page: String(page - 1) })}
+                        className="rounded-control border border-border px-3 py-1.5 text-2xs hover:border-brand hover:text-brand"
+                      >
+                        Previous
+                      </Link>
+                    )}
+                    {page + 1 < pages && (
+                      <Link
+                        href={qs({ page: String(page + 1) })}
+                        className="rounded-control border border-border px-3 py-1.5 text-2xs hover:border-brand hover:text-brand"
+                      >
+                        Next
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              )}
             </CardBody>
           </Card>
         </>

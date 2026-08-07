@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -12,6 +11,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { formatPaise } from "@/lib/money";
 import { formatDate } from "@/lib/format";
 import { ROUTES } from "@/config/nav";
+import { BillPeek } from "@/features/sales/BillPeek";
 import { BillSellerEditor } from "./BillSellerEditor";
 import type { Seller } from "./queries";
 import type {
@@ -45,6 +45,8 @@ export function SalesDashboard({
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState<{ id: string; no: string } | null>(null);
+  // Peeking at a bill should not cost you your place in the list.
+  const [peek, setPeek] = useState<{ id: string; no: string } | null>(null);
   const [q, setQ] = useState(filters.q);
 
   /**
@@ -346,12 +348,13 @@ export function SalesDashboard({
                   {/* The bill number is the way in to the whole bill --
                       lines, payments, gifts and any returns against it.
                       It was plain text everywhere until now. */}
-                  <Link
-                    href={ROUTES.billDetail(r.id)}
-                    className="w-32 font-mono text-2xs text-text-muted hover:text-brand hover:underline"
+                  <button
+                    type="button"
+                    onClick={() => setPeek({ id: r.id, no: r.billNo })}
+                    className="w-32 text-left font-mono text-2xs text-text-muted hover:text-brand hover:underline"
                   >
                     {r.billNo}
-                  </Link>
+                  </button>
                   <div className="min-w-32 flex-1">
                     <p className="truncate text-sm">
                       {r.customerName ?? "Walk-in"}
@@ -405,6 +408,10 @@ export function SalesDashboard({
         stock module is wired into it. A margin built on an average would look
         authoritative and be wrong, so none is shown.
       </p>
+
+      {peek && (
+        <BillPeek billId={peek.id} billNo={peek.no} onClose={() => setPeek(null)} />
+      )}
     </div>
   );
 }

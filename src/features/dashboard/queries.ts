@@ -269,36 +269,62 @@ export interface SoldItem {
  * PIECE", which for jewellery is the question actually asked — a design
  * either moves or it does not, and the picture is how you recognise it.
  */
+export interface SoldItemFilters {
+  category?: string;
+  stone?: string;
+  vendor?: string;
+  search?: string;
+  sort?: string;
+}
+
+export interface SoldItemsPage {
+  items: SoldItem[];
+  /** How many match the filters in total, not just on this page. */
+  total: number;
+}
+
 export async function getItemsSold(
   from: string,
   to: string,
   location: string | null,
-  limit = 200,
-): Promise<SoldItem[]> {
+  filters: SoldItemFilters = {},
+  limit = 48,
+  offset = 0,
+): Promise<SoldItemsPage> {
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("dash_items_sold", {
     p_from: from,
     p_to: to,
     p_location: location,
+    p_category: filters.category || null,
+    p_stone: filters.stone || null,
+    p_vendor: filters.vendor || null,
+    p_search: filters.search || null,
+    p_sort: filters.sort || "revenue",
     p_limit: limit,
+    p_offset: offset,
   });
-  if (error) return [];
+  if (error) return { items: [], total: 0 };
 
-  return ((data ?? []) as Array<Record<string, unknown>>).map((r) => ({
-    itemId: String(r.item_id),
-    barcode: r.barcode ? String(r.barcode) : null,
-    name: String(r.name ?? "Item"),
-    photoPath: r.photo_path ? String(r.photo_path) : null,
-    category: r.category ? String(r.category) : null,
-    stone: r.stone ? String(r.stone) : null,
-    vendor: r.vendor ? String(r.vendor) : null,
-    qtySold: Number(r.qty_sold ?? 0),
-    bills: Number(r.bills ?? 0),
-    customers: Number(r.customers ?? 0),
-    revenuePaise: Number(r.revenue_paise ?? 0),
-    costPaise: Number(r.cost_paise ?? 0),
-    marginPaise: Number(r.margin_paise ?? 0),
-    qtyRemaining: Number(r.qty_remaining ?? 0),
-    sellingPricePaise: Number(r.selling_price_paise ?? 0),
-  }));
+  const rows = (data ?? []) as Array<Record<string, unknown>>;
+  return {
+    total: rows.length > 0 ? Number(rows[0]!.total_matching ?? 0) : 0,
+    items: rows.map((r) => ({
+      itemId: String(r.item_id),
+      barcode: r.barcode ? String(r.barcode) : null,
+      name: String(r.name ?? "Item"),
+      photoPath: r.photo_path ? String(r.photo_path) : null,
+      category: r.category ? String(r.category) : null,
+      stone: r.stone ? String(r.stone) : null,
+      vendor: r.vendor ? String(r.vendor) : null,
+      qtySold: Number(r.qty_sold ?? 0),
+      bills: Number(r.bills ?? 0),
+      customers: Number(r.customers ?? 0),
+      revenuePaise: Number(r.revenue_paise ?? 0),
+      costPaise: Number(r.cost_paise ?? 0),
+      marginPaise: Number(r.margin_paise ?? 0),
+      qtyRemaining: Number(r.qty_remaining ?? 0),
+      sellingPricePaise: Number(r.selling_price_paise ?? 0),
+    })),
+  };
 }
