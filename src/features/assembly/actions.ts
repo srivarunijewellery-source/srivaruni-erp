@@ -223,6 +223,7 @@ export async function saveLabourRate(rupeesPerHour: string): Promise<Result<void
   if (!data || data.length === 0) {
     return err("Only the owner can change the labour rate.");
   }
+  revalidatePath("/settings/company");
   revalidatePath(PATH);
   return ok(undefined);
 }

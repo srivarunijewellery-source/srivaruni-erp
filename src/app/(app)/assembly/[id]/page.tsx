@@ -17,7 +17,11 @@ export default async function AssemblyDetailPage({
   const { id } = await params;
   const user = await requireUser();
 
-  const [assembly, categories] = await Promise.all([getAssembly(id), listCategories()]);
+  const owner = isOwner(user.role);
+  const [assembly, categories] = await Promise.all([
+    getAssembly(id, owner),
+    listCategories(),
+  ]);
   // Not found and not-yours look identical: RLS returns nothing for
   // another branch's document, so the app must not distinguish them.
   if (!assembly) notFound();
@@ -31,7 +35,7 @@ export default async function AssemblyDetailPage({
       <AssemblyWorkbench
         assembly={assembly}
         categories={categories}
-        isOwner={isOwner(user.role)}
+        isOwner={owner}
       />
     </>
   );

@@ -10,9 +10,6 @@ import { formatDate, pluralise } from "@/lib/format";
 import { listAssemblies } from "@/features/assembly/queries";
 import { NewAssemblyButton } from "@/features/assembly/NewAssemblyButton";
 import { listStores } from "@/features/inward/queries";
-import { getLabourRate } from "@/features/assembly/queries";
-import { LabourRateCard } from "@/features/assembly/LabourRateCard";
-import { isOwner } from "@/config/roles";
 
 export const metadata: Metadata = { title: "Assembly" };
 
@@ -26,11 +23,7 @@ export default async function AssemblyListPage() {
     return <EmptyState title="You do not have access to assembly" />;
   }
 
-  const [rows, stores, labourRate] = await Promise.all([
-    listAssemblies(),
-    listStores(),
-    getLabourRate(),
-  ]);
+  const [rows, stores] = await Promise.all([listAssemblies(), listStores()]);
 
   return (
     <>
@@ -38,11 +31,6 @@ export default async function AssemblyListPage() {
         title="Assembly"
         description="Pieces made in-house from raw materials already in stock."
       />
-      {isOwner(user.role) && (
-        <div className="mb-4">
-          <LabourRateCard ratePaise={labourRate} />
-        </div>
-      )}
       <div className="mb-4">
         <NewAssemblyButton stores={stores.map((s) => ({ id: s.id, code: s.code, name: s.name }))} />
       </div>

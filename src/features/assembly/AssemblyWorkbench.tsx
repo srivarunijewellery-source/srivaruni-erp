@@ -70,16 +70,14 @@ export function AssemblyWorkbench({
           <div>
             <p className="font-mono text-sm">{assembly.docNo}</p>
             <p className="text-2xs text-text-muted">
-              {assembly.locationCode} · labour at{" "}
-              {formatPaise(assembly.labourRatePaise)}/hour
+              {assembly.locationCode}
+              {isOwner ? ` · labour at ${formatPaise(assembly.labourRatePaise)}/hour` : ""}
             </p>
           </div>
           <div className="flex items-center gap-2">
             <Badge tone={STATUS_TONE[assembly.status]}>{assembly.status}</Badge>
-            {totalCost > 0 && (
-              <span className="text-sm">
-                cost {formatPaise(totalCost)}
-              </span>
+            {isOwner && totalCost > 0 && (
+              <span className="text-sm">cost {formatPaise(totalCost)}</span>
             )}
           </div>
         </CardBody>
@@ -98,6 +96,7 @@ export function AssemblyWorkbench({
           product={p}
           open={openId === p.id}
           editable={editable}
+          isOwner={isOwner}
           pending={pending}
           onToggle={() => setOpenId(openId === p.id ? null : p.id)}
           onRun={run}
@@ -187,6 +186,7 @@ function ProductBlock({
   product,
   open,
   editable,
+  isOwner,
   pending,
   onToggle,
   onRun,
@@ -195,6 +195,7 @@ function ProductBlock({
   product: AssemblyProduct;
   open: boolean;
   editable: boolean;
+  isOwner: boolean;
   pending: boolean;
   onToggle: () => void;
   onRun: (fn: () => Promise<{ ok: boolean; error?: string }>) => void;
@@ -220,11 +221,13 @@ function ProductBlock({
             {product.components.length === 1 ? "" : "s"}
           </p>
         </div>
-        <div className="text-right">
-          <p className="tnum text-sm">{formatPaise(product.unitLandedPaise)}</p>
-          <p className="text-2xs text-text-subtle">each</p>
-        </div>
-        {missing > 0 && <Badge tone="danger">{missing} uncosted</Badge>}
+        {isOwner && (
+          <div className="text-right">
+            <p className="tnum text-sm">{formatPaise(product.unitLandedPaise)}</p>
+            <p className="text-2xs text-text-subtle">each</p>
+          </div>
+        )}
+        {isOwner && missing > 0 && <Badge tone="danger">{missing} uncosted</Badge>}
         <span className="text-2xs text-text-muted">{open ? "hide" : "open"}</span>
       </CardHeader>
 
@@ -270,7 +273,7 @@ function ProductBlock({
                 className="h-11 w-28 sm:h-9"
               />
             </div>
-            <div className="flex-1 self-end text-right text-2xs text-text-muted">
+            <div className={`flex-1 self-end text-right text-2xs text-text-muted ${isOwner ? "" : "hidden"}`}>
               material {formatPaise(product.unitMaterialPaise)} + labour{" "}
               {formatPaise(product.unitLabourPaise)} ={" "}
               <span className="text-text-primary">
@@ -297,17 +300,19 @@ function ProductBlock({
                       <p className="truncate text-sm">{c.name}</p>
                       <p className="font-mono text-2xs text-text-muted">{c.barcode}</p>
                     </div>
-                    <span
-                      className={`text-2xs ${
-                        c.costSource === "none"
-                          ? "text-status-danger-fg"
-                          : "text-text-muted"
-                      }`}
-                    >
-                      {c.costSource === "none"
-                        ? "no cost known"
-                        : formatPaise(c.unitCostPaise)}
-                    </span>
+                    {isOwner && (
+                      <span
+                        className={`text-2xs ${
+                          c.costSource === "none"
+                            ? "text-status-danger-fg"
+                            : "text-text-muted"
+                        }`}
+                      >
+                        {c.costSource === "none"
+                          ? "no cost known"
+                          : formatPaise(c.unitCostPaise)}
+                      </span>
+                    )}
                     <Input
                       type="number"
                       min={0}

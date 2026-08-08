@@ -98,7 +98,18 @@ export async function listAssemblies(): Promise<AssemblySummary[]> {
   });
 }
 
-export async function getAssembly(id: string): Promise<AssemblyDetail | null> {
+/**
+ * `forOwner` decides whether costs are fetched at all.
+ *
+ * The cost columns are revoked from `authenticated` at the column level,
+ * so naming them in the select above would fail the whole query for
+ * everyone. They come back through assembly_costs(), which checks who is
+ * asking. For staff the fields stay zero and the screen hides them.
+ */
+export async function getAssembly(
+  id: string,
+  forOwner = false,
+): Promise<AssemblyDetail | null> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("assemblies")
@@ -106,10 +117,9 @@ export async function getAssembly(id: string): Promise<AssemblyDetail | null> {
       `id, doc_no, status, labour_rate_paise, note, created_at, submitted_at,
        approved_at, rejected_reason, locations(code),
        assembly_items(id, item_id, qty, labour_hours, line_no,
-         unit_material_paise, unit_labour_paise, unit_landed_paise,
          items(barcode, name, mrp_paise, selling_price_paise,
                categories(name), item_photos(storage_path, is_primary, sort_order)),
-         assembly_components(id, item_id, qty, unit_cost_paise, cost_source, line_no,
+         assembly_components(id, item_id, qty, line_no,
            items(barcode, name, item_photos(storage_path, is_primary, sort_order))))`,
     )
     .eq("id", id)
@@ -118,14 +128,31 @@ export async function getAssembly(id: string): Promise<AssemblyDetail | null> {
   if (error || !data) return null;
 
   type RawComp = {
-    id: string; item_id: string; qty: number; unit_cost_paise: number;
-    cost_source: AssemblyComponent["costSource"]; line_no: number | null; items: unknown;
+    id: string; item_id: string; qty: number; line_no: number | null; items: unknown;
   };
   type RawProd = {
     id: string; item_id: string; qty: number; labour_hours: string | number;
-    line_no: number | null; unit_material_paise: number; unit_labour_paise: number;
-    unit_landed_paise: number; items: unknown; assembly_components: RawComp[];
+    line_no: number | null; items: unknown; assembly_components: RawComp[];
   };
+
+  const prodCost = new Map<string, { m: number; l: number; t: number }>();
+  const compCost = new Map<string, { cost: number; source: AssemblyComponent["costSource"] }>();
+  if (forOwner) {
+    const { data: costs } = await supabase.rpc("assembly_costs", { p_assembly: id });
+    for (const c of (costs ?? []) as Array<Record<string, unknown>>) {
+      prodCost.set(String(c.product_id), {
+        m: Number(c.unit_material_paise ?? 0),
+        l: Number(c.unit_labour_paise ?? 0),
+        t: Number(c.unit_landed_paise ?? 0),
+      });
+      if (c.component_id) {
+        compCost.set(String(c.component_id), {
+          cost: Number(c.component_cost_paise ?? 0),
+          source: (c.component_cost_source ?? "none") as AssemblyComponent["costSource"],
+        });
+      }
+    }
+  }
 
   const products = ((data.assembly_items ?? []) as RawProd[])
     .sort((a, b) => (a.line_no ?? 0) - (b.line_no ?? 0))
@@ -146,9 +173,9 @@ export async function getAssembly(id: string): Promise<AssemblyDetail | null> {
         categoryName: (one(item?.categories) as { name: string } | undefined)?.name ?? "—",
         qty: p.qty,
         labourHours: Number(p.labour_hours ?? 0),
-        unitMaterialPaise: p.unit_material_paise,
-        unitLabourPaise: p.unit_labour_paise,
-        unitLandedPaise: p.unit_landed_paise,
+        unitMaterialPaise: prodCost.get(p.id)?.m ?? 0,
+        unitLabourPaise: prodCost.get(p.id)?.l ?? 0,
+        unitLandedPaise: prodCost.get(p.id)?.t ?? 0,
         mrpPaise: item?.mrp_paise ?? null,
         sellingPricePaise: item?.selling_price_paise ?? null,
         components: (p.assembly_components ?? [])
@@ -164,8 +191,8 @@ export async function getAssembly(id: string): Promise<AssemblyDetail | null> {
               name: ci?.name ?? "Unknown",
               photoPath: photoOf(ci),
               qty: c.qty,
-              unitCostPaise: c.unit_cost_paise,
-              costSource: c.cost_source,
+              unitCostPaise: compCost.get(c.id)?.cost ?? 0,
+              costSource: compCost.get(c.id)?.source ?? "none",
             };
           }),
       };
