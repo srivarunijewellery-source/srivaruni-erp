@@ -43,6 +43,12 @@ export interface LabelGeometry {
   /** Print the item name in capitals whatever case it was typed in. The
    *  stored name is untouched, so search still matches what was typed. */
   uppercaseItems: boolean;
+  /** White space either side of the bars, in Code 128 modules. The spec
+   *  asks for at least 10; below that scanners start missing reads. */
+  quietZoneModules: number;
+  /** How far the symbol keeps away from the crease. A fold through a
+   *  quiet zone ruins a read as surely as trimming through one. */
+  foldClearanceMm: number;
   /** Bold reads better at a counter; regular fits more characters. */
   boldNames: boolean;
   gapMm: number;
@@ -52,6 +58,8 @@ export const DEFAULT_GEOMETRY: LabelGeometry = {
   printAreaMm: DEFAULT_PRINT_AREA_MM,
   foldAtMm: DEFAULT_FOLD_AT_MM,
   uppercaseItems: false,
+  quietZoneModules: 10,
+  foldClearanceMm: 1.2,
   boldNames: true,
   gapMm: DEFAULT_GAP_MM,
 };
@@ -71,5 +79,9 @@ export function clampGeometry(g: Partial<LabelGeometry>): LabelGeometry {
     printAreaMm, foldAtMm, gapMm,
     uppercaseItems: g.uppercaseItems ?? false,
     boldNames: g.boldNames ?? true,
+    // Clamped, not trusted: a quiet zone of zero prints a barcode that
+    // simply will not scan, and nothing on screen would explain why.
+    quietZoneModules: Math.min(20, Math.max(4, g.quietZoneModules ?? 10)),
+    foldClearanceMm: Math.min(8, Math.max(0, g.foldClearanceMm ?? 1.2)),
   };
 }

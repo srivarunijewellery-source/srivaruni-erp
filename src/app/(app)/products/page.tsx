@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { requireUser } from "@/features/auth/session";
 import { listProducts } from "@/features/products/queries";
 import { can } from "@/config/roles";
@@ -28,6 +29,7 @@ export default async function ProductsPage({
     stone?: string;
     vendor?: string;
     status?: string;
+    page?: string;
     location?: string;
     stock?: string;
   }>;
@@ -40,12 +42,16 @@ export default async function ProductsPage({
     stone = "",
     vendor = "",
     status = "",
+    page: pageRaw = "0",
     location = "",
     stock = "",
   } = await searchParams;
 
   const user = await requireUser();
-  const [rows, categories, options, stores, vendors] = await Promise.all([
+  const PAGE = 60;
+  const page = Math.max(0, Number(pageRaw) || 0);
+
+  const [result, categories, options, stores, vendors] = await Promise.all([
     listProducts(q, {
       categoryId: category,
       itemTypeId: itemType,
@@ -55,7 +61,7 @@ export default async function ProductsPage({
       status,
       locationId: location,
       stock,
-    }),
+    }, PAGE, page * PAGE),
     listCategories(),
     listItemFormOptions(),
     listStores(),
@@ -72,6 +78,28 @@ export default async function ProductsPage({
   const types = category
     ? options.itemTypes.filter((t) => t.categoryId === category)
     : options.itemTypes;
+
+  const rows = result.rows;
+  const total = result.total;
+  const pages = Math.ceil(total / PAGE);
+
+  // Keeps every filter when stepping pages, and drops page when a filter
+  // changes — landing on page 7 of a 2-page result reads as "no matches".
+  const qs = (over: Record<string, string>) => {
+    const p = new URLSearchParams({
+      q, category, itemType, plating, stone, vendor, status, location, stock,
+      page: String(page), ...over,
+    });
+    for (const [k, v] of [...p.entries()]) if (!v || (k === "page" && v === "0")) p.delete(k);
+    const str = p.toString();
+    return str ? `${ROUTES.products}?${str}` : ROUTES.products;
+  };
+
+  // Five pages around the current one. A full list at 110 pages is
+  // unusable, and stepping is far more common than jumping.
+  const pageWindow = Array.from({ length: pages }, (_, i) => i).filter(
+    (n) => Math.abs(n - page) <= 2,
+  );
 
   const filtered = Boolean(
     q || category || itemType || plating || stone || vendor || status || location || stock,
@@ -97,7 +125,7 @@ export default async function ProductsPage({
 
       <FilterBar
         basePath={ROUTES.products}
-        value={{ q, category, itemType, plating, stone, vendor, status, location, stock }}
+        value={{ q, category, itemType, plating, stone, vendor, status, location, stock, page: String(page) }}
         searchLabel="Search name or tag"
         searchPlaceholder="Scan a tag or type an item name"
         selects={[
@@ -175,10 +203,54 @@ export default async function ProductsPage({
       ) : (
         <>
           <p className="mb-2 text-2xs text-text-muted">
-            {rows.length} product{rows.length === 1 ? "" : "s"}
-            {rows.length === 200 && " · showing the first 200, narrow the filters to see more"}
+            {total} product{total === 1 ? "" : "s"}
+            {pages > 1 &&
+              ` · showing ${page * PAGE + 1}\u2013${page * PAGE + rows.length}`}
           </p>
+
           <ProductsTable rows={rows} showPricing={canEditPricing} />
+
+          {pages > 1 && (
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+              <span className="text-2xs text-text-muted">
+                Page {page + 1} of {pages}
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {page > 0 && (
+                  <Link
+                    href={qs({ page: String(page - 1) })}
+                    className="rounded-control border border-border px-3 py-1.5 text-2xs hover:border-brand hover:text-brand"
+                  >
+                    Previous
+                  </Link>
+                )}
+                {/* Numbered pages, windowed around the current one: at
+                    110 pages a full list is unusable, and jumping to a
+                    far page is rare compared with stepping. */}
+                {pageWindow.map((n) => (
+                  <Link
+                    key={n}
+                    href={qs({ page: String(n) })}
+                    className={`rounded-control border px-2.5 py-1.5 text-2xs ${
+                      n === page
+                        ? "border-brand bg-brand text-brand-fg"
+                        : "border-border hover:border-brand hover:text-brand"
+                    }`}
+                  >
+                    {n + 1}
+                  </Link>
+                ))}
+                {page + 1 < pages && (
+                  <Link
+                    href={qs({ page: String(page + 1) })}
+                    className="rounded-control border border-border px-3 py-1.5 text-2xs hover:border-brand hover:text-brand"
+                  >
+                    Next
+                  </Link>
+                )}
+              </div>
+            </div>
+          )}
         </>
       )}
     </>

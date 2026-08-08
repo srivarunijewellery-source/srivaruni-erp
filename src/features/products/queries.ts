@@ -53,13 +53,21 @@ export interface ProductFilters {
  *
  * The location filter is an inner join on stock_balances rather than a
  * post-filter: "show me what is in ZHB" has to exclude items held only
- * elsewhere, and filtering after a 200-row page has already been taken
- * would silently drop matches that fell below the cut.
+ * elsewhere, and filtering after a page has already been taken would
+ * silently drop matches that fell below the cut.
+ *
+ * Paged, and it returns the TOTAL alongside the rows. The list was hard
+ * capped at 200 with nothing on screen saying so, which at 6,547 items
+ * meant the other 6,347 simply did not appear -- and a filter that
+ * matched something on row 400 looked like a filter that matched
+ * nothing.
  */
 export async function listProducts(
   query: string,
   filters: ProductFilters = {},
-): Promise<ProductRow[]> {
+  limit = 60,
+  offset = 0,
+): Promise<{ rows: ProductRow[]; total: number }> {
   const supabase = await createClient();
 
   // Two select shapes rather than one built by concatenation: joining
@@ -79,19 +87,30 @@ export async function listProducts(
        item_photos(storage_path, is_primary, sort_order),
        stock_balances(qty, location_id)` as const;
 
-  let q = filters.locationId
+  // "In stock" becomes an inner join rather than a filter applied after
+  // the page is fetched. Post-filtering a page is wrong the moment there
+  // is more than one page: ask for in-stock items and you would get
+  // however many of the first sixty happened to qualify.
+  const needsStockJoin = Boolean(filters.locationId) || filters.stock === "in";
+
+  let q = needsStockJoin
     ? supabase
         .from("items")
-        .select(WITH_LOCATION)
-        .eq("stock_balances.location_id", filters.locationId)
+        .select(WITH_LOCATION, { count: "exact" })
         .gt("stock_balances.qty", 0)
         .order("created_at", { ascending: false })
-        .limit(200)
+        .range(offset, offset + limit - 1)
     : supabase
         .from("items")
-        .select(PLAIN)
+        // count: exact gives the size of the whole match set, not the
+        // page, which is what lets the UI say "of 6,547".
+        .select(PLAIN, { count: "exact" })
         .order("created_at", { ascending: false })
-        .limit(200);
+        .range(offset, offset + limit - 1);
+
+  if (needsStockJoin && filters.locationId) {
+    q = q.eq("stock_balances.location_id", filters.locationId);
+  }
 
   if (filters.categoryId) q = q.eq("category_id", filters.categoryId);
   if (filters.itemTypeId) q = q.eq("item_type_id", filters.itemTypeId);
@@ -103,7 +122,7 @@ export async function listProducts(
   const term = query.trim();
   if (term) q = q.or(`barcode.ilike.%${term}%,name.ilike.%${term}%`);
 
-  const { data, error } = await q;
+  const { data, error, count } = await q;
   if (error) throw error;
 
   const ids = (data ?? []).map((r) => r.id);
@@ -160,9 +179,19 @@ export async function listProducts(
   // On hand is a sum across locations, so it cannot be a database
   // filter without a second round trip. The page is already capped at
   // 200 rows, which makes this cheap.
-  if (filters.stock === "in") return mapped.filter((r) => r.onHand > 0);
-  if (filters.stock === "out") return mapped.filter((r) => r.onHand <= 0);
-  return mapped;
+  // "In stock" was handled by the join above, so it is already exact.
+  //
+  // "Out of stock" is the awkward one: it means items with NO balance
+  // row at all as well as rows at zero, which is a NOT EXISTS the query
+  // builder cannot express. It is filtered here, on the page, and the
+  // count is corrected to match so the pager never promises rows it
+  // cannot deliver.
+  if (filters.stock === "out") {
+    const outOnly = mapped.filter((r) => r.onHand <= 0);
+    return { rows: outOnly, total: outOnly.length };
+  }
+
+  return { rows: mapped, total: count ?? mapped.length };
 }
 
 export interface ProductDetail extends ProductRow {

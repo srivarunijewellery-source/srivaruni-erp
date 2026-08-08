@@ -11,10 +11,21 @@ import {
   MAX_GAP_MM,
 } from "@/features/barcodes/constants";
 
+/**
+ * Zod strips anything the schema does not name.
+ *
+ * That is the right default, and it is also why the CAPITALS setting
+ * saved happily and changed nothing: the flag travelled from the browser
+ * to this route and was quietly discarded here, one layer before the
+ * PDF. Anything the label renderer reads has to be declared.
+ */
 const geometry = z.object({
   printAreaMm: z.number().min(MIN_PRINT_AREA_MM).max(MAX_PRINT_AREA_MM),
   foldAtMm: z.number().min(MIN_FOLD_AT_MM).max(MAX_PRINT_AREA_MM),
   gapMm: z.number().min(MIN_GAP_MM).max(MAX_GAP_MM),
+  uppercaseItems: z.boolean().optional(),
+  boldNames: z.boolean().optional(),
+  quietZoneMm: z.number().min(0).max(8).optional(),
 });
 
 const schema = z.discriminatedUnion("mode", [

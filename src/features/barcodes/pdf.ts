@@ -56,16 +56,18 @@ export interface LabelData {
  * that is 40px of white each side of a 404px symbol, which is exactly
  * the 10X the spec asks for.
  */
-const QUIET_ZONE_MODULES = 10;
 
-async function barcodePng(value: string): Promise<{ bytes: Buffer; w: number; h: number }> {
+async function barcodePng(
+  value: string,
+  quietZoneModules: number,
+): Promise<{ bytes: Buffer; w: number; h: number }> {
   const bytes = await bwipjs.toBuffer({
     bcid: "code128",
     text: value,
     height: 8,
     includetext: false,
     scale: 4,
-    paddingwidth: QUIET_ZONE_MODULES,
+    paddingwidth: quietZoneModules,
   });
   return { bytes, w: bytes.readUInt32BE(16), h: bytes.readUInt32BE(20) };
 }
@@ -104,8 +106,10 @@ export async function generateLabelsPdf(
   items: LabelData[],
   geometry: Partial<LabelGeometry> = {},
 ): Promise<Uint8Array> {
-  const { printAreaMm, foldAtMm, gapMm, uppercaseItems, boldNames } =
-    clampGeometry(geometry);
+  const {
+    printAreaMm, foldAtMm, gapMm, uppercaseItems, boldNames,
+    quietZoneModules, foldClearanceMm,
+  } = clampGeometry(geometry);
 
   const doc = await PDFDocument.create();
   const regular = await doc.embedFont(StandardFonts.Helvetica);
@@ -123,7 +127,7 @@ export async function generateLabelsPdf(
 
   const cache = new Map<string, { bytes: Buffer; w: number; h: number }>();
   for (const item of items) {
-    if (!cache.has(item.barcode)) cache.set(item.barcode, await barcodePng(item.barcode));
+    if (!cache.has(item.barcode)) cache.set(item.barcode, await barcodePng(item.barcode, quietZoneModules));
   }
 
   for (const item of items) {
@@ -150,7 +154,7 @@ export async function generateLabelsPdf(
       // Extra clearance from the fold: the crease sits at the right edge
       // of this panel, and a fold running through the quiet zone ruins
       // the read as surely as trimming through it.
-      const foldClearance = mm(1.2);
+      const foldClearance = mm(foldClearanceMm);
       const barMaxW = leftW - 2 * pad - foldClearance;
       const barW = Math.min((png.w / png.h) * barH, barMaxW);
 

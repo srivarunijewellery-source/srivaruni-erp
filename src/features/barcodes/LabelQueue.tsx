@@ -168,6 +168,9 @@ export function LabelQueue({
       fd.set("gapMm", String(g.gapMm));
       if (g.uppercaseItems) fd.set("uppercaseItems", "on");
       if (g.boldNames) fd.set("boldNames", "on");
+      fd.set("quietZoneModules", String(g.quietZoneModules));
+      fd.set("foldClearanceMm", String(g.foldClearanceMm));
+      if (g.boldNames) fd.set("boldNames", "on");
       const result = await saveLabelSettings(fd);
       if (result.ok) {
         setGeometry(g);
@@ -260,6 +263,51 @@ export function LabelQueue({
               {/* Cased at print time only. The stored name stays exactly
                   as typed, so searching for "cz ear cuffs" still finds it
                   after the tag prints "CZ EAR CUFFS". */}
+              {/* The quiet zone is part of the SYMBOL, not decoration.
+                  Code 128 needs at least ten blank modules either side
+                  or a scanner cannot find where the bars begin. Exposed
+                  because the right value depends on the printer, and a
+                  tag that will not scan should not wait on a code
+                  change. */}
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="text-sm">
+                  Quiet zone (modules)
+                  <input
+                    type="number"
+                    min={4}
+                    max={20}
+                    value={geometry.quietZoneModules ?? 10}
+                    onChange={(e) =>
+                      setGeo({ quietZoneModules: Number(e.target.value) || 10 })
+                    }
+                    className="mt-1 h-9 w-full rounded-control border border-border bg-surface px-2 font-mono text-sm"
+                  />
+                  <span className="block text-2xs text-text-muted">
+                    White space either side of the bars. Ten is the spec
+                    minimum; raise it if scans are missing.
+                  </span>
+                </label>
+
+                <label className="text-sm">
+                  Clearance from the fold (mm)
+                  <input
+                    type="number"
+                    step="0.1"
+                    min={0}
+                    max={8}
+                    value={geometry.foldClearanceMm ?? 1.2}
+                    onChange={(e) =>
+                      setGeo({ foldClearanceMm: Number(e.target.value) || 0 })
+                    }
+                    className="mt-1 h-9 w-full rounded-control border border-border bg-surface px-2 font-mono text-sm"
+                  />
+                  <span className="block text-2xs text-text-muted">
+                    A crease through a quiet zone ruins a read as surely as
+                    trimming through one.
+                  </span>
+                </label>
+              </div>
+
               <label className="flex items-start gap-2 text-sm">
                 <input
                   type="checkbox"
