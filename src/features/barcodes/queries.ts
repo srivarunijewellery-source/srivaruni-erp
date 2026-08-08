@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { byItemCode } from "@/lib/itemOrder";
 
 export interface LabelItem {
   itemId: string;
@@ -74,20 +75,30 @@ export async function getInwardLinesForLabels(inwardId: string): Promise<InwardL
   // rather than guessing at a foreign key column name.
   const { data, error } = await supabase
     .from("inwards")
-    .select(`inward_lines(qty, items(${SELECT}))`)
+    .select(`inward_lines(qty, line_no, items(${SELECT}))`)
     .eq("id", inwardId)
     .maybeSingle();
 
   if (error || !data) return [];
 
-  type Row = { qty: number; items: Parameters<typeof toLabelItem>[0] | Parameters<typeof toLabelItem>[0][] | null };
+  type Row = {
+    qty: number;
+    line_no: number | null;
+    items: Parameters<typeof toLabelItem>[0] | Parameters<typeof toLabelItem>[0][] | null;
+  };
   const lines = (data.inward_lines ?? []) as Row[];
 
   return lines
     .map((r) => {
       const item = Array.isArray(r.items) ? r.items[0] : r.items;
       if (!item) return null;
-      return { item: toLabelItem(item), qty: Number(r.qty ?? 0) };
+      return { item: toLabelItem(item), qty: Number(r.qty ?? 0), lineNo: r.line_no ?? 0 };
     })
-    .filter((x): x is InwardLabelLine => x !== null);
+    .filter((x): x is InwardLabelLine & { lineNo: number } => x !== null)
+    // Code order, the same order the inward document and the pricing
+    // screen use. There was no ordering here at all: the queue came back
+    // in whatever sequence PostgREST returned the embedded rows, so a
+    // strip of tags did not match the document it was printed from.
+    .sort(byItemCode((l) => l.item.barcode, (l) => l.lineNo))
+    .map(({ item, qty }) => ({ item, qty }));
 }

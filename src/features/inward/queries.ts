@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { byItemCode } from "@/lib/itemOrder";
 import type {
   InwardSummary, InwardDetail, VendorOption, Category, StoreLocation,
   ItemFormOptions,
@@ -121,17 +122,16 @@ export async function getInward(id: string): Promise<InwardDetail | null> {
     // Tags come off the printer in code order and get checked against
     // the document in that order, so a list sorted by whoever typed
     // first makes someone hunt up and down the page for every piece.
-    // Numeric where the codes are numeric — SV9 belongs before SV10, and
-    // a plain string sort puts it after SV100.
-    .sort((a, b) => {
-      const ca = (Array.isArray(a.items) ? a.items[0] : a.items)?.barcode ?? "";
-      const cb = (Array.isArray(b.items) ? b.items[0] : b.items)?.barcode ?? "";
-      const byCode = ca.localeCompare(cb, undefined, {
-        numeric: true,
-        sensitivity: "base",
-      });
-      return byCode !== 0 ? byCode : (a.line_no ?? 0) - (b.line_no ?? 0);
-    })
+    //
+    // The comparator lives in lib/itemOrder because the pricing screen
+    // and the label queue have to agree with this one. They did not, and
+    // switching between the document and pricing reshuffled the rows.
+    .sort(
+      byItemCode(
+        (l) => (Array.isArray(l.items) ? l.items[0] : l.items)?.barcode,
+        (l) => l.line_no ?? 0,
+      ),
+    )
     .map((l) => {
       const item = Array.isArray(l.items) ? l.items[0] : l.items;
       const category = item && (Array.isArray(item.categories) ? item.categories[0] : item.categories);

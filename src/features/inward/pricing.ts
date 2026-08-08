@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { byItemCode } from "@/lib/itemOrder";
 import type { Paise } from "@/types/domain";
 
 /**
@@ -132,11 +133,25 @@ export async function getPricingLines(inwardId: string): Promise<PricingLine[]> 
 
   if (error) throw error;
 
+  // Item code order, the same order the document view uses.
+  //
+  // line_no is entry order — whoever unpacked the carton typed them in
+  // whatever sequence the pieces came out of it. The document sorts by
+  // code, so entering pricing reshuffled every row against a tray that
+  // is physically in code order. The line_no query order above is kept
+  // as the tiebreak for two lines carrying the same code.
+  const rows = [...(data ?? [])].sort(
+    byItemCode(
+      (r) => pick(r.items)?.barcode,
+      (r) => r.line_no ?? 0,
+    ),
+  );
+
   // Resolve attribute labels in one round trip rather than per line.
   // The pricing screen shows these as tags on every row, so N+1 lookups
   // here would be N+1 hops to Mumbai.
   const attrIds = new Set<string>();
-  for (const l of data ?? []) {
+  for (const l of rows) {
     const it = pick(l.items);
     for (const id of [it?.colour_id, it?.plating_id, it?.stone_id, it?.size_id]) {
       if (id) attrIds.add(id);
@@ -155,7 +170,7 @@ export async function getPricingLines(inwardId: string): Promise<PricingLine[]> 
   const label = (id: string | null | undefined) =>
     id ? attrNames.get(id) ?? null : null;
 
-  return (data ?? []).map((l) => {
+  return rows.map((l) => {
     const item = pick(l.items);
     const category = pick(item?.categories);
     const cost = pick(l.inward_line_costs);

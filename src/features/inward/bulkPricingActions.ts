@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { byItemCode } from "@/lib/itemOrder";
 import { err, ok, toMessage, type Result } from "@/lib/result";
 import { revalidateInwardCosts } from "./costCache";
 
@@ -39,7 +40,12 @@ export interface BulkOutcome {
 interface LineRow {
   id: string;
   item_id: string;
-  items: { name: string; mrp_paise: number | null; gst_rate: number } | null;
+  items: {
+    name: string;
+    barcode: string | null;
+    mrp_paise: number | null;
+    gst_rate: number;
+  } | null;
   inward_line_costs: { rate_paise: number | null } | null;
 }
 
@@ -53,14 +59,23 @@ async function loadLines(inwardId: string) {
     .from("inward_lines")
     .select(
       `id, item_id,
-       items(name, mrp_paise, gst_rate),
+       items(name, barcode, mrp_paise, gst_rate),
        inward_line_costs(rate_paise)`,
     )
     .eq("inward_id", inwardId)
     .order("created_at");
 
   if (error) return { supabase, lines: null as LineRow[] | null, error };
-  return { supabase, lines: (data ?? []) as unknown as LineRow[], error: null };
+
+  // Same item-code order as the document and the pricing screen. The
+  // work these actions do is order-independent — every line is keyed by
+  // id — but the "needs attention" list they hand back is read against
+  // the tray, so it has to run in the same order as everything else.
+  const lines = ((data ?? []) as unknown as LineRow[]).sort(
+    byItemCode((l) => one(l.items)?.barcode),
+  );
+
+  return { supabase, lines, error: null };
 }
 
 
