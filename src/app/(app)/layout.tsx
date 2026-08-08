@@ -19,11 +19,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <AppNav user={session.user} />
       <main className="mx-auto w-full max-w-6xl px-4 py-6">{children}</main>
 
-      {/* Sits in the app, not on the customer's receipt — nobody buying
-          earrings needs to know who wrote the software. */}
-      <footer className="mx-auto w-full max-w-6xl px-4 pb-8 pt-2">
-        <p className="border-t border-border pt-3 text-center text-2xs italic text-text-subtle">
-          Conceptualised, designed and developed by Satwik Beernelly with Claude
+      {/* A maker's mark, not a credit roll. Bottom right, faint, no
+          rule above it — there if you look, invisible if you are working. */}
+      <footer className="mx-auto w-full max-w-6xl px-4 pb-6">
+        <p
+          className="text-right text-2xs italic text-text-subtle/60"
+          title="Conceptualised, designed and developed by Satwik Beernelly with Claude"
+        >
+          SB × Claude
         </p>
       </footer>
     </div>

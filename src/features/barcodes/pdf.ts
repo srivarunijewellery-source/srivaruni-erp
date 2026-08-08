@@ -104,7 +104,8 @@ export async function generateLabelsPdf(
   items: LabelData[],
   geometry: Partial<LabelGeometry> = {},
 ): Promise<Uint8Array> {
-  const { printAreaMm, foldAtMm, gapMm, uppercaseItems } = clampGeometry(geometry);
+  const { printAreaMm, foldAtMm, gapMm, uppercaseItems, boldNames } =
+    clampGeometry(geometry);
 
   const doc = await PDFDocument.create();
   const regular = await doc.embedFont(StandardFonts.Helvetica);
@@ -263,8 +264,13 @@ export async function generateLabelsPdf(
       // search stops matching what people search for.
       const printedName = uppercaseItems ? item.name.toUpperCase() : item.name;
 
-      for (const line of wrap(printedName, bold, nameSize, rMaxW, Math.min(2, maxNameLines))) {
-        page.drawText(line, { x: rx, y: ny, size: nameSize, font: bold, color: rgb(0, 0, 0) });
+      // Bold reads better across a counter but eats width, so a long
+      // name wraps sooner. Measured with the SAME font it is drawn in,
+      // or the wrap points come out wrong and text overruns the panel.
+      const nameFont = boldNames ? bold : regular;
+
+      for (const line of wrap(printedName, nameFont, nameSize, rMaxW, Math.min(2, maxNameLines))) {
+        page.drawText(line, { x: rx, y: ny, size: nameSize, font: nameFont, color: rgb(0, 0, 0) });
         ny -= nameSize + 0.8;
       }
     }

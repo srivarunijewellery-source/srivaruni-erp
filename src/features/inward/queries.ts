@@ -116,7 +116,22 @@ export async function getInward(id: string): Promise<InwardDetail | null> {
   const location = Array.isArray(data.locations) ? data.locations[0] : data.locations;
 
   const lines = ((data.inward_lines ?? []) as RawLine[])
-    .sort((a, b) => (a.line_no ?? 0) - (b.line_no ?? 0))
+    // Item code order, not entry order.
+    //
+    // Tags come off the printer in code order and get checked against
+    // the document in that order, so a list sorted by whoever typed
+    // first makes someone hunt up and down the page for every piece.
+    // Numeric where the codes are numeric — SV9 belongs before SV10, and
+    // a plain string sort puts it after SV100.
+    .sort((a, b) => {
+      const ca = (Array.isArray(a.items) ? a.items[0] : a.items)?.barcode ?? "";
+      const cb = (Array.isArray(b.items) ? b.items[0] : b.items)?.barcode ?? "";
+      const byCode = ca.localeCompare(cb, undefined, {
+        numeric: true,
+        sensitivity: "base",
+      });
+      return byCode !== 0 ? byCode : (a.line_no ?? 0) - (b.line_no ?? 0);
+    })
     .map((l) => {
       const item = Array.isArray(l.items) ? l.items[0] : l.items;
       const category = item && (Array.isArray(item.categories) ? item.categories[0] : item.categories);

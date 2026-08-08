@@ -167,6 +167,7 @@ export function LabelQueue({
       fd.set("foldAtMm", String(g.foldAtMm));
       fd.set("gapMm", String(g.gapMm));
       if (g.uppercaseItems) fd.set("uppercaseItems", "on");
+      if (g.boldNames) fd.set("boldNames", "on");
       const result = await saveLabelSettings(fd);
       if (result.ok) {
         setGeometry(g);
@@ -271,6 +272,22 @@ export function LabelQueue({
                   <span className="block text-2xs text-text-muted">
                     Evens out a catalogue typed by different people, without
                     changing the stored name.
+                  </span>
+                </span>
+              </label>
+
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 size-4 accent-[var(--color-brand)]"
+                  checked={geometry.boldNames ?? true}
+                  onChange={(e) => setGeo({ boldNames: e.target.checked })}
+                />
+                <span>
+                  Bold item names
+                  <span className="block text-2xs text-text-muted">
+                    Easier to read across a counter, but wider — a long name
+                    wraps to a second line sooner.
                   </span>
                 </span>
               </label>

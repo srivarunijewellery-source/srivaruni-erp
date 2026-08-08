@@ -25,9 +25,15 @@ export function DocumentPricingBar({
   inwardId,
   bands,
   vendor,
+  selectedLineIds = [],
+  selectedLabel,
 }: {
   inwardId: string;
   bands: PriceBand[];
+  /** Tick lines below to price only those. Empty means the whole
+   *  document — a carton is rarely one band all the way through. */
+  selectedLineIds?: string[];
+  selectedLabel?: string;
   vendor: {
     name: string;
     pricingMode: "code_multiple" | "serial_list" | "manual";
@@ -118,11 +124,28 @@ export function DocumentPricingBar({
         <Button
           type="button"
           disabled={pending || !bandId}
-          onClick={() => run(() => applyBandToDocument(inwardId, bandId, mode, replaceExisting))}
+          onClick={() =>
+            run(() =>
+              applyBandToDocument(
+                inwardId, bandId, mode, replaceExisting, selectedLineIds,
+              ),
+            )
+          }
         >
-          Apply to all lines
+          {selectedLineIds.length > 0
+            ? `Apply to ${selectedLineIds.length} selected`
+            : "Apply to all lines"}
         </Button>
       </div>
+
+      {selectedLineIds.length > 0 && (
+        <p className="rounded-control bg-brand-subtle px-3 py-1.5 text-2xs text-brand">
+          Only the {selectedLineIds.length} ticked line
+          {selectedLineIds.length === 1 ? "" : "s"} will be priced
+          {selectedLabel ? ` — ${selectedLabel}` : ""}. Untick everything to
+          price the whole document.
+        </p>
+      )}
 
       <label className="flex items-center gap-2 text-sm">
         <input

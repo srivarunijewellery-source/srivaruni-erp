@@ -189,12 +189,27 @@ export async function applyBandToDocument(
   bandId: string,
   mode: "rules_first" | "override",
   replaceExisting = false,
+  /**
+   * Which lines to touch. Empty means the whole document.
+   *
+   * A carton is rarely one band all the way through — the chokers price
+   * differently from the studs that came with them. Without this the
+   * only options were "all of it" or thirty separate decisions, and the
+   * second is how a tray ends up with two prices for the same design.
+   */
+  onlyLineIds: string[] = [],
 ): Promise<Result<BulkOutcome>> {
   if (!bandId) return err("Choose a band first.");
 
-  const { supabase, lines, error } = await loadLines(inwardId);
-  if (error || !lines) return err(toMessage(error));
-  if (lines.length === 0) return err("This document has no lines.");
+  const { supabase, lines: allLines, error } = await loadLines(inwardId);
+  if (error || !allLines) return err(toMessage(error));
+  if (allLines.length === 0) return err("This document has no lines.");
+
+  const wanted = new Set(onlyLineIds);
+  const lines = wanted.size > 0
+    ? allLines.filter((l) => wanted.has(l.id))
+    : allLines;
+  if (lines.length === 0) return err("None of those lines are on this document.");
 
   const out: BulkLineOutcome[] = [];
   let applied = 0, leftAsTyped = 0, refused = 0;

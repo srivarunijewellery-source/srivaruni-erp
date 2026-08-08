@@ -10,7 +10,7 @@ export async function getLabelSettings(): Promise<LabelGeometry> {
   const supabase = await createClient();
   const { data } = await supabase
     .from("label_settings")
-    .select("print_area_mm, fold_at_mm, gap_mm, uppercase_items")
+    .select("print_area_mm, fold_at_mm, gap_mm, uppercase_items, bold_names")
     .maybeSingle();
 
   return clampGeometry({
@@ -18,5 +18,6 @@ export async function getLabelSettings(): Promise<LabelGeometry> {
     foldAtMm: data ? Number(data.fold_at_mm) : undefined,
     gapMm: data ? Number(data.gap_mm) : undefined,
     uppercaseItems: Boolean(data?.uppercase_items ?? false),
+    boldNames: Boolean(data?.bold_names ?? true),
   });
 }

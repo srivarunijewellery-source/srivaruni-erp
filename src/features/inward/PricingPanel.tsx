@@ -68,6 +68,16 @@ export function PricingPanel({
 }) {
   const [unlocked, setUnlocked] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  // Which lines a band applies to. Empty means the whole document.
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const toggle = (id: string) =>
+    setPicked((p) => {
+      const n = new Set(p);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+
   const [editingAttrs, setEditingAttrs] = useState<PricingLine | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -157,12 +167,43 @@ export function PricingPanel({
         </p>
       )}
 
-      <DocumentPricingBar inwardId={inwardId} bands={bands} vendor={vendorPricing} />
+      <DocumentPricingBar
+        inwardId={inwardId}
+        bands={bands}
+        vendor={vendorPricing}
+        selectedLineIds={[...picked]}
+        selectedLabel={
+          picked.size === 1
+            ? lines.find((l) => picked.has(l.lineId))?.name
+            : undefined
+        }
+      />
 
       <div className="overflow-x-auto rounded-card border border-border bg-surface">
         <table className="w-full border-collapse text-sm">
           <thead>
             <tr className="border-b border-border bg-surface-sunken">
+              <Th className="w-[34px]">
+                {/* Select-all, so "price these twenty studs" is two taps
+                    rather than twenty. */}
+                <input
+                  type="checkbox"
+                  aria-label="Select every line"
+                  className="size-4 accent-[var(--color-brand)]"
+                  checked={picked.size > 0 && picked.size === lines.length}
+                  ref={(el) => {
+                    if (el) el.indeterminate =
+                      picked.size > 0 && picked.size < lines.length;
+                  }}
+                  onChange={(e) =>
+                    setPicked(
+                      e.target.checked
+                        ? new Set(lines.map((l) => l.lineId))
+                        : new Set(),
+                    )
+                  }
+                />
+              </Th>
               <Th className="w-[36px]">#</Th>
               <Th className="w-[48px]" />
               <Th className="min-w-[200px]">Item</Th>
@@ -182,6 +223,8 @@ export function PricingPanel({
                 key={`${line.lineId}:${line.ratePaise ?? ""}:${line.mrpPaise ?? ""}:${line.sellingPricePaise ?? ""}`}
                 index={i + 1}
                 line={line}
+                picked={picked.has(line.lineId)}
+                onPick={() => toggle(line.lineId)}
                 inwardId={inwardId}
                 categories={options.categories}
                 onAttrs={() => setEditingAttrs(line)}
@@ -207,6 +250,8 @@ export function PricingPanel({
 function Row({
   index,
   line,
+  picked,
+  onPick,
   inwardId,
   categories,
   onAttrs,
@@ -214,6 +259,8 @@ function Row({
 }: {
   index: number;
   line: PricingLine;
+  picked: boolean;
+  onPick: () => void;
   inwardId: string;
   categories: Array<{ id: string; name: string }>;
   onAttrs: () => void;
@@ -334,6 +381,15 @@ function Row({
 
   return (
     <tr className={`border-b border-border last:border-0 ${pending ? "opacity-60" : ""}`}>
+      <td className="px-2 py-1.5">
+        <input
+          type="checkbox"
+          aria-label={`Select ${line.name}`}
+          className="size-4 accent-[var(--color-brand)]"
+          checked={picked}
+          onChange={onPick}
+        />
+      </td>
       <td className="px-2 py-1.5 text-2xs text-text-subtle">{index}</td>
       <td className="px-2 py-1.5">
         <PhotoThumb src={itemPhotoUrl(line.photoPath)} alt={line.name} size={40} />
