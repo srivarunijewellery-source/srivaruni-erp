@@ -8,6 +8,7 @@ import { formatPaise, parseRupeesToPaise } from "@/lib/money";
 import { formatDate } from "@/lib/format";
 import { saveCreditNote } from "./actions";
 import type { CreditNote, OpenBill } from "./queries";
+import { todayIso } from "@/lib/dates";
 
 /**
  * Credit notes against a vendor.
@@ -29,7 +30,7 @@ export function CreditNotesCard({
 }) {
   const [open, setOpen] = useState(false);
   const [noteNo, setNoteNo] = useState("");
-  const [noteDate, setNoteDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [noteDate, setNoteDate] = useState(() => todayIso());
   const [amount, setAmount] = useState("");
   const [reason, setReason] = useState("");
   const [inwardId, setInwardId] = useState("");

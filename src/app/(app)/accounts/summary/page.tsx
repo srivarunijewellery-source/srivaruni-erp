@@ -11,13 +11,9 @@ import { listStores } from "@/features/inward/queries";
 import { getFinanceSummary } from "@/features/finance/queries";
 import { SummaryCards } from "@/features/finance/SummaryCards";
 import { DateRangeBar } from "@/features/dashboard/DateRangeBar";
+import { monthStart, todayIso } from "@/lib/dates";
 
 export const metadata: Metadata = { title: "Financial summary" };
-
-function monthStart(): string {
-  const d = new Date();
-  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
-}
 
 export default async function FinanceSummaryPage({
   searchParams,
@@ -35,8 +31,8 @@ export default async function FinanceSummaryPage({
   }
 
   const sp = await searchParams;
-  const from = sp.from || monthStart();
-  const to = sp.to || new Date().toISOString().slice(0, 10);
+  const from = sp.from || monthStart(todayIso());
+  const to = sp.to || todayIso();
   const location = sp.location || "";
 
   const [summary, stores] = await Promise.all([

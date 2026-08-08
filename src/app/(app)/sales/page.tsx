@@ -11,10 +11,9 @@ import {
 } from "@/features/pos/dashboard-queries";
 import { listSellers } from "@/features/pos/queries";
 import { SalesDashboard } from "@/features/pos/SalesDashboard";
+import { defaultTodayRange, parseDateRange } from "@/lib/dates";
 
 export const metadata: Metadata = { title: "Sales" };
-
-const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 export default async function SalesPage({
   searchParams,
@@ -34,9 +33,12 @@ export default async function SalesPage({
   }
 
   const sp = await searchParams;
-  const today = new Date().toISOString().slice(0, 10);
-  const start = sp.from && DATE.test(sp.from) ? sp.from : today;
-  const end = sp.to && DATE.test(sp.to) ? sp.to : today;
+  // Real calendar validation in store time, same as the reports. The old
+  // regex accepted 2026-13-45 and a half-typed year, and toISOString()
+  // put "today" a day out for anyone west of Greenwich.
+  const range = parseDateRange(sp.from, sp.to, defaultTodayRange(), { maxDays: 400 });
+  const start = range.from;
+  const end = range.to;
 
   const filters = {
     location: sp.location ?? "",
@@ -48,7 +50,10 @@ export default async function SalesPage({
   const [branches, registers, recent, sellers, staffList] = await Promise.all([
     getSalesSummary(start, end),
     getRegisterStatus(),
-    listRecentBills(100, { from: start, to: end, ...filters }),
+    // 500, not 100: this is the invoice register, and "the last hundred"
+    // silently hid older bills inside a date range that clearly asked
+    // for them.
+    listRecentBills(500, { from: start, to: end, ...filters }),
     getSalespersonReport(start, end),
     listSellers(user.locationId ?? ""),
   ]);

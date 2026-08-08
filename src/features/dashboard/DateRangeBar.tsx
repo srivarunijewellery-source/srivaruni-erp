@@ -3,7 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Card, CardBody } from "@/components/ui/Card";
-import { isoOf, isValidIsoDate } from "@/lib/dates";
+import { RangeCalendar } from "@/components/ui/RangeCalendar";
+import { isoOf } from "@/lib/dates";
 
 /**
  * The window everything on the page is measured over.
@@ -135,37 +136,16 @@ export function DateRangeBar({
         </div>
 
         {custom && (
-          <div className="flex flex-wrap items-center gap-2 border-t border-border pt-2.5">
-            {/* Uncontrolled, committing on blur. Controlled + onChange
-                fired a navigation per edited segment; a no-op onChange
-                would have frozen the field instead. `key` resets it when
-                the server settles on a different range. */}
-            <input
-              key={`from-${from}`}
-              type="date"
-              defaultValue={from}
-              max={to || undefined}
-              disabled={pending}
-              onBlur={(e) => {
-                if (isValidIsoDate(e.target.value) && e.target.value !== from) {
-                  go(e.target.value, to);
-                }
+          <div className="relative border-t border-border pt-2.5">
+            <RangeCalendar
+              from={from}
+              to={to}
+              maxIso={iso(new Date())}
+              onClose={() => setCustom(false)}
+              onPick={(f, t) => {
+                setCustom(false);
+                go(f, t);
               }}
-              className="h-9 rounded-control border border-border bg-surface px-2 font-mono text-sm"
-            />
-            <span className="text-2xs text-text-muted">to</span>
-            <input
-              key={`to-${to}`}
-              type="date"
-              defaultValue={to}
-              min={from || undefined}
-              disabled={pending}
-              onBlur={(e) => {
-                if (isValidIsoDate(e.target.value) && e.target.value !== to) {
-                  go(from, e.target.value);
-                }
-              }}
-              className="h-9 rounded-control border border-border bg-surface px-2 font-mono text-sm"
             />
           </div>
         )}

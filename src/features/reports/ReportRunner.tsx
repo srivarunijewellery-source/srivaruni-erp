@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Input, Label, Select } from "@/components/ui/Field";
 import { fetchReport } from "./actions";
 import type { ReportDef, ReportRow } from "./queries";
+import { isoOf, todayIso } from "@/lib/dates";
 
 /**
  * Pick a report, a window, and the columns you want. Look at it, take it
@@ -22,12 +23,12 @@ export function ReportRunner({
   catalog: ReportDef[];
   branches: Array<{ id: string; code: string; name: string }>;
 }) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayIso();
   const monthStart = new Date();
   monthStart.setDate(1);
 
   const [key, setKey] = useState(catalog[0]?.key ?? "");
-  const [from, setFrom] = useState(monthStart.toISOString().slice(0, 10));
+  const [from, setFrom] = useState(isoOf(monthStart));
   const [to, setTo] = useState(today);
   const [branch, setBranch] = useState("");
   const [rows, setRows] = useState<ReportRow[] | null>(null);
@@ -81,8 +82,8 @@ export function ReportRunner({
     const end = new Date();
     const st = new Date();
     st.setDate(st.getDate() - days);
-    setFrom(st.toISOString().slice(0, 10));
-    setTo(end.toISOString().slice(0, 10));
+    setFrom(isoOf(st));
+    setTo(isoOf(end));
   };
 
   const isMoney = (c: string) =>

@@ -10,6 +10,7 @@ import { formatDate, pluralise } from "@/lib/format";
 import { LEAVE_KINDS } from "./constants";
 import { requestLeave, decideLeave } from "./actions";
 import type { LeaveRequest, StaffMember } from "./queries";
+import { todayIso } from "@/lib/dates";
 
 const STATUS_TONE = {
   pending: "pending",
@@ -18,7 +19,7 @@ const STATUS_TONE = {
   cancelled: "neutral",
 } as const;
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => todayIso();
 
 export function LeaveBoard({
   requests,

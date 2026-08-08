@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/Badge";
 import { formatPaise } from "@/lib/money";
 import { postManualJournal } from "./actions";
 import type { LedgerAccount } from "./queries";
+import { todayIso } from "@/lib/dates";
 
 interface Line {
   account: string;
@@ -72,7 +73,7 @@ export function ManualJournalForm({ accounts }: { accounts: LedgerAccount[] }) {
   const [open, setOpen] = useState(false);
 
   const [narration, setNarration] = useState("");
-  const [entryDate, setEntryDate] = useState(new Date().toISOString().slice(0, 10));
+  const [entryDate, setEntryDate] = useState(todayIso());
   const [lines, setLines] = useState<Line[]>([{ ...EMPTY }, { ...EMPTY }]);
 
   const { totalDr, totalCr, diff } = useMemo(() => {

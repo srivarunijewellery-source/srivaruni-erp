@@ -8,6 +8,7 @@ import {
   listStaff,
   type AttendanceEntry,
 } from "@/features/staff/queries";
+import { todayIso } from "@/lib/dates";
 import {
   AttendanceRegister,
   RegisterDatePicker,
@@ -27,7 +28,7 @@ export default async function AttendancePage({
 
   const { on } = await searchParams;
   const date =
-    on && /^\d{4}-\d{2}-\d{2}$/.test(on) ? on : new Date().toISOString().slice(0, 10);
+    on && /^\d{4}-\d{2}-\d{2}$/.test(on) ? on : todayIso();
 
   const [staff, existingMap] = await Promise.all([
     listStaff(false),

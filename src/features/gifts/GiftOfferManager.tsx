@@ -12,9 +12,10 @@ import { formatDate } from "@/lib/format";
 import { searchItemsForLabels } from "@/features/barcodes/actions";
 import { saveGiftOffer, setGiftOfferActive } from "./actions";
 import type { GiftOffer } from "./queries";
+import { addDays, todayIso } from "@/lib/dates";
 
-const today = () => new Date().toISOString().slice(0, 10);
-const inDays = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+const today = () => todayIso();
+const inDays = (n: number) => addDays(todayIso(), n);
 
 export function GiftOfferManager({
   offers,

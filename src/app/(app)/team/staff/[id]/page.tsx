@@ -19,6 +19,7 @@ import { PayPanel } from "@/features/staff/PerformancePanels";
 import { LoginPanel } from "@/features/staff/LoginPanel";
 import { RolePanel } from "@/features/staff/RolePanel";
 import { listRoles } from "@/features/roles/queries";
+import { isoOf, todayIso } from "@/lib/dates";
 
 export const metadata: Metadata = { title: "Team member" };
 
@@ -47,8 +48,8 @@ export default async function StaffDetailPage({
 
   const from = new Date();
   from.setDate(from.getDate() - 45);
-  const fromIso = from.toISOString().slice(0, 10);
-  const toIso = new Date().toISOString().slice(0, 10);
+  const fromIso = isoOf(from);
+  const toIso = todayIso();
 
   const [history, leave, compensation, targets, roles] = await Promise.all([
     getAttendanceHistory(id, fromIso, toIso),

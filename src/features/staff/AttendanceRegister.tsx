@@ -159,7 +159,7 @@ export function AttendanceRegister({
     );
   }
 
-  const isFuture = date > new Date().toISOString().slice(0, 10);
+  const isFuture = date > todayIso();
   const unsaved = Object.values(rows).some((r) => r.dirty);
   const marked = staff.filter((s) => existing[s.id]).length;
 

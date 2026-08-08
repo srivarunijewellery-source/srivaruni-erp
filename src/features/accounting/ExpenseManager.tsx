@@ -10,8 +10,9 @@ import { formatPaise } from "@/lib/money";
 import { formatDate } from "@/lib/format";
 import { recordExpense, reverseExpense } from "./actions";
 import type { ExpenseRow, LedgerAccount, TaxRate } from "./queries";
+import { todayIso } from "@/lib/dates";
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => todayIso();
 
 export function ExpenseManager({
   expenses,

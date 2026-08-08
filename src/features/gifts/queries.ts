@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { todayIso } from "@/lib/dates";
 
 export interface GiftOffer {
   id: string;
@@ -38,7 +39,7 @@ export async function listGiftOffers(): Promise<GiftOffer[]> {
     for (const r of rows ?? []) if (!photos.has(r.item_id)) photos.set(r.item_id, r.storage_path);
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayIso();
 
   return (data ?? []).map((g) => {
     const item = Array.isArray(g.items) ? g.items[0] : g.items;

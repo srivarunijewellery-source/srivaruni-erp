@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { ROUTES } from "@/config/nav";
 import { err, ok, toMessage, type Result } from "@/lib/result";
 import { pokeDispatch } from "@/lib/comms/poke";
+import { todayIso } from "@/lib/dates";
 
 const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim() || null;
 const bool = (fd: FormData, k: string) => {
@@ -138,7 +139,7 @@ export async function cancelMessage(id: string): Promise<Result> {
 export async function runScheduledEvents(): Promise<Result<string>> {
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("queue_scheduled_events", {
-    p_on: new Date().toISOString().slice(0, 10),
+    p_on: todayIso(),
     p_force: true,
   });
   if (error) return err(toMessage(error));

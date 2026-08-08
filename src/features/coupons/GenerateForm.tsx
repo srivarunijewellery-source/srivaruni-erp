@@ -7,10 +7,11 @@ import { Button } from "@/components/ui/Button";
 import { Input, Label, Select, FieldError } from "@/components/ui/Field";
 import { generateCoupons } from "./actions";
 import { ROUTES } from "@/config/nav";
+import { addDays, todayIso } from "@/lib/dates";
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => todayIso();
 const inDays = (n: number) =>
-  new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+  addDays(todayIso(), n);
 
 export function GenerateForm() {
   const router = useRouter();

@@ -25,6 +25,7 @@ import {
 import { TrendChart } from "@/features/dashboard/TrendChart";
 import { PivotTable } from "@/features/dashboard/PivotTable";
 import { SoldItemsGrid } from "@/features/dashboard/SoldItemsGrid";
+import { isoOf, todayIso } from "@/lib/dates";
 
 export const metadata: Metadata = { title: "Dashboard" };
 
@@ -40,7 +41,7 @@ function monthsAgo(n: number): string {
   const d = new Date();
   d.setMonth(d.getMonth() - n);
   d.setDate(1);
-  return d.toISOString().slice(0, 10);
+  return isoOf(d);
 }
 
 export default async function DashboardPage({
@@ -87,7 +88,7 @@ export default async function DashboardPage({
   // the window was just too narrow to show it. A year is the span an
   // owner actually thinks in, and it covers a full festive cycle.
   const from = sp.from || monthsAgo(12);
-  const to = sp.to || new Date().toISOString().slice(0, 10);
+  const to = sp.to || todayIso();
   const location = sp.location || "";
   const grain = (GRAINS.includes(sp.grain as Grain) ? sp.grain : "month") as Grain;
   const dimension = (DIMENSIONS.some((d) => d.key === sp.dimension)

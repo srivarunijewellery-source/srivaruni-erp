@@ -16,6 +16,7 @@ import { BillPeek } from "@/features/sales/BillPeek";
 import { CustomerPeek } from "@/features/customers/CustomerPeek";
 import { BillsBehind, type DrillSpec } from "./BillsBehind";
 import { BillSellerEditor } from "./BillSellerEditor";
+import { ReprintButton } from "./ReprintButton";
 import type { Seller } from "./queries";
 import type {
   BranchSales,
@@ -511,6 +512,10 @@ export function SalesDashboard({
                       Salesman
                     </Button>
                   )}
+                  {/* A cancelled bill can still be reprinted -- the slip
+                      marks itself CANCELLED, which is exactly what you
+                      want when someone turns up holding one. */}
+                  <ReprintButton billId={r.id} billNo={r.billNo} />
                 </li>
               ))}
             </ul>

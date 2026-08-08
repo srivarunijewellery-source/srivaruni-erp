@@ -18,6 +18,7 @@ import { listRuleScopeOptions } from "@/features/pricing/queries";
 import { listItemFormOptions } from "@/features/inward/queries";
 import { SchemeForm } from "@/features/discounts/SchemeForm";
 import { Simulator } from "@/features/discounts/Simulator";
+import { todayIso } from "@/lib/dates";
 
 export const metadata: Metadata = { title: "Discounts" };
 
@@ -51,7 +52,7 @@ export default async function DiscountsPage({
     listItemFormOptions(),
   ]);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayIso();
 
   return (
     <>

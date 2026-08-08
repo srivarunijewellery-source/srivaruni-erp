@@ -13,6 +13,7 @@ import { formatPaise } from "@/lib/money";
 import { formatDate } from "@/lib/format";
 import { saveCompensation, saveTarget } from "./actions";
 import type { CompensationRow, MonthReportRow, TargetRow } from "./queries";
+import { todayIso } from "@/lib/dates";
 
 export function PerformanceTable({
   rows,
@@ -189,7 +190,7 @@ export function PayPanel({
                     id="effectiveFrom"
                     name="effectiveFrom"
                     type="date"
-                    defaultValue={new Date().toISOString().slice(0, 10)}
+                    defaultValue={todayIso()}
                     required
                   />
                 </div>

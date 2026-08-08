@@ -8,6 +8,7 @@ import { Input, NarrowInput, Label, Select, FieldError } from "@/components/ui/F
 import { formatPaise, parseRupeesToPaise } from "@/lib/money";
 import { formatDate } from "@/lib/format";
 import type { PaymentAccount, VendorBalanceRow, OpenBill } from "./queries";
+import { todayIso } from "@/lib/dates";
 
 /**
  * Records a payment and, optionally, sets it against specific bills.
@@ -171,7 +172,7 @@ export function PaymentForm({
                 id="paidOn"
                 name="paidOn"
                 type="date"
-                defaultValue={new Date().toISOString().slice(0, 10)}
+                defaultValue={todayIso()}
               />
             </div>
             <div>

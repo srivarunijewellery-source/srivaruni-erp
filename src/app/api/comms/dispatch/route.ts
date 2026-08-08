@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { drainOutbox } from "@/lib/comms/drain";
+import { todayIso } from "@/lib/dates";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -42,7 +43,7 @@ async function handle(request: Request) {
   const isDaily = url.searchParams.get("scheduled") === "1";
 
   if (isDaily) {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayIso();
 
     const { error } = await supabase.rpc("queue_scheduled_events", {
       p_on: today,

@@ -10,6 +10,7 @@ import { FieldError, Input, Label, Select } from "@/components/ui/Field";
 import { parseRupeesToPaise } from "@/lib/money";
 import { parsePercentToBps } from "@/lib/pricing";
 import { saveScheme } from "./actions";
+import { todayIso } from "@/lib/dates";
 import type {
   AttributeOption, Category, DiscountScope, DiscountValueKind,
   ItemTypeOption, StoreLocation, DiscountScheme } from "@/types/domain";
@@ -62,7 +63,7 @@ export function SchemeForm({
   editing?: DiscountScheme | null;
 }) {
   const router = useRouter();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayIso();
 
   /**
    * Loaded from the scheme being edited, or blank for a new one.
