@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
@@ -9,7 +10,7 @@ import { PhotoThumb } from "@/components/ui/PhotoThumb";
 import { itemPhotoUrl } from "@/lib/storage";
 import { formatPaise } from "@/lib/money";
 import {
-  setComponentCost, approveAssembly, rejectAssembly, reopenAssembly,
+  setComponentCost, approveAssembly, rejectAssembly, reopenAssembly, dismantleAssembly,
   saveAssemblyPrice, suggestAssemblyPrice, applyBandToAssembly,
   type AssemblyBandOutcome,
 } from "./actions";
@@ -41,6 +42,16 @@ export function AssemblyPricingPanel({
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
+  /**
+   * Costs are settled once approved.
+   *
+   * The materials have been consumed and item_costs written, so changing
+   * a component price afterwards would restate a cost the stock ledger
+   * and the books already agree on. Price is different — an item can be
+   * repriced any day of the week — so MRP and selling stay open.
+   */
+  const locked = assembly.status === "approved";
+
   const uncosted = assembly.products.flatMap((p) =>
     p.components.filter((c) => c.costSource === "none"),
   ).length;
@@ -54,18 +65,66 @@ export function AssemblyPricingPanel({
     });
   }
 
-  const grandTotal = assembly.products.reduce(
-    (s, p) => s + p.unitLandedPaise * p.qty,
-    0,
+  /**
+   * What this batch actually amounts to.
+   *
+   * One cost figure answers "how much" but not "how much of what". These
+   * are the numbers you would otherwise work out on paper before
+   * approving: how many designs, how many pieces, what went into them,
+   * and — once priced — what the batch is worth on the shelf.
+   */
+  const batch = assembly.products.reduce(
+    (acc, p) => {
+      acc.products += 1;
+      acc.pieces += p.qty;
+      acc.materialLines += p.components.length;
+      acc.materialPieces += p.components.reduce((n, c) => n + c.qty * p.qty, 0);
+      acc.hours += p.labourHours * p.qty;
+      acc.materialCost += p.unitMaterialPaise * p.qty;
+      acc.labourCost += p.unitLabourPaise * p.qty;
+      acc.cost += p.unitLandedPaise * p.qty;
+      // Only pieces that carry a price count toward what the batch is
+      // worth — averaging in an unpriced one would flatter the figure.
+      if (p.sellingPricePaise !== null) {
+        acc.retail += p.sellingPricePaise * p.qty;
+        acc.pricedPieces += p.qty;
+        acc.pricedCost += p.unitLandedPaise * p.qty;
+      }
+      return acc;
+    },
+    {
+      products: 0, pieces: 0, materialLines: 0, materialPieces: 0, hours: 0,
+      materialCost: 0, labourCost: 0, cost: 0, retail: 0,
+      pricedPieces: 0, pricedCost: 0,
+    },
   );
+
+  const grandTotal = batch.cost;
+  const batchMargin =
+    batch.retail > 0 ? ((batch.retail - batch.pricedCost) / batch.retail) * 100 : null;
+  const unpriced = batch.pieces - batch.pricedPieces;
 
   return (
     <div className="space-y-4">
       {error && <FieldError>{error}</FieldError>}
 
+      {locked && (
+        <p className="rounded-control border border-status-done-fg/40 bg-status-done-bg px-3 py-2 text-sm">
+          Approved. Materials were consumed and the pieces are in stock at the
+          costs below, which are now fixed. You can still change MRP and selling
+          price.{" "}
+          <Link
+            href={`/utilities/barcodes?assemblyId=${assembly.id}`}
+            className="text-brand hover:underline"
+          >
+            Print tags
+          </Link>
+        </p>
+      )}
+
       <AssemblyBandBar assemblyId={assembly.id} bands={bands} />
 
-      {uncosted > 0 && (
+      {!locked && uncosted > 0 && (
         <p className="rounded-control border border-status-pending-fg/40 bg-status-pending-bg px-3 py-2 text-sm">
           {uncosted} material{uncosted === 1 ? "" : "s"} still need a cost. Until
           they have one the parent cost below is understated.
@@ -134,7 +193,8 @@ export function AssemblyPricingPanel({
                       c.costSource === "none" ? "" : (c.unitCostPaise / 100).toFixed(2)
                     }
                     placeholder="cost"
-                    disabled={pending}
+                    disabled={pending || locked}
+                    readOnly={locked}
                     onBlur={(e) => {
                       const v = e.target.value.trim();
                       if (v === "") return;
@@ -162,11 +222,72 @@ export function AssemblyPricingPanel({
 
       <Card>
         <CardBody className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-sm text-text-muted">Total cost of this batch</p>
+          <div className="min-w-56 flex-1">
+            <p className="text-sm text-text-muted">
+              {locked ? "Cost of this batch" : "Total cost of this batch"}
+            </p>
             <p className="tnum text-2xl font-semibold">{formatPaise(grandTotal)}</p>
+            <dl className="mt-2 grid grid-cols-2 gap-x-6 gap-y-0.5 text-2xs sm:grid-cols-3">
+              <Fact
+                label="Products"
+                value={`${batch.products} design${batch.products === 1 ? "" : "s"}`}
+              />
+              <Fact
+                label="Pieces made"
+                value={`${batch.pieces}`}
+              />
+              <Fact
+                label="Materials used"
+                value={`${batch.materialPieces} across ${batch.materialLines} line${
+                  batch.materialLines === 1 ? "" : "s"
+                }`}
+              />
+              <Fact label="Material cost" value={formatPaise(batch.materialCost)} />
+              <Fact
+                label="Labour"
+                value={`${batch.hours}h · ${formatPaise(batch.labourCost)}`}
+              />
+              <Fact
+                label="Cost per piece"
+                value={
+                  batch.pieces > 0
+                    ? formatPaise(Math.round(batch.cost / batch.pieces))
+                    : "—"
+                }
+              />
+              {batch.retail > 0 && (
+                <Fact label="Worth at selling price" value={formatPaise(batch.retail)} />
+              )}
+              {batchMargin !== null && (
+                <Fact label="Margin on the batch" value={`${batchMargin.toFixed(1)}%`} />
+              )}
+              {unpriced > 0 && (
+                <Fact
+                  label="Not yet priced"
+                  value={`${unpriced} piece${unpriced === 1 ? "" : "s"}`}
+                  warn
+                />
+              )}
+            </dl>
           </div>
           <div className="flex flex-wrap gap-2">
+            {locked && (
+              <Button
+                variant="ghost"
+                disabled={pending}
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      "Take this apart? The finished pieces come out of stock and the materials go back in.",
+                    )
+                  ) {
+                    run(() => dismantleAssembly(assembly.id));
+                  }
+                }}
+              >
+                Dismantle
+              </Button>
+            )}
             {canApprove && (
               <>
                 <Button
@@ -445,5 +566,27 @@ function AssemblyBandBar({
         )}
       </CardBody>
     </Card>
+  );
+}
+
+
+function Fact({
+  label,
+  value,
+  warn,
+}: {
+  label: string;
+  value: string;
+  warn?: boolean;
+}) {
+  return (
+    <div>
+      <dt className="text-text-subtle">{label}</dt>
+      <dd
+        className={`tnum ${warn ? "text-status-danger-fg" : "text-text-primary"}`}
+      >
+        {value}
+      </dd>
+    </div>
   );
 }

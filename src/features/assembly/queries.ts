@@ -23,7 +23,8 @@ export interface AssemblySummary {
 
 export interface AssemblyComponent {
   id: string;
-  itemId: string;
+  /** Null on a custom line — something with no catalog entry. */
+  itemId: string | null;
   barcode: string;
   name: string;
   photoPath: string | null;
@@ -119,7 +120,7 @@ export async function getAssembly(
        assembly_items(id, item_id, qty, labour_hours, line_no,
          items(barcode, name, mrp_paise, selling_price_paise,
                categories(name), item_photos(storage_path, is_primary, sort_order)),
-         assembly_components(id, item_id, qty, line_no,
+         assembly_components(id, item_id, qty, line_no, description,
            items(barcode, name, item_photos(storage_path, is_primary, sort_order))))`,
     )
     .eq("id", id)
@@ -128,7 +129,8 @@ export async function getAssembly(
   if (error || !data) return null;
 
   type RawComp = {
-    id: string; item_id: string; qty: number; line_no: number | null; items: unknown;
+    id: string; item_id: string | null; qty: number; line_no: number | null;
+    description: string | null; items: unknown;
   };
   type RawProd = {
     id: string; item_id: string; qty: number; labour_hours: string | number;
@@ -187,8 +189,8 @@ export async function getAssembly(
             return {
               id: c.id,
               itemId: c.item_id,
-              barcode: ci?.barcode ?? "—",
-              name: ci?.name ?? "Unknown",
+              barcode: c.item_id ? (ci?.barcode ?? "—") : "custom",
+              name: ci?.name ?? c.description ?? "Unknown",
               photoPath: photoOf(ci),
               qty: c.qty,
               unitCostPaise: compCost.get(c.id)?.cost ?? 0,
@@ -232,10 +234,23 @@ export async function searchComponents(term: string): Promise<ComponentSearchRes
     .from("items")
     .select("id, barcode, name, item_photos(storage_path, is_primary, sort_order), stock_balances(qty)")
     .or(`barcode.ilike.%${t}%,name.ilike.%${t}%`)
-    .limit(20);
+    // Trimmed from 20: the list is scrolled on a phone at a bench and
+    // nobody reads past the first handful. Fewer rows also means fewer
+    // photo and stock joins per keystroke.
+    .limit(12);
 
   if (error) return [];
-  return (data ?? []).map((i) => ({
+
+  return (data ?? [])
+    // Raw materials first. They are the overwhelming majority of what
+    // goes into an assembly, so putting them at the top saves a scroll
+    // on almost every pick — without hiding anything, since a finished
+    // piece is occasionally a component too.
+    .sort((a, b) => {
+      const raw = (n: string) => (/^\s*raw\b/i.test(n) ? 0 : 1);
+      return raw(a.name) - raw(b.name);
+    })
+    .map((i) => ({
     id: i.id,
     barcode: i.barcode,
     name: i.name,

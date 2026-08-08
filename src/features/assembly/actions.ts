@@ -577,3 +577,141 @@ export async function reopenAssembly(assemblyId: string): Promise<Result<void>> 
   revalidatePath(`${PATH}/${assemblyId}`);
   return ok(undefined);
 }
+
+/**
+ * Attach an item that already exists as the thing being assembled.
+ *
+ * Same escape hatch the inward page has: the piece may already be in the
+ * catalog because someone created it ahead of the work, or because a
+ * previous assembly line was deleted. Making them retype it as a new
+ * ASIN would leave two catalog entries for one design.
+ *
+ * Unlike inward, the item does NOT have to be unattached — a design made
+ * repeatedly is normal here, and each run is its own document.
+ */
+export async function attachExistingToAssembly(
+  formData: FormData,
+): Promise<Result<void>> {
+  const assemblyId = String(formData.get("assemblyId") ?? "");
+  const itemId = String(formData.get("itemId") ?? "");
+  const qty = Math.max(1, Number(formData.get("qty") ?? 1));
+  const labourHours = Math.max(0, Number(formData.get("labourHours") ?? 0));
+
+  if (!assemblyId || !itemId) return err("Choose an item.");
+
+  const supabase = await createClient();
+
+  // Already on this document? Adding it twice would create two blocks
+  // for one product and split its materials across them.
+  const { data: dupe } = await supabase
+    .from("assembly_items")
+    .select("id")
+    .eq("assembly_id", assemblyId)
+    .eq("item_id", itemId)
+    .maybeSingle();
+  if (dupe) return err("That product is already on this document.");
+
+  const { data: last } = await supabase
+    .from("assembly_items")
+    .select("line_no")
+    .eq("assembly_id", assemblyId)
+    .order("line_no", { ascending: false, nullsFirst: false })
+    .limit(1)
+    .maybeSingle();
+
+  const { error } = await supabase.from("assembly_items").insert({
+    assembly_id: assemblyId,
+    item_id: itemId,
+    qty,
+    labour_hours: labourHours,
+    line_no: (last?.line_no ?? 0) + 1,
+  });
+  if (error) return err(toMessage(error));
+
+  revalidatePath(`${PATH}/${assemblyId}`);
+  return ok(undefined);
+}
+
+export interface AssemblyPickItem {
+  id: string;
+  barcode: string;
+  name: string;
+  categoryName: string;
+}
+
+/** Catalog search for the attach dialog. Any active or pending item can
+ *  be made in-house, so this is not filtered the way inward's is. */
+export async function searchAssemblyParents(
+  term: string,
+): Promise<Result<AssemblyPickItem[]>> {
+  const t = term.trim();
+  const supabase = await createClient();
+
+  let q = supabase
+    .from("items")
+    .select("id, barcode, name, categories(name)")
+    .in("status", ["active", "pending_pricing"])
+    .order("created_at", { ascending: false })
+    .limit(25);
+
+  if (t) q = q.or(`barcode.ilike.%${t}%,name.ilike.%${t}%`);
+
+  const { data, error } = await q;
+  if (error) return err(toMessage(error));
+
+  return ok(
+    (data ?? []).map((i) => {
+      const c = (Array.isArray(i.categories) ? i.categories[0] : i.categories) as
+        | { name: string }
+        | undefined;
+      return {
+        id: i.id,
+        barcode: i.barcode,
+        name: i.name,
+        categoryName: c?.name ?? "—",
+      };
+    }),
+  );
+}
+
+/** A material with no catalog entry: thread, glue, a loose findings
+ *  packet. Costs the piece properly without inventing a catalog row for
+ *  a rupee of thread, and consumes no stock because there is none. */
+export async function addCustomComponent(
+  assemblyId: string,
+  productId: string,
+  description: string,
+  qty: number,
+  costPaise: number,
+): Promise<Result<void>> {
+  const d = description.trim();
+  if (!d) return err("Describe what it is.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("assembly_components").insert({
+    assembly_item_id: productId,
+    item_id: null,
+    description: d,
+    qty: Math.max(1, qty),
+    override_cost_paise: Math.max(0, costPaise),
+  });
+  if (error) return err(toMessage(error));
+
+  await supabase.rpc("compute_assembly_costs", { p_assembly: assemblyId });
+  revalidatePath(`${PATH}/${assemblyId}`);
+  return ok(undefined);
+}
+
+/**
+ * Take an approved assembly apart: pieces out of stock, materials back
+ * in, and the document returns to draft. Refused if the pieces are no
+ * longer on the shelf.
+ */
+export async function dismantleAssembly(assemblyId: string): Promise<Result<void>> {
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("dismantle_assembly", { p_assembly: assemblyId });
+  if (error) return err(toMessage(error));
+  revalidatePath(`${PATH}/${assemblyId}`);
+  revalidatePath("/stock");
+  return ok(undefined);
+}

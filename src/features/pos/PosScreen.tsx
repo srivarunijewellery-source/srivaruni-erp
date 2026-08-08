@@ -921,6 +921,14 @@ export function PosScreen({
       igstPaise: isInterstate ? taxTotal : 0,
       roundOffPaise: totals.roundOff,
       totalPaise: totals.net,
+      gifts:
+        giftsTaken && benefits
+          ? benefits.gifts.map((g) => ({
+              name: g.name,
+              itemName: g.itemName,
+              qty: g.itemQty,
+            }))
+          : [],
       payments,
       terms: invoiceTerms,
       footer: invoiceFooter,

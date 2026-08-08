@@ -38,13 +38,23 @@ export default async function AssemblyDetailPage({
         description={
           assembly.status === "submitted"
             ? "Price each material, then approve. Costs are per one piece."
-            : "Materials are listed per piece. The quantity above does the multiplying."
+            : assembly.status === "approved"
+              ? "Approved. Costs are locked, but you can still reprice."
+              : "Materials are listed per piece. The quantity above does the multiplying."
         }
       />
       {/* Two screens, one document: the floor records what went in, the
           owner puts a price on it. Same split as inward. */}
-      {owner && assembly.status === "submitted" ? (
-        <AssemblyPricingPanel assembly={assembly} bands={bands} canApprove />
+      {owner &&
+      (assembly.status === "submitted" || assembly.status === "approved") ? (
+        // Approved documents keep the pricing view, not the entry view.
+        // A piece can always need repricing later, and sending the owner
+        // back to a screen with no MRP on it to do that is absurd.
+        <AssemblyPricingPanel
+          assembly={assembly}
+          bands={bands}
+          canApprove={assembly.status === "submitted"}
+        />
       ) : (
         <AssemblyWorkbench
           assembly={assembly}

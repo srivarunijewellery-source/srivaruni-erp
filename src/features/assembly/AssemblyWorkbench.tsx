@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -9,10 +9,11 @@ import { Input, NarrowInput, Label, FieldError } from "@/components/ui/Field";
 import { Badge } from "@/components/ui/Badge";
 import { PhotoThumb } from "@/components/ui/PhotoThumb";
 import { AddItemDialog } from "@/features/inward/AddItemDialog";
+import { AttachExistingProduct } from "./AttachExistingProduct";
 import { itemPhotoUrl } from "@/lib/storage";
 import { formatPaise } from "@/lib/money";
 import {
-  addComponent, approveAssembly, findComponents,
+  addComponent, addCustomComponent, approveAssembly, dismantleAssembly, findComponents,
   deleteAssembly, reopenAssembly, rejectAssembly, removeAssemblyProduct, submitAssembly,
   updateAssemblyProduct, updateComponentQty,
 } from "./actions";
@@ -112,7 +113,10 @@ export function AssemblyWorkbench({
       ))}
 
       {editable && (
-        <AddItemDialog assemblyId={assembly.id} withLabourHours options={options} />
+        <div className="flex flex-wrap gap-2">
+          <AddItemDialog assemblyId={assembly.id} withLabourHours options={options} />
+          <AttachExistingProduct assemblyId={assembly.id} />
+        </div>
       )}
 
       <Card>
@@ -177,6 +181,23 @@ export function AssemblyWorkbench({
               Done. Materials were consumed, the pieces are in stock at their
               computed cost, and they are priced and sellable.
             </p>
+          )}
+          {assembly.status === "approved" && isOwner && (
+            <Button
+              variant="ghost"
+              disabled={pending}
+              onClick={() => {
+                if (
+                  window.confirm(
+                    "Take this apart? The finished pieces come out of stock and the materials go back in.",
+                  )
+                ) {
+                  run(() => dismantleAssembly(assembly.id));
+                }
+              }}
+            >
+              Dismantle
+            </Button>
           )}
           {assembly.status === "approved" && (
             <Link
@@ -351,12 +372,22 @@ function ProductBlock({
           </div>
 
           {editable && (
-            <ComponentPicker
-              pending={pending}
-              onPick={(itemId, qty) =>
-                onRun(() => addComponent(assemblyId, product.id, itemId, qty))
-              }
-            />
+            <>
+              <ComponentPicker
+                pending={pending}
+                onPick={(itemId, qty) =>
+                  onRun(() => addComponent(assemblyId, product.id, itemId, qty))
+                }
+              />
+              <CustomLine
+                pending={pending}
+                onAdd={(desc, qty, paise) =>
+                  onRun(() =>
+                    addCustomComponent(assemblyId, product.id, desc, qty, paise),
+                  )
+                }
+              />
+            </>
           )}
 
           {editable && (
@@ -385,22 +416,39 @@ function ComponentPicker({
   const [term, setTerm] = useState("");
   const [results, setResults] = useState<ComponentSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
+  const seq = useRef(0);
 
-  async function search(value: string) {
-    setTerm(value);
-    if (value.trim().length < 2) {
+  /**
+   * Debounced, and never disabled.
+   *
+   * This fired a server round trip on every keystroke, so typing a name
+   * queued a dozen queries and the box stuttered. It was also disabled
+   * whenever any save was in flight, which on a bench feels like the
+   * screen has frozen mid-scan.
+   *
+   * 180ms is under the gap between keystrokes for a typist but well
+   * under the pause after a barcode scanner fires its terminator, so a
+   * scan still resolves in one query.
+   */
+  useEffect(() => {
+    const t = term.trim();
+    if (t.length < 2) {
       setResults([]);
       return;
     }
-    setSearching(true);
-    const r = await findComponents(value);
-    setSearching(false);
-    if (r.ok) {
-      // A full barcode match is a scan, not a search. Add it and clear,
-      // so a scanner can fire straight into the next one without anyone
-      // touching the screen.
+    const mine = ++seq.current;
+    const timer = setTimeout(async () => {
+      setSearching(true);
+      const r = await findComponents(t);
+      // A slow earlier query must not overwrite a newer one's results.
+      if (mine !== seq.current) return;
+      setSearching(false);
+      if (!r.ok) return;
+
+      // A full barcode match is a scan, not a search: add it and clear
+      // so the scanner can fire straight into the next one.
       const exact = r.data.find(
-        (x) => x.barcode.toLowerCase() === value.trim().toLowerCase(),
+        (x) => x.barcode.toLowerCase() === t.toLowerCase(),
       );
       if (exact) {
         onPick(exact.id, 1);
@@ -409,16 +457,19 @@ function ComponentPicker({
         return;
       }
       setResults(r.data);
-    }
-  }
+    }, 180);
+    return () => clearTimeout(timer);
+    // onPick is stable enough here; including it would re-run the search
+    // on every parent render, which is the problem this is solving.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [term]);
 
   return (
     <div className="rounded-control border border-dashed border-border p-2">
       <Input
         value={term}
         placeholder="Scan a tag or search by name"
-        disabled={pending}
-        onChange={(e) => void search(e.target.value)}
+        onChange={(e) => setTerm(e.target.value)}
         className="h-11 w-full sm:h-9"
       />
       {searching && <p className="mt-1 text-2xs text-text-muted">searching…</p>}
@@ -437,7 +488,7 @@ function ComponentPicker({
                 className="flex w-full items-center gap-3 py-2 text-left hover:bg-surface-sunken"
               >
                 <PhotoThumb src={itemPhotoUrl(r.photoPath)} alt={r.name} size={36} />
-                <span className="min-w-24 flex-1">
+                <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm">{r.name}</span>
                   <span className="block font-mono text-2xs text-text-muted">
                     {r.barcode} · {r.onHand} on hand
@@ -452,3 +503,96 @@ function ComponentPicker({
   );
 }
 
+
+
+/**
+ * A material that is not in the catalog and never will be.
+ *
+ * Thread, glue, a findings packet bought loose. Without a line for these
+ * the cost of the piece is quietly understated, or somebody creates a
+ * catalog entry for a rupee of thread and it clutters search forever.
+ * Consumes no stock, because there is none to consume.
+ */
+function CustomLine({
+  pending,
+  onAdd,
+}: {
+  pending: boolean;
+  onAdd: (description: string, qty: number, costPaise: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [desc, setDesc] = useState("");
+  const [qty, setQty] = useState("1");
+  const [cost, setCost] = useState("");
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="text-2xs text-brand hover:underline"
+      >
+        + something not in the catalog
+      </button>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-end gap-2 rounded-control border border-dashed border-border p-2">
+      <div>
+        <Label htmlFor="cl-desc">What is it</Label>
+        <Input
+          id="cl-desc"
+          autoFocus
+          value={desc}
+          onChange={(e) => setDesc(e.target.value)}
+          placeholder="thread and glue"
+          className="h-11 w-full sm:h-9"
+        />
+      </div>
+      <div>
+        <Label htmlFor="cl-qty">Qty</Label>
+        <NarrowInput
+          widthClass="w-16"
+          id="cl-qty"
+          type="number"
+          min={1}
+          value={qty}
+          onChange={(e) => setQty(e.target.value)}
+          className="text-center"
+        />
+      </div>
+      <div>
+        <Label htmlFor="cl-cost">Cost each</Label>
+        <NarrowInput
+          widthClass="w-24"
+          id="cl-cost"
+          type="number"
+          min={0}
+          step="0.01"
+          value={cost}
+          onChange={(e) => setCost(e.target.value)}
+          className="text-right"
+        />
+      </div>
+      <div className="flex gap-1">
+        <Button
+          size="sm"
+          disabled={pending || !desc.trim()}
+          onClick={() => {
+            onAdd(desc, Number(qty) || 1, Math.round((Number(cost) || 0) * 100));
+            setDesc("");
+            setQty("1");
+            setCost("");
+            setOpen(false);
+          }}
+        >
+          Add
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
+          Cancel
+        </Button>
+      </div>
+    </div>
+  );
+}

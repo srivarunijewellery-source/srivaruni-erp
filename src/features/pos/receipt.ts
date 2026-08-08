@@ -109,6 +109,9 @@ export interface ReceiptData {
    *  actually adds up to the total. */
   roundOffPaise?: number;
   totalPaise: number;
+  /** Silver coins and the like earned on this bill. Printed in a box of
+   *  their own: a gift is not a discount and must not be read as one. */
+  gifts?: Array<{ name: string; itemName: string; qty: number }>;
   payments: Array<{ method: string; amount_paise: number; reference?: string }>;
   terms?: string | null;
   footer?: string | null;
@@ -221,16 +224,8 @@ export function receiptHtml(d: ReceiptData): string {
   <td colspan="2" class="nm b item">${esc(first)}</td>
 </tr>${rest.map((r) => `<tr><td></td><td colspan="2" class="nm">${esc(r)}</td></tr>`).join("")}
 <tr class="lastrow">
-  <td></td>
-  <td class="q">${l.qty} &times; ${rupees(l.unitPaise)}${
-    // Struck-through original beside the discounted figure, so the
-    // saving is visible ON the piece it applies to. A single discount
-    // line at the foot of the bill left customers asking which item it
-    // came off -- and staff with no answer.
-    l.qty * l.unitPaise > l.totalPaise
-      ? ` <span class="was">${rupees(l.qty * l.unitPaise)}</span>`
-      : ""
-  }</td>
+  <td class="q">${l.qty} &times;</td>
+  <td class="amt q">${rupees(l.qty * l.unitPaise)}</td>
   <td class="amt">${rupees(l.totalPaise)}</td>
 </tr>`;
     })
@@ -421,7 +416,17 @@ export function receiptHtml(d: ReceiptData): string {
   .lastrow td { padding-bottom: 1mm; border-bottom: 1px solid #000; }
   /* The pre-discount figure. Struck through rather than labelled, which
      needs no header row and survives a narrow slip. */
-  .was { text-decoration: line-through; opacity: 1; color: #000; }
+  /* Gifts earned. Boxed rather than listed, so nobody reads a free
+     coin as another discount line. */
+  .gifts {
+    border: 1px solid #000; padding: 1.5mm; margin: 1.5mm 0;
+    text-align: center;
+  }
+  .gifts .ghead {
+    display: block; font-size: 8.5px; letter-spacing: 1.5px;
+    text-transform: uppercase; font-weight: 700; margin-bottom: 0.8mm;
+  }
+  .gifts .grow { display: block; }
 
   /* The total, reversed out so it is the first thing the eye lands on. */
   .totalbox {
@@ -473,7 +478,7 @@ export function receiptHtml(d: ReceiptData): string {
   <table>
     <tr>
       <th class="n">#</th>
-      <th>Item</th>
+      <th class="amt">Item price</th>
       <th class="amt">Amount</th>
     </tr>
     ${rows}
@@ -509,6 +514,17 @@ export function receiptHtml(d: ReceiptData): string {
   ${d.upiId ? `<hr /><div class="c sm">UPI ${esc(d.upiId)}</div>` : ""}
   <hr />
   ${d.terms ? `<div class="xs">${esc(d.terms)}</div><hr />` : ""}
+  ${(d.gifts?.length ?? 0) > 0
+    ? `<div class="gifts">
+         <span class="ghead">With our compliments</span>
+         ${d.gifts!
+           .map(
+             (g) =>
+               `<span class="grow">${esc(g.itemName)}${g.qty > 1 ? ` &times; ${g.qty}` : ""}</span>`,
+           )
+           .join("")}
+       </div>`
+    : ""}
   ${d.qrDataUrl && cfg.showBarcode
     ? `<div class="qr">
          <img src="${d.qrDataUrl}" alt="" />

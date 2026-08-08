@@ -39,7 +39,8 @@ export async function loadReceiptForReprint(
          staff:sold_by(name),
          bill_lines(qty, unit_price_paise, discount_paise, line_total_paise,
                     line_no, items(name, barcode), seller:sold_by(name)),
-         bill_payments(method, amount_paise, reference)`,
+         bill_payments(method, amount_paise, reference),
+         bill_gifts(offer_name, qty, items(name))`,
       )
       .eq("id", billId)
       .maybeSingle();
@@ -125,6 +126,17 @@ export async function loadReceiptForReprint(
       sgstPaise: bill.sgst_paise ?? 0,
       igstPaise: bill.igst_paise ?? 0,
       roundOffPaise: bill.round_off_paise ?? 0,
+      // From bill_gifts, so a duplicate shows what was actually handed
+      // over rather than what the offer rules would award today.
+      gifts: ((bill.bill_gifts ?? []) as Array<{
+        offer_name: string;
+        qty: number;
+        items: { name: string } | { name: string }[] | null;
+      }>).map((g) => ({
+        name: g.offer_name,
+        itemName: one(g.items)?.name ?? g.offer_name,
+        qty: Number(g.qty ?? 1),
+      })),
       totalPaise: bill.total_paise ?? 0,
       payments: (bill.bill_payments ?? []) as ReceiptData["payments"],
       terms: biz?.invoice_terms ?? null,
