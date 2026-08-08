@@ -96,19 +96,26 @@ export async function POST(request: Request) {
   const supabase = createServiceClient();
 
   /**
-   * The API key lives in comms_settings, not the environment.
+   * Environment first, database second.
    *
-   * That is where the app already keeps it for sending, and it is
-   * editable from Comms settings — so reading it from here means one
-   * place to rotate it, and no second copy of a value Resend only shows
-   * once.
+   * A secret stored in a table is also in every backup of that table.
+   * Supabase keeps daily backups and point-in-time recovery, so a key in
+   * comms_settings is sitting in restore points nobody thinks of as
+   * secret stores — and anyone with SQL access can read it, which is a
+   * much wider circle than anyone with Vercel access.
+   *
+   * The row stays as a fallback because it is editable in-app without a
+   * redeploy, which matters when the person rotating the key is not a
+   * developer. But if the environment has one, it wins.
    */
-  const { data: cfg } = await supabase
-    .from("comms_settings")
-    .select("resend_api_key")
-    .maybeSingle();
-
-  const apiKey = cfg?.resend_api_key ?? process.env.RESEND_API_KEY;
+  let apiKey = process.env.RESEND_API_KEY ?? null;
+  if (!apiKey) {
+    const { data: cfg } = await supabase
+      .from("comms_settings")
+      .select("resend_api_key")
+      .maybeSingle();
+    apiKey = cfg?.resend_api_key ?? null;
+  }
   if (!apiKey) {
     console.error("inbound: no Resend API key in comms_settings or the environment");
     return NextResponse.json({ ok: false }, { status: 500 });

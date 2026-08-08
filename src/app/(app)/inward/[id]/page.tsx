@@ -14,6 +14,7 @@ import {
 import { can } from "@/config/roles";
 import { INWARD_STATUS } from "@/config/status";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { DeleteInwardButton } from "@/features/inward/DeleteInwardButton";
 import { Button } from "@/components/ui/Button";
 import { ROUTES } from "@/config/nav";
 import Link from "next/link";
@@ -104,6 +105,13 @@ export default async function InwardDetailPage({
             <Badge tone={INWARD_STATUS[inward.status].tone}>
               {INWARD_STATUS[inward.status].label}
             </Badge>
+            {can(user, "settings.manage") && (
+              <DeleteInwardButton
+                inwardId={inward.id}
+                docNo={inward.docNo}
+                status={inward.status}
+              />
+            )}
           </div>
         }
       />

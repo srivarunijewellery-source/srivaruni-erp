@@ -461,3 +461,25 @@ export async function attachExistingItem(formData: FormData): Promise<Result<str
   revalidatePath(ROUTES.inwardDetail(v.inwardId));
   return ok(v.itemId);
 }
+
+/**
+ * Discards an inward document.
+ *
+ * A way to throw away a mistake, not a way to undo a receipt. The
+ * database refuses once an inward is approved, because by then the stock
+ * has landed and deleting the paperwork would leave pieces on the shelf
+ * with nothing explaining where they came from.
+ */
+export async function deleteInward(
+  id: string,
+  reason: string,
+): Promise<Result<string>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("delete_inward", {
+    p_id: id,
+    p_reason: reason.trim() || null,
+  });
+  if (error) return err(toMessage(error));
+  revalidatePath(ROUTES.inward);
+  return ok(String((data as Record<string, unknown>)?.doc_no ?? ""));
+}
