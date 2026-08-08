@@ -518,3 +518,62 @@ export async function applyBandToAssembly(
   revalidatePath(`${PATH}/${assemblyId}`);
   return ok(out);
 }
+
+/** Deletes a draft, and the parent items created inside it.
+ *
+ *  Only a draft: once approved, materials have been consumed and stock
+ *  moved, and deleting the paperwork behind a stock movement is how a
+ *  ledger stops meaning anything. A wrong approved assembly needs a
+ *  correcting entry, not an erasure.
+ */
+export async function deleteAssembly(assemblyId: string): Promise<Result<void>> {
+  const supabase = await createClient();
+
+  const { data: asm } = await supabase
+    .from("assemblies")
+    .select("status")
+    .eq("id", assemblyId)
+    .maybeSingle();
+  if (!asm) return err("That assembly could not be found.");
+  if (asm.status !== "draft") {
+    return err(
+      `This assembly is ${asm.status} and cannot be deleted. Send it back to draft first, or leave it as a record.`,
+    );
+  }
+
+  // The parent ASINs were created by this document and exist for nothing
+  // else, so they go with it rather than lingering as unsellable rows.
+  const { data: items } = await supabase
+    .from("assembly_items")
+    .select("item_id")
+    .eq("assembly_id", assemblyId);
+
+  const { error } = await supabase.from("assemblies").delete().eq("id", assemblyId);
+  if (error) return err(toMessage(error));
+
+  for (const row of items ?? []) {
+    // Best effort: an item that has since picked up stock or a bill will
+    // refuse to delete, and that refusal is correct.
+    await supabase.from("items").delete().eq("id", row.item_id);
+  }
+
+  revalidatePath(PATH);
+  return ok(undefined);
+}
+
+/** Sends a submitted assembly back to draft so it can be corrected. */
+export async function reopenAssembly(assemblyId: string): Promise<Result<void>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("assemblies")
+    .update({ status: "draft", submitted_at: null })
+    .eq("id", assemblyId)
+    .eq("status", "submitted")
+    .select("id");
+  if (error) return err(toMessage(error));
+  if (!data || data.length === 0) {
+    return err("Only a submitted assembly can be reopened.");
+  }
+  revalidatePath(`${PATH}/${assemblyId}`);
+  return ok(undefined);
+}

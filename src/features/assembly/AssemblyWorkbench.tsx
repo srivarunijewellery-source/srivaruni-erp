@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
@@ -12,7 +13,7 @@ import { itemPhotoUrl } from "@/lib/storage";
 import { formatPaise } from "@/lib/money";
 import {
   addComponent, approveAssembly, findComponents,
-  rejectAssembly, removeAssemblyProduct, submitAssembly,
+  deleteAssembly, reopenAssembly, rejectAssembly, removeAssemblyProduct, submitAssembly,
   updateAssemblyProduct, updateComponentQty,
 } from "./actions";
 import type { AssemblyDetail, AssemblyProduct, ComponentSearchResult } from "./queries";
@@ -124,7 +125,35 @@ export function AssemblyWorkbench({
               >
                 Submit for pricing
               </Button>
+              <Button
+                variant="ghost"
+                disabled={pending}
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      "Delete this assembly and the products created in it? This cannot be undone.",
+                    )
+                  ) {
+                    run(async () => {
+                      const r = await deleteAssembly(assembly.id);
+                      if (r.ok) router.push("/assembly");
+                      return r;
+                    });
+                  }
+                }}
+              >
+                Delete
+              </Button>
             </>
+          )}
+          {assembly.status === "submitted" && isOwner && (
+            <Button
+              variant="ghost"
+              disabled={pending}
+              onClick={() => run(() => reopenAssembly(assembly.id))}
+            >
+              Reopen for editing
+            </Button>
           )}
           {assembly.status === "submitted" && isOwner && (
             <>
@@ -145,8 +174,21 @@ export function AssemblyWorkbench({
           )}
           {assembly.status === "approved" && (
             <p className="text-sm text-text-muted">
-              Materials consumed and pieces added to stock. Price them on the
-              products page before they can be sold.
+              Done. Materials were consumed, the pieces are in stock at their
+              computed cost, and they are priced and sellable.
+            </p>
+          )}
+          {assembly.status === "approved" && (
+            <Link
+              href={`/utilities/barcodes?assemblyId=${assembly.id}`}
+              className="text-sm text-brand hover:underline"
+            >
+              Print tags for this assembly
+            </Link>
+          )}
+          {assembly.status === "submitted" && !isOwner && (
+            <p className="text-sm text-text-muted">
+              Sent for pricing. The owner sets the cost and price from here.
             </p>
           )}
         </CardBody>

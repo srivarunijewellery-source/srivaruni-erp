@@ -102,3 +102,42 @@ export async function getInwardLinesForLabels(inwardId: string): Promise<InwardL
     .sort(byItemCode((l) => l.item.barcode, (l) => l.lineNo))
     .map(({ item, qty }) => ({ item, qty }));
 }
+
+/**
+ * Prefill the label queue from an approved assembly.
+ *
+ * Pieces made in-house need tags exactly as much as ones that arrived in
+ * a carton — arguably sooner, since they go straight onto the floor.
+ * Mirrors getInwardLinesForLabels: same shape, same code ordering, so
+ * the strip matches the document it was printed from.
+ */
+export async function getAssemblyLinesForLabels(
+  assemblyId: string,
+): Promise<InwardLabelLine[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("assemblies")
+    .select(`assembly_items(qty, line_no, items(${SELECT}))`)
+    .eq("id", assemblyId)
+    .maybeSingle();
+
+  if (error || !data) return [];
+
+  type Row = {
+    qty: number;
+    line_no: number | null;
+    items: Parameters<typeof toLabelItem>[0] | Parameters<typeof toLabelItem>[0][] | null;
+  };
+  const lines = (data.assembly_items ?? []) as Row[];
+
+  return lines
+    .map((r) => {
+      const item = Array.isArray(r.items) ? r.items[0] : r.items;
+      if (!item) return null;
+      return { item: toLabelItem(item), qty: Number(r.qty ?? 0), lineNo: r.line_no ?? 0 };
+    })
+    .filter((x): x is InwardLabelLine & { lineNo: number } => x !== null)
+    .sort(byItemCode((l) => l.item.barcode, (l) => l.lineNo))
+    .map(({ item, qty }) => ({ item, qty }));
+}

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { requireUser } from "@/features/auth/session";
-import { getInwardLinesForLabels, getLabelItems } from "@/features/barcodes/queries";
+import { getAssemblyLinesForLabels, getInwardLinesForLabels, getLabelItems } from "@/features/barcodes/queries";
 import { getLabelSettings } from "@/features/barcodes/settings";
 import { listInwards } from "@/features/inward/queries";
 import { LabelQueue } from "@/features/barcodes/LabelQueue";
@@ -22,14 +22,19 @@ export const metadata: Metadata = { title: "Barcode labels" };
 export default async function BarcodesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ itemId?: string; inwardId?: string }>;
+  searchParams: Promise<{ itemId?: string; inwardId?: string; assemblyId?: string }>;
 }) {
   const user = await requireUser();
-  const { itemId, inwardId } = await searchParams;
+  const { itemId, inwardId, assemblyId } = await searchParams;
 
   const [settings, inwards] = await Promise.all([getLabelSettings(), listInwards()]);
 
-  const initial = inwardId
+  const initial = assemblyId
+    ? (await getAssemblyLinesForLabels(assemblyId)).map((l) => ({
+        item: l.item,
+        qty: l.qty || 1,
+      }))
+    : inwardId
     ? (await getInwardLinesForLabels(inwardId)).map((l) => ({ item: l.item, qty: l.qty || 1 }))
     : itemId
       ? (await getLabelItems([itemId])).map((item) => ({ item, qty: 1 }))
@@ -45,7 +50,7 @@ export default async function BarcodesPage({
           Without it, useState(initial) keeps the value from first mount
           and picking a different delivery silently does nothing. */}
       <LabelQueue
-        key={inwardId ?? itemId ?? "blank"}
+        key={assemblyId ?? inwardId ?? itemId ?? "blank"}
         initial={initial}
         settings={settings}
         canEditSettings={can(user, "pricing.manage")}

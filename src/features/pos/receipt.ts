@@ -222,7 +222,15 @@ export function receiptHtml(d: ReceiptData): string {
 </tr>${rest.map((r) => `<tr><td></td><td colspan="2" class="nm">${esc(r)}</td></tr>`).join("")}
 <tr class="lastrow">
   <td></td>
-  <td class="q">${l.qty} &times; ${rupees(l.unitPaise)}</td>
+  <td class="q">${l.qty} &times; ${rupees(l.unitPaise)}${
+    // Struck-through original beside the discounted figure, so the
+    // saving is visible ON the piece it applies to. A single discount
+    // line at the foot of the bill left customers asking which item it
+    // came off -- and staff with no answer.
+    l.qty * l.unitPaise > l.totalPaise
+      ? ` <span class="was">${rupees(l.qty * l.unitPaise)}</span>`
+      : ""
+  }</td>
   <td class="amt">${rupees(l.totalPaise)}</td>
 </tr>`;
     })
@@ -411,6 +419,9 @@ export function receiptHtml(d: ReceiptData): string {
     ${cfg.uppercaseItems ? "text-transform: uppercase;" : ""}
   }
   .lastrow td { padding-bottom: 1mm; border-bottom: 1px solid #000; }
+  /* The pre-discount figure. Struck through rather than labelled, which
+     needs no header row and survives a narrow slip. */
+  .was { text-decoration: line-through; opacity: 1; color: #000; }
 
   /* The total, reversed out so it is the first thing the eye lands on. */
   .totalbox {

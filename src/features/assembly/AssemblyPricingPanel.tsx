@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -9,7 +9,7 @@ import { PhotoThumb } from "@/components/ui/PhotoThumb";
 import { itemPhotoUrl } from "@/lib/storage";
 import { formatPaise } from "@/lib/money";
 import {
-  setComponentCost, approveAssembly, rejectAssembly,
+  setComponentCost, approveAssembly, rejectAssembly, reopenAssembly,
   saveAssemblyPrice, suggestAssemblyPrice, applyBandToAssembly,
   type AssemblyBandOutcome,
 } from "./actions";
@@ -76,14 +76,23 @@ export function AssemblyPricingPanel({
         <Card key={p.id}>
           <CardHeader className="flex flex-wrap items-center gap-3">
             <PhotoThumb src={itemPhotoUrl(p.photoPath)} alt={p.name} size={44} />
-            <div className="min-w-0 flex-1">
+            <div className="min-w-40 flex-1">
               <p className="truncate text-sm font-medium">{p.name}</p>
               <p className="font-mono text-2xs text-text-muted">
                 {p.barcode} · {p.qty} to make · {p.labourHours}h each
               </p>
             </div>
+            {/* Price sits on the product line, not in a block underneath:
+                the cost and the price are one decision and belong in one
+                glance. */}
+            <PriceFields
+              assemblyId={assembly.id}
+              product={p}
+              pending={pending}
+              onDone={() => router.refresh()}
+            />
             <div className="text-right">
-              <p className="tnum text-lg font-semibold">
+              <p className="tnum text-sm font-semibold">
                 {formatPaise(p.unitLandedPaise)}
               </p>
               <p className="text-2xs text-text-subtle">landed, each</p>
@@ -103,7 +112,17 @@ export function AssemblyPricingPanel({
                       {c.barcode} · {SOURCE_LABEL[c.costSource]}
                     </p>
                   </div>
-                  <span className="text-2xs text-text-muted">× {c.qty}</span>
+                  <span className="text-right text-2xs text-text-muted">
+                    <span className="block">× {c.qty}</span>
+                    {/* What this material contributes to one piece. The
+                        unit cost alone made you do the multiplication in
+                        your head on every line. */}
+                    {c.unitCostPaise > 0 && (
+                      <span className="block text-text-subtle">
+                        = {formatPaise(c.unitCostPaise * c.qty)}
+                      </span>
+                    )}
+                  </span>
                   {/* Blank, not zero, when nothing is known. A zero in a
                       price box reads as a decision someone made. */}
                   <NarrowInput
@@ -137,13 +156,6 @@ export function AssemblyPricingPanel({
               </span>{" "}
               per piece · {formatPaise(p.unitLandedPaise * p.qty)} for {p.qty}
             </p>
-
-            <PriceRow
-              assemblyId={assembly.id}
-              product={p}
-              pending={pending}
-              onDone={() => router.refresh()}
-            />
           </CardBody>
         </Card>
       ))}
@@ -162,6 +174,13 @@ export function AssemblyPricingPanel({
                   onClick={() => run(() => approveAssembly(assembly.id))}
                 >
                   Approve and post
+                </Button>
+                <Button
+                  variant="ghost"
+                  disabled={pending}
+                  onClick={() => run(() => reopenAssembly(assembly.id))}
+                >
+                  Reopen for editing
                 </Button>
                 <Button
                   variant="ghost"
@@ -203,7 +222,7 @@ const SOURCE_LABEL: Record<string, string> = {
  * pricing screen — an assembled neck set should be priced by the rules
  * that price a bought one. Only the cost underneath arrived differently.
  */
-function PriceRow({
+function PriceFields({
   assemblyId,
   product,
   pending,
@@ -225,6 +244,22 @@ function PriceRow({
   const [note, setNote] = useState<string | null>(null);
   const [busy, start] = useTransition();
 
+  // The server is the source of truth once it answers.
+  //
+  // useState only reads its argument on the first render, so after
+  // "Apply to all" wrote new prices and the page refreshed, these fields
+  // still showed whatever they held before — the database was right and
+  // the screen was lying about it. Same failure as binding a date input
+  // to a prop that arrives late.
+  useEffect(() => {
+    setMrp(product.mrpPaise === null ? "" : (product.mrpPaise / 100).toFixed(2));
+    setSp(
+      product.sellingPricePaise === null
+        ? ""
+        : (product.sellingPricePaise / 100).toFixed(2),
+    );
+  }, [product.mrpPaise, product.sellingPricePaise]);
+
   const toPaise = (v: string) =>
     v.trim() === "" ? null : Math.round(Number(v) * 100);
 
@@ -234,11 +269,11 @@ function PriceRow({
       : null;
 
   return (
-    <div className="grid gap-3 border-t border-border pt-3 sm:grid-cols-[auto_auto_1fr_auto] sm:items-end">
+    <div className="flex items-end gap-2">
       <div>
         <Label htmlFor={`mrp-${product.id}`}>MRP</Label>
         <NarrowInput
-          widthClass="w-28"
+          widthClass="w-24"
           id={`mrp-${product.id}`}
           type="number"
           min={0}
@@ -251,7 +286,7 @@ function PriceRow({
       <div>
         <Label htmlFor={`sp-${product.id}`}>Selling</Label>
         <NarrowInput
-          widthClass="w-28"
+          widthClass="w-24"
           id={`sp-${product.id}`}
           type="number"
           min={0}
@@ -261,23 +296,14 @@ function PriceRow({
           className="text-right"
         />
       </div>
-      <p className="pb-2 text-2xs text-text-muted">
-        {margin === null
-          ? "Cost the materials first, then price it."
-          : `${margin.toFixed(1)}% margin on ${formatPaise(product.unitLandedPaise)} landed`}
-        {note ? ` · ${note}` : ""}
-      </p>
-      <div className="flex gap-2">
+      <div className="flex flex-col gap-1 pb-0.5">
         <Button
           size="sm"
           variant="secondary"
           disabled={busy || pending || product.unitLandedPaise === 0}
           onClick={() =>
             start(async () => {
-              const r = await suggestAssemblyPrice(
-                product.itemId,
-                product.unitLandedPaise,
-              );
+              const r = await suggestAssemblyPrice(product.itemId, product.unitLandedPaise);
               if (!r.ok) {
                 setNote(r.error);
                 return;
@@ -285,11 +311,7 @@ function PriceRow({
               const v = (r.data.recommendedMrpPaise ?? 0) / 100;
               setMrp(v.toFixed(2));
               setSp(v.toFixed(2));
-              setNote(
-                r.data.inBand === false
-                  ? "suggested, but outside the band"
-                  : "suggested from the rules",
-              );
+              setNote(r.data.inBand === false ? "outside the band" : "suggested");
             })
           }
         >
@@ -301,21 +323,23 @@ function PriceRow({
           onClick={() =>
             start(async () => {
               const r = await saveAssemblyPrice(
-                assemblyId,
-                product.itemId,
-                toPaise(mrp),
-                toPaise(sp),
+                assemblyId, product.itemId, toPaise(mrp), toPaise(sp),
               );
               setNote(r.ok ? "saved" : r.error);
               if (r.ok) onDone();
             })
           }
         >
-          Save price
+          Save
         </Button>
       </div>
+      <p className="w-28 pb-2 text-2xs text-text-muted">
+        {margin === null ? "cost it first" : `${margin.toFixed(1)}% margin`}
+        {note ? ` · ${note}` : ""}
+      </p>
     </div>
   );
+
 }
 
 
