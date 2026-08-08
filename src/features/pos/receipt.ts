@@ -104,6 +104,10 @@ export interface ReceiptData {
   cgstPaise?: number;
   sgstPaise?: number;
   igstPaise?: number;
+  /** Signed: positive when the customer pays up to the rupee, negative
+   *  when it is knocked down. Printed on its own line so the column
+   *  actually adds up to the total. */
+  roundOffPaise?: number;
   totalPaise: number;
   payments: Array<{ method: string; amount_paise: number; reference?: string }>;
   terms?: string | null;
@@ -161,7 +165,10 @@ function inWords(paise: number): string {
   const two = (n: number): string =>
     n < 20 ? (ones[n] ?? "") : `${tens[Math.floor(n / 10)] ?? ""}${n % 10 ? " " + (ones[n % 10] ?? "") : ""}`;
 
-  const rupees = Math.floor(paise / 100);
+  // Rounds, and does NOT floor. Flooring here against a formatter that
+  // rounds is how a slip came to print TOTAL 5572 above the words "five
+  // thousand five hundred seventy one".
+  const rupees = Math.round(paise / 100);
   if (rupees === 0) return "zero";
 
   const parts: string[] = [];
@@ -456,6 +463,11 @@ export function receiptHtml(d: ReceiptData): string {
     ${(d.cgstPaise ?? 0) > 0 && cfg.showGstBlock ? `<tr><td colspan="2" class="q">CGST</td><td class="amt q">${rupees(d.cgstPaise ?? 0)}</td></tr>` : ""}
     ${(d.sgstPaise ?? 0) > 0 && cfg.showGstBlock ? `<tr><td colspan="2" class="q">SGST</td><td class="amt q">${rupees(d.sgstPaise ?? 0)}</td></tr>` : ""}
     ${(d.igstPaise ?? 0) > 0 && cfg.showGstBlock ? `<tr><td colspan="2" class="q">IGST</td><td class="amt q">${rupees(d.igstPaise ?? 0)}</td></tr>` : ""}
+    ${(d.roundOffPaise ?? 0) !== 0
+      ? `<tr><td colspan="2" class="q">Round off</td><td class="amt q">${
+          (d.roundOffPaise ?? 0) > 0 ? "+" : "-"
+        }${rupees(Math.abs(d.roundOffPaise ?? 0))}</td></tr>`
+      : ""}
   </table>
 
   <div class="totalbox">

@@ -33,7 +33,7 @@ export async function loadReceiptForReprint(
       .select(
         `id, bill_no, bill_date, status, gross_paise, discount_paise,
          taxable_paise, tax_paise, cgst_paise, sgst_paise, igst_paise,
-         total_paise, sold_by,
+         round_off_paise, total_paise, sold_by,
          locations:location_id(name, code, address, phone, gstin),
          customers:customer_id(name, phone, gstin),
          staff:sold_by(name),
@@ -124,6 +124,7 @@ export async function loadReceiptForReprint(
       cgstPaise: bill.cgst_paise ?? 0,
       sgstPaise: bill.sgst_paise ?? 0,
       igstPaise: bill.igst_paise ?? 0,
+      roundOffPaise: bill.round_off_paise ?? 0,
       totalPaise: bill.total_paise ?? 0,
       payments: (bill.bill_payments ?? []) as ReceiptData["payments"],
       terms: biz?.invoice_terms ?? null,

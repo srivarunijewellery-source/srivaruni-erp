@@ -5,6 +5,8 @@ export const ROUTES = {
   login: "/login",
   dashboard: "/",
   inward: "/inward",
+  assembly: "/assembly",
+  assemblyDetail: (id: string) => `/assembly/${id}`,
   inwardNew: "/inward/new",
   inwardDetail: (id: string) => `/inward/${id}`,
   transfers: "/transfers",
@@ -95,6 +97,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     label: "Purchases",
     items: [
       { href: ROUTES.inward,   label: "Inward" },
+      { href: ROUTES.assembly, label: "Assembly" },
       { href: ROUTES.vendors,  label: "Vendors",  requires: "vendor.view" },
       { href: ROUTES.payments, label: "Payments", requires: "cost.view" },
     ],

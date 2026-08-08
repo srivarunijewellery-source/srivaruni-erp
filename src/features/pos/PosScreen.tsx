@@ -768,13 +768,19 @@ export function PosScreen({
     // that does not work.
     const scheme = schemeTaken ? Math.min(benefits?.schemePaise ?? 0, afterManual) : 0;
 
-    const net = Math.max(0, afterManual - couponPaise - scheme);
+    const exact = Math.max(0, afterManual - couponPaise - scheme);
+    // Rounded to the rupee, matching pos_finalise_bill exactly. This is
+    // what the cashier collects and what gets sent as the payment, so
+    // the two must agree to the paisa or the server rejects the sale.
+    const net = Math.round(exact / 100) * 100;
     return {
       gross,
       lineDisc,
       manual,
       couponPaise,
       scheme,
+      exact,
+      roundOff: net - exact,
       net,
       count: cart.reduce((s, l) => s + l.qty, 0),
     };
@@ -849,7 +855,11 @@ export function PosScreen({
       const finalNet = lineNet - share;
       return sum + Math.round((finalNet * 100) / (100 + l.gstRate));
     }, 0);
-    const taxTotal = totals.net - taxable;
+    // Against the EXACT figure, not the rounded one. Rounding off is not
+    // a supply -- letting it fall into taxTotal here would change the GST
+    // charged by up to fifty paise and put the slip out of step with the
+    // tax the server actually records.
+    const taxTotal = totals.exact - taxable;
     const half = Math.floor(taxTotal / 2);
 
     // Out-of-state supply is IGST at the full rate; anything else splits
@@ -909,6 +919,7 @@ export function PosScreen({
       // The odd paisa goes to SGST so the halves add back exactly.
       sgstPaise: isInterstate ? 0 : taxTotal - half,
       igstPaise: isInterstate ? taxTotal : 0,
+      roundOffPaise: totals.roundOff,
       totalPaise: totals.net,
       payments,
       terms: invoiceTerms,
