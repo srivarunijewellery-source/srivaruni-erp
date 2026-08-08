@@ -409,3 +409,112 @@ export async function saveAssemblyPrice(
   revalidatePath(`${PATH}/${assemblyId}`);
   return ok(undefined);
 }
+
+export interface AssemblyBandOutcome {
+  applied: number;
+  leftAsTyped: number;
+  refused: number;
+  lines: Array<{ name: string; ok: boolean; reason?: string }>;
+}
+
+/**
+ * Price every finished product on the document from one band.
+ *
+ * The same decision the inward pricing bar makes, for the same reason:
+ * choosing a band six times is that decision typed six times, which is
+ * how two identical pieces end up at different prices. "Rules first"
+ * lets each item's own rule win and falls back to the band only where no
+ * rule reaches it.
+ *
+ * Skips anything already priced unless replaceExisting is ticked, so
+ * pressing it twice is safe and deliberate per-item work is not
+ * clobbered. Reports what it could NOT do — that list is the point.
+ */
+export async function applyBandToAssembly(
+  assemblyId: string,
+  bandId: string,
+  mode: "rules_first" | "override",
+  replaceExisting = false,
+): Promise<Result<AssemblyBandOutcome>> {
+  if (!bandId) return err("Choose a band first.");
+  const supabase = await createClient();
+
+  const { data: costs, error: costErr } = await supabase.rpc("assembly_costs", {
+    p_assembly: assemblyId,
+  });
+  if (costErr) return err(toMessage(costErr));
+
+  // One row per component, so collapse to one landed figure per product.
+  const landed = new Map<string, number>();
+  for (const c of (costs ?? []) as Array<Record<string, unknown>>) {
+    landed.set(String(c.product_id), Number(c.unit_landed_paise ?? 0));
+  }
+
+  const { data: rows, error } = await supabase
+    .from("assembly_items")
+    .select("id, item_id, items(name, mrp_paise)")
+    .eq("assembly_id", assemblyId);
+  if (error) return err(toMessage(error));
+
+  const out: AssemblyBandOutcome = {
+    applied: 0, leftAsTyped: 0, refused: 0, lines: [],
+  };
+
+  for (const row of rows ?? []) {
+    const item = (Array.isArray(row.items) ? row.items[0] : row.items) as
+      | { name: string; mrp_paise: number | null }
+      | undefined;
+    const name = item?.name ?? "—";
+    const cost = landed.get(row.id) ?? 0;
+
+    if (!replaceExisting && item?.mrp_paise != null) {
+      out.leftAsTyped++;
+      out.lines.push({ name, ok: false, reason: "already priced" });
+      continue;
+    }
+    if (cost === 0) {
+      out.refused++;
+      out.lines.push({ name, ok: false, reason: "no cost yet, so there is no margin to price from" });
+      continue;
+    }
+
+    let rec: Record<string, unknown> | null = null;
+    if (mode === "rules_first") {
+      const { data } = await supabase.rpc("recommend_price", {
+        p_item: row.item_id, p_band: null, p_landed: cost,
+      });
+      rec = (Array.isArray(data) ? data[0] : data) ?? null;
+      if (!rec || rec.rule_id === null) rec = null;
+    }
+    if (!rec) {
+      const { data } = await supabase.rpc("recommend_price", {
+        p_item: row.item_id, p_band: bandId, p_landed: cost,
+      });
+      rec = (Array.isArray(data) ? data[0] : data) ?? null;
+    }
+    if (!rec || rec.recommended_mrp_paise === null) {
+      out.refused++;
+      out.lines.push({ name, ok: false, reason: "no price could be worked out" });
+      continue;
+    }
+
+    const mrp = Number(rec.recommended_mrp_paise);
+    const { error: wErr } = await supabase
+      .from("items")
+      .update({ mrp_paise: mrp, selling_price_paise: mrp })
+      .eq("id", row.item_id);
+    if (wErr) {
+      out.refused++;
+      out.lines.push({ name, ok: false, reason: toMessage(wErr) });
+      continue;
+    }
+    out.applied++;
+    out.lines.push({
+      name, ok: true,
+      reason: rec.in_band === false ? "priced, but outside the band" : undefined,
+    });
+  }
+
+  revalidatePath(`${PATH}/${assemblyId}`);
+  return ok(out);
+}

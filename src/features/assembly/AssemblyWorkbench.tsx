@@ -12,7 +12,7 @@ import { itemPhotoUrl } from "@/lib/storage";
 import { formatPaise } from "@/lib/money";
 import {
   addComponent, approveAssembly, findComponents,
-  recomputeCosts, rejectAssembly, removeAssemblyProduct, submitAssembly,
+  rejectAssembly, removeAssemblyProduct, submitAssembly,
   updateAssemblyProduct, updateComponentQty,
 } from "./actions";
 import type { AssemblyDetail, AssemblyProduct, ComponentSearchResult } from "./queries";
@@ -119,17 +119,10 @@ export function AssemblyWorkbench({
           {editable && (
             <>
               <Button
-                variant="secondary"
-                disabled={pending}
-                onClick={() => run(() => recomputeCosts(assembly.id))}
-              >
-                Recalculate cost
-              </Button>
-              <Button
                 disabled={pending || assembly.products.length === 0}
                 onClick={() => run(() => submitAssembly(assembly.id))}
               >
-                Submit for approval
+                Submit for pricing
               </Button>
             </>
           )}
@@ -271,7 +264,7 @@ function ProductBlock({
           </div>
 
           <div>
-            <p className="mb-1 text-2xs uppercase tracking-wide text-text-subtle">
+            <p className="mb-1 pl-4 text-2xs uppercase tracking-wide text-text-subtle">
               Materials for one piece
             </p>
             {product.components.length === 0 ? (
@@ -279,20 +272,20 @@ function ProductBlock({
                 Nothing added yet. Scan or search below.
               </p>
             ) : (
-              <ul className="divide-y divide-border">
+              <ul className="ml-4 divide-y divide-border border-l border-border pl-3">
                 {product.components.map((c) => (
                   <li
                     key={c.id}
-                    className="grid grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-3 py-2"
+                    className="grid grid-cols-[32px_minmax(0,1fr)_auto] items-center gap-3 py-1.5"
                   >
                     {/* Grid, not flex. Explicit column widths cannot be
                         collapsed by a child carrying its own w-full,
                         which is what crushed the name to one character
                         per line. */}
-                    <PhotoThumb src={itemPhotoUrl(c.photoPath)} alt={c.name} size={40} />
+                    <PhotoThumb src={itemPhotoUrl(c.photoPath)} alt={c.name} size={32} />
                     <div className="min-w-0">
-                      <p className="truncate text-sm">{c.name}</p>
-                      <p className="font-mono text-2xs text-text-muted">{c.barcode}</p>
+                      <p className="truncate text-2xs">{c.name}</p>
+                      <p className="font-mono text-2xs text-text-subtle">{c.barcode}</p>
                     </div>
                     <NarrowInput
                       widthClass="w-20"

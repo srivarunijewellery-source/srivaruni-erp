@@ -10,8 +10,10 @@ import { itemPhotoUrl } from "@/lib/storage";
 import { formatPaise } from "@/lib/money";
 import {
   setComponentCost, approveAssembly, rejectAssembly,
-  saveAssemblyPrice, suggestAssemblyPrice,
+  saveAssemblyPrice, suggestAssemblyPrice, applyBandToAssembly,
+  type AssemblyBandOutcome,
 } from "./actions";
+import type { PriceBand } from "@/types/domain";
 import type { AssemblyDetail } from "./queries";
 
 /**
@@ -28,9 +30,11 @@ import type { AssemblyDetail } from "./queries";
  */
 export function AssemblyPricingPanel({
   assembly,
+  bands,
   canApprove,
 }: {
   assembly: AssemblyDetail;
+  bands: PriceBand[];
   canApprove: boolean;
 }) {
   const router = useRouter();
@@ -59,6 +63,8 @@ export function AssemblyPricingPanel({
     <div className="space-y-4">
       {error && <FieldError>{error}</FieldError>}
 
+      <AssemblyBandBar assemblyId={assembly.id} bands={bands} />
+
       {uncosted > 0 && (
         <p className="rounded-control border border-status-pending-fg/40 bg-status-pending-bg px-3 py-2 text-sm">
           {uncosted} material{uncosted === 1 ? "" : "s"} still need a cost. Until
@@ -84,16 +90,16 @@ export function AssemblyPricingPanel({
             </div>
           </CardHeader>
           <CardBody className="space-y-2">
-            <ul className="divide-y divide-border">
+            <ul className="ml-4 divide-y divide-border border-l border-border pl-3">
               {p.components.map((c) => (
                 <li
                   key={c.id}
-                  className="grid grid-cols-[36px_minmax(0,1fr)_auto_auto] items-center gap-3 py-2"
+                  className="grid grid-cols-[32px_minmax(0,1fr)_auto_auto] items-center gap-3 py-1.5"
                 >
-                  <PhotoThumb src={itemPhotoUrl(c.photoPath)} alt={c.name} size={36} />
+                  <PhotoThumb src={itemPhotoUrl(c.photoPath)} alt={c.name} size={32} />
                   <div className="min-w-0">
-                    <p className="truncate text-sm">{c.name}</p>
-                    <p className="font-mono text-2xs text-text-muted">
+                    <p className="truncate text-2xs">{c.name}</p>
+                    <p className="font-mono text-2xs text-text-subtle">
                       {c.barcode} · {SOURCE_LABEL[c.costSource]}
                     </p>
                   </div>
@@ -309,5 +315,111 @@ function PriceRow({
         </Button>
       </div>
     </div>
+  );
+}
+
+
+/**
+ * Price the whole document from one band.
+ *
+ * The same control the inward pricing screen carries, and for the same
+ * reason: pricing six pieces is one decision, and making it six times is
+ * how two identical items end up at different prices. Per-item Suggest
+ * below is still there for the exceptions.
+ */
+function AssemblyBandBar({
+  assemblyId,
+  bands,
+}: {
+  assemblyId: string;
+  bands: PriceBand[];
+}) {
+  const router = useRouter();
+  const [bandId, setBandId] = useState(bands[0]?.id ?? "");
+  const [mode, setMode] = useState<"rules_first" | "override">("rules_first");
+  const [replaceExisting, setReplaceExisting] = useState(false);
+  const [result, setResult] = useState<AssemblyBandOutcome | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, start] = useTransition();
+
+  if (bands.length === 0) return null;
+
+  return (
+    <Card>
+      <CardBody className="space-y-2">
+        <div className="flex flex-wrap items-end gap-2">
+          <div>
+            <Label htmlFor="asm-band">Price everything from</Label>
+            <select
+              id="asm-band"
+              value={bandId}
+              onChange={(e) => setBandId(e.target.value)}
+              className="h-[var(--control-height)] w-52 rounded-control border border-border bg-surface px-2 text-sm"
+            >
+              {bands.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <label className="flex items-center gap-1.5 pb-2 text-2xs">
+            <input
+              type="checkbox"
+              checked={mode === "override"}
+              onChange={(e) => setMode(e.target.checked ? "override" : "rules_first")}
+            />
+            ignore item rules
+          </label>
+          <label className="flex items-center gap-1.5 pb-2 text-2xs">
+            <input
+              type="checkbox"
+              checked={replaceExisting}
+              onChange={(e) => setReplaceExisting(e.target.checked)}
+            />
+            replace prices already set
+          </label>
+          <Button
+            size="sm"
+            disabled={busy || !bandId}
+            onClick={() => {
+              setError(null);
+              setResult(null);
+              start(async () => {
+                const r = await applyBandToAssembly(assemblyId, bandId, mode, replaceExisting);
+                if (r.ok) {
+                  setResult(r.data);
+                  router.refresh();
+                } else setError(r.error);
+              });
+            }}
+          >
+            {busy ? "Pricing…" : "Apply to all"}
+          </Button>
+        </div>
+
+        {error && <FieldError>{error}</FieldError>}
+        {result && (
+          <div className="text-2xs text-text-muted">
+            <p>
+              {result.applied} priced · {result.leftAsTyped} left as they were ·{" "}
+              {result.refused} could not be done
+            </p>
+            {/* The ones it could NOT do are the only ones worth reading. */}
+            {result.lines.filter((l) => !l.ok && l.reason).length > 0 && (
+              <ul className="mt-1 space-y-0.5">
+                {result.lines
+                  .filter((l) => !l.ok && l.reason)
+                  .map((l, i) => (
+                    <li key={i}>
+                      <span className="text-text-primary">{l.name}</span> — {l.reason}
+                    </li>
+                  ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </CardBody>
+    </Card>
   );
 }

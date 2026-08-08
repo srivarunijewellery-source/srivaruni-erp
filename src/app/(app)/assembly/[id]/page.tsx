@@ -5,6 +5,7 @@ import { isOwner } from "@/config/roles";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { getAssembly } from "@/features/assembly/queries";
 import { listItemFormOptions } from "@/features/inward/queries";
+import { listBands } from "@/features/pricing/queries";
 import { AssemblyWorkbench } from "@/features/assembly/AssemblyWorkbench";
 import { AssemblyPricingPanel } from "@/features/assembly/AssemblyPricingPanel";
 
@@ -19,9 +20,12 @@ export default async function AssemblyDetailPage({
   const user = await requireUser();
 
   const owner = isOwner(user.role);
-  const [assembly, options] = await Promise.all([
+  const [assembly, options, bands] = await Promise.all([
     getAssembly(id, owner),
     listItemFormOptions(),
+    // Only the owner sees the pricing screen, so bands are only needed
+    // there — but fetching them is cheap and keeps this branch simple.
+    owner ? listBands() : Promise.resolve([]),
   ]);
   // Not found and not-yours look identical: RLS returns nothing for
   // another branch's document, so the app must not distinguish them.
@@ -40,7 +44,7 @@ export default async function AssemblyDetailPage({
       {/* Two screens, one document: the floor records what went in, the
           owner puts a price on it. Same split as inward. */}
       {owner && assembly.status === "submitted" ? (
-        <AssemblyPricingPanel assembly={assembly} canApprove />
+        <AssemblyPricingPanel assembly={assembly} bands={bands} canApprove />
       ) : (
         <AssemblyWorkbench
           assembly={assembly}
