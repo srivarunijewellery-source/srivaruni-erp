@@ -234,25 +234,28 @@ export function receiptHtml(d: ReceiptData): string {
    */
   const rows = d.lines
     .map((l, i) => {
-      const names = wrap(l.name, 34);
-      const first = names[0] ?? l.name;
-      const rest = names.slice(1);
+      // Two lines of name at most, then truncate. A name long enough to
+      // need a third line is a data entry problem, and letting it run
+      // pushes the figures apart and eats the roll.
+      const wrapped = wrap(l.name, 30);
+      const names =
+        wrapped.length > 2
+          ? [wrapped[0] ?? "", `${(wrapped[1] ?? "").slice(0, 27)}…`]
+          : wrapped;
+      const gross = l.qty * l.unitPaise;
       return `
 <tr>
   <td class="n item">${i + 1}</td>
-  <td colspan="2" class="nm b item">${esc(first)}</td>
-</tr>${rest.map((r) => `<tr><td></td><td colspan="2" class="nm">${esc(r)}</td></tr>`).join("")}
+  <td colspan="3" class="nm b item">${esc(names[0] ?? l.name)}</td>
+</tr>${names
+        .slice(1)
+        .map((r) => `<tr><td></td><td colspan="3" class="nm">${esc(r)}</td></tr>`)
+        .join("")}
 <tr class="lastrow">
   <td></td>
-  <td colspan="2" class="amt q">${
-    // Item price is the gross for the line. The "3 @ 100.00" breakdown
-    // only earns its space when there is more than one; at qty 1 the
-    // unit rate and the line price are the same number and printing
-    // both just made the eye check whether they differed.
-    l.qty > 1
-      ? `${l.qty} @ ${rupees(l.unitPaise)}  ${rupees(l.qty * l.unitPaise)}`
-      : rupees(l.qty * l.unitPaise)
-  }<span class="fin">${rupees(l.totalPaise)}</span></td>
+  <td class="q">${l.qty > 1 ? `${l.qty} @ ${rupees(l.unitPaise)}` : ""}</td>
+  <td class="amt q">${rupees(gross)}</td>
+  <td class="amt b">${rupees(l.totalPaise)}</td>
 </tr>`;
     })
     .join("");
@@ -398,6 +401,14 @@ export function receiptHtml(d: ReceiptData): string {
   .solid { border-top: 1px solid #000; }
 
   table { width: 100%; border-collapse: collapse; }
+  /* The item table only. Percentages rather than millimetres because the
+     printable width is a setting, and a fixed mm column overflows a
+     narrower roll. */
+  table.items { table-layout: fixed; }
+  table.items col.c1 { width: 6%; }
+  table.items col.c2 { width: 46%; }
+  table.items col.c3 { width: 24%; }
+  table.items col.c4 { width: 24%; }
   td, th { vertical-align: top; padding: 0; }
   th {
     font-size: 8.5px; text-transform: uppercase; letter-spacing: 0.6px;
@@ -411,12 +422,6 @@ export function receiptHtml(d: ReceiptData): string {
   .val { text-align: right; word-break: break-word; }
   .q { font-size: 9.5px; }
   .amt { text-align: right; white-space: nowrap; }
-  /* Fixed width so every amount lines up down the page, while the price
-     beside it sits close instead of being flung to the far margin. */
-  .fin {
-    display: inline-block; width: 20mm; text-align: right;
-    font-weight: 700; margin-left: 3mm;
-  }
   /* Everything numeric. Tabular figures keep the column straight without
      making the whole slip monospaced. */
   .tnum, .amt, .n, .q {
@@ -507,11 +512,15 @@ export function receiptHtml(d: ReceiptData): string {
     ${d.customerGstin ? `<tr><td>Cust GSTIN</td><td class="amt">${esc(d.customerGstin)}</td></tr>` : ""}
   </table>
   <hr />
-  <table>
+  <table class="items">
+    <colgroup>
+      <col class="c1" /><col class="c2" /><col class="c3" /><col class="c4" />
+    </colgroup>
     <tr>
       <th class="n">#</th>
       <th>Item</th>
-      <th class="amt">Price &middot; amount</th>
+      <th class="amt">Price</th>
+      <th class="amt">Amount</th>
     </tr>
     ${rows}
   </table>
