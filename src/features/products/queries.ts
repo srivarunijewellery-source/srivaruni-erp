@@ -312,6 +312,8 @@ export interface ProductSource {
   inwardId: string | null;
   docNo: string | null;
   receivedAt: string | null;
+  /** Set when the piece was made in-house rather than bought in. */
+  assemblyId: string | null;
 }
 
 /**
@@ -419,12 +421,48 @@ export async function getProductSource(itemId: string): Promise<ProductSource> {
   );
   const vendor = one<RawVendor>(inw?.vendors ?? null);
 
+  if (data?.inward_id) {
+    return {
+      vendorId: inw?.vendor_id ?? null,
+      vendorName: vendor?.name ?? null,
+      inwardId: data.inward_id,
+      docNo: inw?.doc_no ?? null,
+      receivedAt: inw?.approved_at ?? null,
+      assemblyId: null,
+    };
+  }
+
+  // Not on any inward — but it may have been made here rather than
+  // bought. The card was saying "created in the catalog and not yet
+  // received", which is true of an assembled piece only in the narrowest
+  // sense and useless to anyone reading it.
+  const { data: asm } = await supabase
+    .from("assembly_items")
+    .select("assembly_id, assemblies(doc_no, approved_at)")
+    .eq("item_id", itemId)
+    .maybeSingle();
+
+  if (asm?.assembly_id) {
+    const a = one<{ doc_no: string; approved_at: string | null }>(
+      (asm.assemblies ?? null) as never,
+    );
+    return {
+      vendorId: null,
+      vendorName: null,
+      inwardId: null,
+      docNo: a?.doc_no ?? null,
+      receivedAt: a?.approved_at ?? null,
+      assemblyId: asm.assembly_id,
+    };
+  }
+
   return {
-    vendorId: inw?.vendor_id ?? null,
-    vendorName: vendor?.name ?? null,
-    inwardId: data?.inward_id ?? null,
-    docNo: inw?.doc_no ?? null,
-    receivedAt: inw?.approved_at ?? null,
+    vendorId: null,
+    vendorName: null,
+    inwardId: null,
+    docNo: null,
+    receivedAt: null,
+    assemblyId: null,
   };
 }
 

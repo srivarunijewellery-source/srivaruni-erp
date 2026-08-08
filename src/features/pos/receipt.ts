@@ -232,30 +232,44 @@ export function receiptHtml(d: ReceiptData): string {
    * that comfortably fit — on a four-item bill that alone was two extra
    * lines of paper.
    */
+  // 0.55em is the average advance of bold Helvetica; the 0.92 leaves a
+  // character of slack so a wide-glyph name does not sit flush against
+  // the price column.
+  const itemColPx = ((cfg.printWidthMm * 0.56) * 96) / 25.4;
+  const nameChars = Math.max(
+    12,
+    Math.floor((itemColPx / ((cfg.itemFontPx ?? 13) * 0.55)) * 0.92),
+  );
+
   const rows = d.lines
     .map((l, i) => {
-      // Two lines of name at most, then truncate. A name long enough to
-      // need a third line is a data entry problem, and letting it run
-      // pushes the figures apart and eats the roll.
-      const wrapped = wrap(l.name, 30);
+      // The name stays inside its own column and wraps there. It used to
+      // span the price and amount columns, so a long name ran underneath
+      // the figures and the two collided.
+      //
+      // Derived from the configured size, not fixed: the item column is
+      // 56% of the printable width, and how many characters that holds
+      // depends on the font. At 11px it is about 27, at 13px about 23 —
+      // so a hardcoded 26 would overflow the moment someone raised the
+      // size in print settings.
+      //
+      // Two lines, then truncate. A third line means a name nobody can
+      // read on a tag either.
+      const wrapped = wrap(l.name, nameChars);
       const names =
         wrapped.length > 2
-          ? [wrapped[0] ?? "", `${(wrapped[1] ?? "").slice(0, 27)}…`]
+          ? [wrapped[0] ?? "", `${(wrapped[1] ?? "").slice(0, 23)}…`]
           : wrapped;
-      const gross = l.qty * l.unitPaise;
       return `
-<tr>
-  <td class="n item">${i + 1}</td>
-  <td colspan="3" class="nm b item">${esc(names[0] ?? l.name)}</td>
-</tr>${names
-        .slice(1)
-        .map((r) => `<tr><td></td><td colspan="3" class="nm">${esc(r)}</td></tr>`)
-        .join("")}
 <tr class="lastrow">
-  <td></td>
-  <td class="q">${l.qty > 1 ? `${l.qty} @ ${rupees(l.unitPaise)}` : ""}</td>
-  <td class="amt q">${rupees(gross)}</td>
-  <td class="amt b">${rupees(l.totalPaise)}</td>
+  <td class="n item">${i + 1}</td>
+  <td class="nm b item">${names.map((n) => esc(n)).join("<br />")}${
+    l.qty > 1
+      ? `<span class="mult">${l.qty} @ ${rupees(l.unitPaise)}</span>`
+      : ""
+  }</td>
+  <td class="amt q item">${rupees(l.qty * l.unitPaise)}</td>
+  <td class="amt b item">${rupees(l.totalPaise)}</td>
 </tr>`;
     })
     .join("");
@@ -406,9 +420,19 @@ export function receiptHtml(d: ReceiptData): string {
      narrower roll. */
   table.items { table-layout: fixed; }
   table.items col.c1 { width: 6%; }
-  table.items col.c2 { width: 46%; }
-  table.items col.c3 { width: 24%; }
-  table.items col.c4 { width: 24%; }
+  table.items col.c2 { width: 56%; }
+  table.items col.c3 { width: 18%; }
+  table.items col.c4 { width: 20%; }
+  /* Every cell in an item row aligns to the top, so a two-line name does
+     not drag its figures down the slip. */
+  table.items td { vertical-align: top; }
+  /* The per-unit breakdown, tucked under the name where there is room,
+     rather than competing with the price column. */
+  .mult {
+    display: block; font-weight: normal;
+    font-family: "Courier New", Courier, monospace;
+    font-size: 9px;
+  }
   td, th { vertical-align: top; padding: 0; }
   th {
     font-size: 8.5px; text-transform: uppercase; letter-spacing: 0.6px;

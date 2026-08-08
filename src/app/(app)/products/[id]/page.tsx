@@ -243,6 +243,25 @@ export default async function ProductDetailPage({
                   />
                   <SourceRow label="Approved" value={formatDate(source.receivedAt)} />
                 </>
+              ) : source.assemblyId ? (
+                <>
+                  <SourceRow label="Origin" value="Made in-house" />
+                  <SourceRow
+                    label="Assembly"
+                    value={
+                      <Link
+                        href={ROUTES.assemblyDetail(source.assemblyId)}
+                        className="font-mono text-2xs text-brand hover:underline"
+                      >
+                        {source.docNo}
+                      </Link>
+                    }
+                  />
+                  <SourceRow
+                    label="Approved"
+                    value={source.receivedAt ? formatDate(source.receivedAt) : "not yet"}
+                  />
+                </>
               ) : (
                 <p className="text-text-muted">
                   Created in the catalog and not yet received on any inward.

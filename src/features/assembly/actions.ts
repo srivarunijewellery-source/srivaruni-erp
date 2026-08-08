@@ -715,3 +715,91 @@ export async function dismantleAssembly(assemblyId: string): Promise<Result<void
   revalidatePath("/stock");
   return ok(undefined);
 }
+
+/**
+ * Rename, re-attribute and re-photograph a piece while pricing it.
+ *
+ * The same three edits the inward pricing screen allows, and needed for
+ * the same reason: pricing is the moment someone looks properly at the
+ * piece, and it is when a name typed at the bench gets corrected and the
+ * stone and plating actually get recorded.
+ *
+ * Item-scoped, like their inward counterparts — those take an inwardId
+ * only to know what to revalidate, so these are thin equivalents rather
+ * than a second implementation of the rule.
+ */
+export async function renameAssemblyItem(
+  assemblyId: string,
+  itemId: string,
+  name: string,
+): Promise<Result<void>> {
+  const n = name.trim();
+  if (n.length < 2) return err("Give the item a name.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("rename_item", { p_item: itemId, p_name: n });
+  if (error) return err(toMessage(error));
+  revalidatePath(`${PATH}/${assemblyId}`);
+  return ok(undefined);
+}
+
+export async function setAssemblyItemAttributes(
+  assemblyId: string,
+  itemId: string,
+  attrs: {
+    colourId?: string | null;
+    platingId?: string | null;
+    stoneId?: string | null;
+    sizeId?: string | null;
+  },
+): Promise<Result<void>> {
+  const blank = (v: string | null | undefined) => (v && v.length > 0 ? v : null);
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("items")
+    .update({
+      colour_id: blank(attrs.colourId),
+      plating_id: blank(attrs.platingId),
+      stone_id: blank(attrs.stoneId),
+      size_id: blank(attrs.sizeId),
+    })
+    .eq("id", itemId);
+
+  if (error) return err(toMessage(error));
+  revalidatePath(`${PATH}/${assemblyId}`);
+  return ok(undefined);
+}
+
+export async function addAssemblyItemPhotos(
+  assemblyId: string,
+  itemId: string,
+  paths: string[],
+): Promise<Result<void>> {
+  if (paths.length === 0) return ok(undefined);
+
+  const supabase = await createClient();
+  const { data: staffRows } = await supabase.rpc("get_current_staff");
+  const staff = Array.isArray(staffRows) ? staffRows[0] : staffRows;
+
+  // Only the first photo on an item may be primary, enforced by a
+  // partial unique index — so check rather than assume.
+  const { count } = await supabase
+    .from("item_photos")
+    .select("id", { count: "exact", head: true })
+    .eq("item_id", itemId);
+
+  const existing = count ?? 0;
+  const { error } = await supabase.from("item_photos").insert(
+    paths.map((path, i) => ({
+      item_id: itemId,
+      storage_path: path,
+      is_primary: existing === 0 && i === 0,
+      sort_order: existing + i,
+      uploaded_by: staff?.staff_id ?? null,
+    })),
+  );
+  if (error) return err(toMessage(error));
+  revalidatePath(`${PATH}/${assemblyId}`);
+  return ok(undefined);
+}

@@ -53,6 +53,7 @@ export default async function AssemblyDetailPage({
         <AssemblyPricingPanel
           assembly={assembly}
           bands={bands}
+          options={options}
           canApprove={assembly.status === "submitted"}
         />
       ) : (

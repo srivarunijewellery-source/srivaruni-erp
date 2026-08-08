@@ -14,7 +14,8 @@ import {
   saveAssemblyPrice, suggestAssemblyPrice, applyBandToAssembly,
   type AssemblyBandOutcome,
 } from "./actions";
-import type { PriceBand } from "@/types/domain";
+import type { ItemFormOptions, PriceBand } from "@/types/domain";
+import { ItemEditRow } from "./ItemEditRow";
 import type { AssemblyDetail } from "./queries";
 
 /**
@@ -32,10 +33,14 @@ import type { AssemblyDetail } from "./queries";
 export function AssemblyPricingPanel({
   assembly,
   bands,
+  options,
   canApprove,
 }: {
   assembly: AssemblyDetail;
   bands: PriceBand[];
+  /** Attribute lists, so the pricing screen can correct what the bench
+   *  did not fill in. */
+  options: ItemFormOptions;
   canApprove: boolean;
 }) {
   const router = useRouter();
@@ -158,6 +163,13 @@ export function AssemblyPricingPanel({
             </div>
           </CardHeader>
           <CardBody className="space-y-2">
+            <ItemEditRow
+              assemblyId={assembly.id}
+              itemId={p.itemId}
+              name={p.name}
+              options={options}
+              disabled={pending}
+            />
             <ul className="ml-4 divide-y divide-border border-l border-border pl-3">
               {p.components.map((c) => (
                 <li
