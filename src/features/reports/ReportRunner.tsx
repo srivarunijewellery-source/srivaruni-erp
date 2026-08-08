@@ -246,9 +246,13 @@ export function ReportRunner({
                               {r[c] === null || r[c] === undefined
                                 ? "—"
                                 : isMoney(c) && typeof r[c] === "number"
-                                  ? Number(r[c]).toLocaleString("en-IN", {
-                                      minimumFractionDigits: 2,
-                                      maximumFractionDigits: 2,
+                                  ? // Whole rupees on screen, like every
+                                    // other surface. The CSV download
+                                    // above is deliberately NOT rounded:
+                                    // that file gets reconciled against
+                                    // the books, and books are exact.
+                                    Number(r[c]).toLocaleString("en-IN", {
+                                      maximumFractionDigits: 0,
                                     })
                                   : String(r[c])}
                             </td>

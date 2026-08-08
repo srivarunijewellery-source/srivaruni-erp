@@ -119,7 +119,7 @@ export async function savePricingLine(formData: FormData): Promise<Result> {
   if (mrp !== null || selling !== null) {
     if (mrp !== null && selling !== null && mrp < selling) {
       return err(
-        `MRP ${(mrp / 100).toFixed(2)} is below the selling price ${(selling / 100).toFixed(2)}. MRP is the ceiling.`,
+        `MRP ${Math.round(mrp / 100)} is below the selling price ${Math.round(selling / 100)}. MRP is the ceiling.`,
       );
     }
 

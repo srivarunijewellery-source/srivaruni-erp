@@ -46,8 +46,8 @@ export async function GET(
       l.name,
       l.category,
       qtyOf(l),
-      ((l.sellingPricePaise ?? 0) / 100).toFixed(2),
-      (((l.sellingPricePaise ?? 0) * qtyOf(l)) / 100).toFixed(2),
+      String(Math.round((l.sellingPricePaise ?? 0) / 100)),
+      String(Math.round(((l.sellingPricePaise ?? 0) * qtyOf(l)) / 100)),
     ]),
     [],
     [

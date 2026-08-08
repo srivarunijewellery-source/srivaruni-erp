@@ -113,7 +113,9 @@ export interface ReceiptData {
 
 const FRAME_ID = "sv-receipt-frame";
 
-const rupees = (paise: number) => (paise / 100).toFixed(2);
+// Whole rupees on the slip, matching every other surface. The bill is
+// still STORED to the paise; this only changes what is printed.
+const rupees = (paise: number) => String(Math.round(paise / 100));
 
 function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
