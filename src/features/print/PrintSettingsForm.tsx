@@ -46,6 +46,8 @@ export function PrintSettingsForm({ config }: { config: PrintConfig }) {
         show_tagline: f.showTagline,
         address_font_px: f.addressFontPx,
         item_font_px: f.itemFontPx,
+        signature_line: f.signatureLine ?? "",
+        show_signature: f.showSignature,
         qr_url: f.qrUrl ?? "",
         qr_caption: f.qrCaption ?? "",
         qr_handle: f.qrHandle ?? "",
@@ -151,6 +153,25 @@ export function PrintSettingsForm({ config }: { config: PrintConfig }) {
             label="Show the QR"
             checked={f.showBarcode}
             onChange={(v) => set("showBarcode", v)}
+          />
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader className="font-medium">Credit line</CardHeader>
+        <CardBody className="space-y-2">
+          <div>
+            <Label htmlFor="sig">Printed small and italic at the foot</Label>
+            <Input
+              id="sig"
+              value={f.signatureLine ?? ""}
+              onChange={(e) => set("signatureLine", e.target.value)}
+            />
+          </div>
+          <Toggle
+            label="Show it"
+            checked={f.showSignature ?? true}
+            onChange={(v) => set("showSignature", v)}
           />
         </CardBody>
       </Card>

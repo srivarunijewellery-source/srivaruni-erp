@@ -33,6 +33,8 @@ export interface PrintSettings {
   showTagline?: boolean;
   addressFontPx?: number;
   itemFontPx?: number;
+  signatureLine?: string | null;
+  showSignature?: boolean;
   paperMm: number;
   printWidthMm: number;
   sideMarginMm: number;
@@ -67,6 +69,8 @@ export const DEFAULT_PRINT: PrintSettings = {
   showTagline: true,
   addressFontPx: 10,
   itemFontPx: 13,
+  signatureLine: null,
+  showSignature: true,
 };
 
 export interface ReceiptData {
@@ -224,7 +228,14 @@ export function receiptHtml(d: ReceiptData): string {
      than shading, solid rules rather than dashed, and bold body text --
      the head under-burns thin strokes, which is what made the first real
      print come out grey. */
-  @page { size: ${cfg.paperMm}mm auto; margin: 0; }
+  /* An explicit height, never "auto".
+     Chrome silently ignores an auto height and falls back to Letter:
+     measured, a slip that should have been eighty millimetres wide came
+     out at 215.9. The browser then scales that Letter page down onto the
+     roll, which is why print could look subtly wrong no matter what the
+     margins said. A generous fixed height costs nothing, because a
+     thermal printer feeds only as far as the content actually goes. */
+  @page { size: ${cfg.paperMm}mm 297mm; margin: 0; }
   /* Only the MONEY is monospaced. Forcing a fixed-width font on names
      and labels is what made the old slip read like a fax -- it wastes
      paper and hurts legibility, and the only thing that actually needs
@@ -314,6 +325,16 @@ export function receiptHtml(d: ReceiptData): string {
     text-transform: uppercase; margin-top: 1mm; font-weight: 700;
   }
   .qr .handle { display: block; font-size: 8px; margin-top: 0.4mm; }
+
+  /* The credit line. Quiet on purpose: small, italic and set apart, so
+     it reads as a maker's mark rather than advertising on a customer's
+     receipt. */
+  .sig {
+    text-align: center; font-style: italic;
+    font-size: 8px; line-height: 1.3;
+    margin-top: 2mm; padding-top: 1.2mm;
+    border-top: 1px solid #000;
+  }
 
   .visit {
     text-align: center; font-size: 9.5px; font-weight: bold;
@@ -451,6 +472,8 @@ export function receiptHtml(d: ReceiptData): string {
   <div class="thanks">${esc(d.footer ?? "Thank you, do visit again")}</div>
   <div class="c xs">Prices are inclusive of GST</div>
   <div class="c xs">${esc(d.billNo)} &middot; ${esc(d.dateText)}</div>
+  ${cfg.showSignature !== false && cfg.signatureLine
+    ? `<div class="sig">${esc(cfg.signatureLine)}</div>` : ""}
   <!-- Trailing space so the tear-off does not cut the last line. -->
   <div class="c" style="margin-top:5mm">.</div>
 </body></html>`;

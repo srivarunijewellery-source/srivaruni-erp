@@ -43,6 +43,8 @@ export async function getPrintConfig(): Promise<PrintConfig> {
     showTagline: Boolean(data.show_tagline ?? true),
     addressFontPx: Number(data.address_font_px ?? 10),
     itemFontPx: Number(data.item_font_px ?? 13),
+    signatureLine: data.signature_line ?? null,
+    showSignature: Boolean(data.show_signature ?? true),
     fontFamily: (data.font_family ?? "editorial") as PrintConfig["fontFamily"],
     qrUrl: data.qr_url ?? null,
     qrCaption: data.qr_caption ?? "Follow us",
