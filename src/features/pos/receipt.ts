@@ -368,14 +368,28 @@ export function receiptHtml(d: ReceiptData): string {
     font-family: "Courier New", Courier, monospace;
     font-variant-numeric: tabular-nums;
   }
+  /* Back to the original size and casing. The only thing kept from the
+     "Follow us" line is a little tracking.
+
+     A thermal head lays down a slightly fat dot, so tight letterforms
+     close up and small type reads as a dense block. 0.3px is enough to
+     open it up without the name drifting apart into separate letters --
+     at this size the difference is felt more than seen, which is the
+     point. The wrap stays at 20 characters: 0.3px across twenty of them
+     is about six pixels on a 295px line, well inside the column. */
   .item {
     padding-top: 1mm;
     font-size: ${cfg.itemFontPx ?? 13}px;
+    letter-spacing: 0.3px;
     ${cfg.uppercaseItems ? "text-transform: uppercase;" : ""}
   }
-  /* The wrapped continuation lines of a long name need it too, or the
-     first line shouts and the rest whispers. */
-  .nm { word-break: break-word; ${cfg.uppercaseItems ? "text-transform: uppercase;" : ""} }
+  /* Continuation lines of a long name match the first, or the name
+     shouts on line one and whispers on line two. */
+  .nm {
+    word-break: break-word;
+    letter-spacing: 0.3px;
+    ${cfg.uppercaseItems ? "text-transform: uppercase;" : ""}
+  }
   .lastrow td { padding-bottom: 1mm; border-bottom: 1px solid #000; }
 
   /* The total, reversed out so it is the first thing the eye lands on. */

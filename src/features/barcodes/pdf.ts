@@ -121,6 +121,10 @@ export async function generateLabelsPdf(
   const printArea = mm(printAreaMm);
   const foldX = mm(foldAtMm);
   const pad = mm(1.3);
+  /** Extra clearance for the price only, on top of the usual padding.
+   *  Measured against a printed strip where the cut was clipping the
+   *  last digit. */
+  const PRICE_EDGE_GUARD = mm(2.5);
 
   const leftW = foldX;
   const rightW = printArea - foldX;
@@ -194,32 +198,49 @@ export async function generateLabelsPdf(
         color: rgb(0, 0, 0),
       });
 
-      // Two lines: the house name large enough to read across a counter,
-      // the category small underneath it. Both auto-shrink to the panel,
-      // so a narrower measured fold never clips the brand.
+      // The house name, and a second line only if there is one to draw.
+      //
+      // Reversed white-on-black at 4pt does not survive a thermal head:
+      // the strapline printed as a grey smudge and took contrast from the
+      // name above it. With one line the name gets the whole band and can
+      // run considerably larger, which is what actually reads across a
+      // counter. Both sizes still auto-shrink, so a narrower measured
+      // fold never clips the brand.
       const brandTop = APP.tagBrandLine1;
-      const brandSub = APP.tagBrandLine2;
+      const brandSub = APP.tagBrandLine2.trim();
+      const hasSub = brandSub.length > 0;
 
-      let topSize = 7.4;
-      while (bold.widthOfTextAtSize(brandTop, topSize) > rMaxW && topSize > 4) topSize -= 0.15;
+      // One line can afford to be bigger; two have to share the band.
+      let topSize = hasSub ? 7.4 : 9.6;
+      const minTop = hasSub ? 4 : 5;
+      while (bold.widthOfTextAtSize(brandTop, topSize) > rMaxW && topSize > minTop) {
+        topSize -= 0.15;
+      }
+
       let subSize = 4.1;
-      while (regular.widthOfTextAtSize(brandSub, subSize) > rMaxW && subSize > 2.8) subSize -= 0.1;
+      if (hasSub) {
+        while (regular.widthOfTextAtSize(brandSub, subSize) > rMaxW && subSize > 2.8) {
+          subSize -= 0.1;
+        }
+      }
 
       const topW = bold.widthOfTextAtSize(brandTop, topSize);
-      const subW = regular.widthOfTextAtSize(brandSub, subSize);
-      const blockH = topSize + subSize + 0.6;
+      const blockH = hasSub ? topSize + subSize + 0.6 : topSize;
       const blockBottom = bandY + (bandH - blockH) / 2 + 0.6;
 
-      page.drawText(brandSub, {
-        x: foldX + (rightW - subW) / 2,
-        y: blockBottom,
-        size: subSize,
-        font: regular,
-        color: rgb(1, 1, 1),
-      });
+      if (hasSub) {
+        const subW = regular.widthOfTextAtSize(brandSub, subSize);
+        page.drawText(brandSub, {
+          x: foldX + (rightW - subW) / 2,
+          y: blockBottom,
+          size: subSize,
+          font: regular,
+          color: rgb(1, 1, 1),
+        });
+      }
       page.drawText(brandTop, {
         x: foldX + (rightW - topW) / 2,
-        y: blockBottom + subSize + 0.6,
+        y: hasSub ? blockBottom + subSize + 0.6 : blockBottom,
         size: topSize,
         font: bold,
         color: rgb(1, 1, 1),
@@ -239,7 +260,14 @@ export async function generateLabelsPdf(
         const numW = bold.widthOfTextAtSize(mrpText, mrpNumSize);
         const labelSize = 4.4;
         const labelW = regular.widthOfTextAtSize("MRP", labelSize);
-        const rightEdge = foldX + rightW - pad;
+        // Held further off the edge than everything else on the tag.
+        //
+        // The die cut does not land in exactly the same place on every
+        // label, and the price is the one thing that must never be
+        // clipped -- a trimmed "295" reads as "29" at a counter. The
+        // name above can lose a character and still be recognisable;
+        // the price cannot. So it gets its own, wider margin.
+        const rightEdge = foldX + rightW - pad - PRICE_EDGE_GUARD;
 
         page.drawText(mrpText, {
           x: rightEdge - numW,
