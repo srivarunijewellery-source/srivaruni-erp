@@ -18,6 +18,7 @@ const schema = z
     printAreaMm: z.coerce.number().min(MIN_PRINT_AREA_MM).max(MAX_PRINT_AREA_MM),
     foldAtMm: z.coerce.number().min(MIN_FOLD_AT_MM).max(MAX_PRINT_AREA_MM),
     gapMm: z.coerce.number().min(MIN_GAP_MM).max(MAX_GAP_MM),
+    uppercaseItems: z.boolean(),
   })
   .refine((v) => v.foldAtMm <= v.printAreaMm - 10, {
     message: "The fold must leave at least 10mm of panel on each side.",
@@ -28,6 +29,7 @@ export async function saveLabelSettings(formData: FormData): Promise<Result> {
     printAreaMm: formData.get("printAreaMm"),
     foldAtMm: formData.get("foldAtMm"),
     gapMm: formData.get("gapMm"),
+    uppercaseItems: formData.get("uppercaseItems") === "on",
   });
   if (!parsed.success) return err(parsed.error.issues[0]?.message ?? "Check the measurements.");
 
@@ -36,6 +38,7 @@ export async function saveLabelSettings(formData: FormData): Promise<Result> {
     p_print_area: parsed.data.printAreaMm,
     p_fold_at: parsed.data.foldAtMm,
     p_gap: parsed.data.gapMm,
+    p_uppercase: parsed.data.uppercaseItems,
   });
   if (error) return err(toMessage(error));
 

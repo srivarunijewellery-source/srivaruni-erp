@@ -46,8 +46,7 @@ export function PrintSettingsForm({ config }: { config: PrintConfig }) {
         show_tagline: f.showTagline,
         address_font_px: f.addressFontPx,
         item_font_px: f.itemFontPx,
-        signature_line: f.signatureLine ?? "",
-        show_signature: f.showSignature,
+        uppercase_items: f.uppercaseItems,
         qr_url: f.qrUrl ?? "",
         qr_caption: f.qrCaption ?? "",
         qr_handle: f.qrHandle ?? "",
@@ -132,6 +131,12 @@ export function PrintSettingsForm({ config }: { config: PrintConfig }) {
           </div>
 
           <Toggle
+            label="Item names in CAPITALS"
+            hint="The catalogue is a mix of cases because it was typed by different people. This evens it out on the slip without touching the stored name, so search still matches what was typed."
+            checked={f.uppercaseItems ?? false}
+            onChange={(v) => set("uppercaseItems", v)}
+          />
+          <Toggle
             label="Bold body text"
             hint="A thermal head under-burns thin strokes, so this is the single biggest legibility win."
             checked={f.boldBody}
@@ -153,25 +158,6 @@ export function PrintSettingsForm({ config }: { config: PrintConfig }) {
             label="Show the QR"
             checked={f.showBarcode}
             onChange={(v) => set("showBarcode", v)}
-          />
-        </CardBody>
-      </Card>
-
-      <Card>
-        <CardHeader className="font-medium">Credit line</CardHeader>
-        <CardBody className="space-y-2">
-          <div>
-            <Label htmlFor="sig">Printed small and italic at the foot</Label>
-            <Input
-              id="sig"
-              value={f.signatureLine ?? ""}
-              onChange={(e) => set("signatureLine", e.target.value)}
-            />
-          </div>
-          <Toggle
-            label="Show it"
-            checked={f.showSignature ?? true}
-            onChange={(v) => set("showSignature", v)}
           />
         </CardBody>
       </Card>

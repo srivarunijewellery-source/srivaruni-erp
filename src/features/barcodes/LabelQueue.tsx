@@ -166,6 +166,7 @@ export function LabelQueue({
       fd.set("printAreaMm", String(g.printAreaMm));
       fd.set("foldAtMm", String(g.foldAtMm));
       fd.set("gapMm", String(g.gapMm));
+      if (g.uppercaseItems) fd.set("uppercaseItems", "on");
       const result = await saveLabelSettings(fd);
       if (result.ok) {
         setGeometry(g);
@@ -254,6 +255,25 @@ export function LabelQueue({
                 disabled={!canEditSettings}
                 onChange={(v) => setGeo({ gapMm: v })}
               />
+
+              {/* Cased at print time only. The stored name stays exactly
+                  as typed, so searching for "cz ear cuffs" still finds it
+                  after the tag prints "CZ EAR CUFFS". */}
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 size-4 accent-[var(--color-brand)]"
+                  checked={geometry.uppercaseItems ?? false}
+                  onChange={(e) => setGeo({ uppercaseItems: e.target.checked })}
+                />
+                <span>
+                  Item names in CAPITALS
+                  <span className="block text-2xs text-text-muted">
+                    Evens out a catalogue typed by different people, without
+                    changing the stored name.
+                  </span>
+                </span>
+              </label>
             </div>
             {canEditSettings ? (
               <div className="flex items-center gap-2">

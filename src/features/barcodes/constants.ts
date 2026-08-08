@@ -40,12 +40,16 @@ export const MAX_GAP_MM = 5;
 export interface LabelGeometry {
   printAreaMm: number;
   foldAtMm: number;
+  /** Print the item name in capitals whatever case it was typed in. The
+   *  stored name is untouched, so search still matches what was typed. */
+  uppercaseItems: boolean;
   gapMm: number;
 }
 
 export const DEFAULT_GEOMETRY: LabelGeometry = {
   printAreaMm: DEFAULT_PRINT_AREA_MM,
   foldAtMm: DEFAULT_FOLD_AT_MM,
+  uppercaseItems: false,
   gapMm: DEFAULT_GAP_MM,
 };
 
@@ -60,5 +64,5 @@ export function clampGeometry(g: Partial<LabelGeometry>): LabelGeometry {
     Math.max(MIN_FOLD_AT_MM, g.foldAtMm ?? DEFAULT_FOLD_AT_MM),
   );
   const gapMm = Math.min(MAX_GAP_MM, Math.max(MIN_GAP_MM, g.gapMm ?? DEFAULT_GAP_MM));
-  return { printAreaMm, foldAtMm, gapMm };
+  return { printAreaMm, foldAtMm, gapMm, uppercaseItems: g.uppercaseItems ?? false };
 }

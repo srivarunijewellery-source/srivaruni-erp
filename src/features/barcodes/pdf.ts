@@ -104,7 +104,7 @@ export async function generateLabelsPdf(
   items: LabelData[],
   geometry: Partial<LabelGeometry> = {},
 ): Promise<Uint8Array> {
-  const { printAreaMm, foldAtMm, gapMm } = clampGeometry(geometry);
+  const { printAreaMm, foldAtMm, gapMm, uppercaseItems } = clampGeometry(geometry);
 
   const doc = await PDFDocument.create();
   const regular = await doc.embedFont(StandardFonts.Helvetica);
@@ -258,7 +258,12 @@ export async function generateLabelsPdf(
       const maxNameLines = Math.max(1, Math.floor(nameRoom / (nameSize + 0.8)));
 
       let ny = nameTop - nameSize;
-      for (const line of wrap(item.name, bold, nameSize, rMaxW, Math.min(2, maxNameLines))) {
+      // Cased here rather than in the data: how a name PRINTS is a
+      // display choice, and the stored name has to stay as typed or
+      // search stops matching what people search for.
+      const printedName = uppercaseItems ? item.name.toUpperCase() : item.name;
+
+      for (const line of wrap(printedName, bold, nameSize, rMaxW, Math.min(2, maxNameLines))) {
         page.drawText(line, { x: rx, y: ny, size: nameSize, font: bold, color: rgb(0, 0, 0) });
         ny -= nameSize + 0.8;
       }

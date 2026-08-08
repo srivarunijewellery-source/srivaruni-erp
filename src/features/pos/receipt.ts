@@ -33,8 +33,9 @@ export interface PrintSettings {
   showTagline?: boolean;
   addressFontPx?: number;
   itemFontPx?: number;
-  signatureLine?: string | null;
-  showSignature?: boolean;
+  /** Print item names in capitals whatever case they were typed in. The
+   *  STORED name is untouched — search still matches what people typed. */
+  uppercaseItems?: boolean;
   paperMm: number;
   printWidthMm: number;
   sideMarginMm: number;
@@ -69,8 +70,7 @@ export const DEFAULT_PRINT: PrintSettings = {
   showTagline: true,
   addressFontPx: 10,
   itemFontPx: 13,
-  signatureLine: null,
-  showSignature: true,
+  uppercaseItems: false,
 };
 
 export interface ReceiptData {
@@ -326,16 +326,6 @@ export function receiptHtml(d: ReceiptData): string {
   }
   .qr .handle { display: block; font-size: 8px; margin-top: 0.4mm; }
 
-  /* The credit line. Quiet on purpose: small, italic and set apart, so
-     it reads as a maker's mark rather than advertising on a customer's
-     receipt. */
-  .sig {
-    text-align: center; font-style: italic;
-    font-size: 8px; line-height: 1.3;
-    margin-top: 2mm; padding-top: 1.2mm;
-    border-top: 1px solid #000;
-  }
-
   .visit {
     text-align: center; font-size: 9.5px; font-weight: bold;
     letter-spacing: 0.4px; margin: 1mm 0;
@@ -365,7 +355,6 @@ export function receiptHtml(d: ReceiptData): string {
   }
   th.amt { text-align: right; }
   .n { width: 5mm; font-size: 9.5px; }
-  .nm { word-break: break-word; }
   /* The salesman name was printing as "LATHA (" -- the value column was
      sized for money and truncated anything longer. Let it wrap. */
   .val { text-align: right; word-break: break-word; }
@@ -377,7 +366,14 @@ export function receiptHtml(d: ReceiptData): string {
     font-family: "Courier New", Courier, monospace;
     font-variant-numeric: tabular-nums;
   }
-  .item { padding-top: 1mm; font-size: ${cfg.itemFontPx ?? 13}px; }
+  .item {
+    padding-top: 1mm;
+    font-size: ${cfg.itemFontPx ?? 13}px;
+    ${cfg.uppercaseItems ? "text-transform: uppercase;" : ""}
+  }
+  /* The wrapped continuation lines of a long name need it too, or the
+     first line shouts and the rest whispers. */
+  .nm { word-break: break-word; ${cfg.uppercaseItems ? "text-transform: uppercase;" : ""} }
   .lastrow td { padding-bottom: 1mm; border-bottom: 1px solid #000; }
 
   /* The total, reversed out so it is the first thing the eye lands on. */
@@ -472,8 +468,7 @@ export function receiptHtml(d: ReceiptData): string {
   <div class="thanks">${esc(d.footer ?? "Thank you, do visit again")}</div>
   <div class="c xs">Prices are inclusive of GST</div>
   <div class="c xs">${esc(d.billNo)} &middot; ${esc(d.dateText)}</div>
-  ${cfg.showSignature !== false && cfg.signatureLine
-    ? `<div class="sig">${esc(cfg.signatureLine)}</div>` : ""}
+
   <!-- Trailing space so the tear-off does not cut the last line. -->
   <div class="c" style="margin-top:5mm">.</div>
 </body></html>`;
