@@ -213,9 +213,28 @@ export function receiptHtml(d: ReceiptData): string {
   const hasSplit =
     (d.cgstPaise ?? 0) > 0 || (d.sgstPaise ?? 0) > 0 || (d.igstPaise ?? 0) > 0;
 
+  /**
+   * Two rows per item, not three, and the figures kept together.
+   *
+   * The name spans the full width and the figures sit on one line
+   * beneath it, right-aligned as a pair. Previously the item price and
+   * the amount were separate table cells, so the auto-layout pushed them
+   * to opposite ends of an 80mm slip with a hand-span of blank paper
+   * between — the eye had to travel to connect one to the other.
+   *
+   * Now both live in one right-aligned cell, with the amount in a
+   * fixed-width inline block so amounts still line up down the page
+   * while the price sits immediately to its left.
+   *
+   * The wrap went 20 -> 34. Measured, not guessed: the name column is
+   * about 71mm, which holds 44 characters of 11px bold and 37 at 13px,
+   * so 34 is safe at every configured size. At 20 it was breaking names
+   * that comfortably fit — on a four-item bill that alone was two extra
+   * lines of paper.
+   */
   const rows = d.lines
     .map((l, i) => {
-      const names = wrap(l.name, 20);
+      const names = wrap(l.name, 34);
       const first = names[0] ?? l.name;
       const rest = names.slice(1);
       return `
@@ -224,9 +243,16 @@ export function receiptHtml(d: ReceiptData): string {
   <td colspan="2" class="nm b item">${esc(first)}</td>
 </tr>${rest.map((r) => `<tr><td></td><td colspan="2" class="nm">${esc(r)}</td></tr>`).join("")}
 <tr class="lastrow">
-  <td class="q">${l.qty} &times;</td>
-  <td class="amt q">${rupees(l.qty * l.unitPaise)}</td>
-  <td class="amt">${rupees(l.totalPaise)}</td>
+  <td></td>
+  <td colspan="2" class="amt q">${
+    // Item price is the gross for the line. The "3 @ 100.00" breakdown
+    // only earns its space when there is more than one; at qty 1 the
+    // unit rate and the line price are the same number and printing
+    // both just made the eye check whether they differed.
+    l.qty > 1
+      ? `${l.qty} @ ${rupees(l.unitPaise)}  ${rupees(l.qty * l.unitPaise)}`
+      : rupees(l.qty * l.unitPaise)
+  }<span class="fin">${rupees(l.totalPaise)}</span></td>
 </tr>`;
     })
     .join("");
@@ -385,6 +411,12 @@ export function receiptHtml(d: ReceiptData): string {
   .val { text-align: right; word-break: break-word; }
   .q { font-size: 9.5px; }
   .amt { text-align: right; white-space: nowrap; }
+  /* Fixed width so every amount lines up down the page, while the price
+     beside it sits close instead of being flung to the far margin. */
+  .fin {
+    display: inline-block; width: 20mm; text-align: right;
+    font-weight: 700; margin-left: 3mm;
+  }
   /* Everything numeric. Tabular figures keep the column straight without
      making the whole slip monospaced. */
   .tnum, .amt, .n, .q {
@@ -478,8 +510,8 @@ export function receiptHtml(d: ReceiptData): string {
   <table>
     <tr>
       <th class="n">#</th>
-      <th class="amt">Item price</th>
-      <th class="amt">Amount</th>
+      <th>Item</th>
+      <th class="amt">Price &middot; amount</th>
     </tr>
     ${rows}
   </table>
