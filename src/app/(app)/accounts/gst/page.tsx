@@ -5,10 +5,9 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { getGstSummary, getUnposted } from "@/features/accounting/queries";
 import { GstReport } from "@/features/accounting/GstReport";
+import { defaultMonthRange, parseDateRange } from "@/lib/dates";
 
 export const metadata: Metadata = { title: "GST summary" };
-
-const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 export default async function GstPage({
   searchParams,
@@ -21,14 +20,15 @@ export default async function GstPage({
   }
 
   const { from, to } = await searchParams;
-  const now = new Date();
-  const defFrom = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-  const defTo = now.toISOString().slice(0, 10);
+  // Same reasoning as the profit and loss page: a real calendar check,
+  // clamped to a sane window, defaulting to the current month in STORE
+  // time rather than whatever UTC thinks the month started.
+  const range = parseDateRange(from, to, defaultMonthRange(), { maxDays: 400 });
 
-  const start = from && DATE.test(from) ? from : defFrom;
-  const end = to && DATE.test(to) ? to : defTo;
-
-  const [rows, unposted] = await Promise.all([getGstSummary(start, end), getUnposted()]);
+  const [rows, unposted] = await Promise.all([
+    getGstSummary(range.from, range.to),
+    getUnposted(),
+  ]);
 
   return (
     <>
@@ -36,7 +36,14 @@ export default async function GstPage({
         title="GST summary"
         description="Tax collected, credit claimable, and what is left to pay."
       />
-      <GstReport rows={rows} from={start} to={end} unpostedCount={unposted.length} />
+      <GstReport
+        rows={rows.ok ? rows.data : []}
+        from={range.from}
+        to={range.to}
+        unpostedCount={unposted.length}
+        error={rows.ok ? null : rows.error}
+        adjusted={range.adjusted}
+      />
     </>
   );
 }

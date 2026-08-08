@@ -38,6 +38,7 @@ import { PersonIcon } from "@/components/ui/Icon";
 import { PaymentPanel, type PaymentResult } from "./PaymentPanel";
 import type { BillBenefits } from "./actions";
 import type { PrintConfig } from "@/features/print/queries";
+import { getLivePrintConfig } from "@/features/print/actions";
 import { CloseRegisterPanel } from "./CloseRegisterPanel";
 import { CustomerPanel } from "./CustomerPanel";
 import { DrawerPanel } from "./DrawerPanel";
@@ -189,6 +190,35 @@ export function PosScreen({
   // Kept so the counter can re-print without ringing the sale again —
   // the printer jams, or the customer asks for a second copy.
   const [lastReceipt, setLastReceipt] = useState<ReceiptData | null>(null);
+  /**
+   * The print settings this screen will actually use.
+   *
+   * Seeded from the server prop, then refreshed from the database each
+   * time a slip is printed. The counter screen stays open all day, so
+   * the prop goes stale the moment anyone edits the settings in another
+   * tab — which is exactly what happened: settings saved correctly, and
+   * the slip kept printing at the old width because the open page still
+   * held the old config.
+   */
+  const [livePrint, setLivePrint] = useState<PrintConfig>(printConfig);
+
+  // If the page IS re-rendered by the server, take its word for it.
+  useEffect(() => setLivePrint(printConfig), [printConfig]);
+
+  /** Re-reads the settings, falling back to what we already have. Never
+   *  throws: a settings read must not be able to stop a sale printing. */
+  async function freshPrintConfig(): Promise<PrintConfig> {
+    try {
+      const r = await getLivePrintConfig();
+      if (r.ok) {
+        setLivePrint(r.data);
+        return r.data;
+      }
+    } catch {
+      // Offline, most likely. The cached config is correct often enough.
+    }
+    return livePrint;
+  }
 
   const scanRef = useRef<HTMLInputElement>(null);
   const [showClose, setShowClose] = useState(false);
@@ -831,9 +861,9 @@ export function PosScreen({
     );
 
     const receipt: ReceiptData = {
-      print: printConfig,
+      print: livePrint,
       qrDataUrl,
-      qrHandle: printConfig.qrHandle,
+      qrHandle: livePrint.qrHandle,
       // Their existing bills plus this one: a first-time buyer gets no
       // line at all, which is right -- "your 1st visit" is a strange
       // thing to tell someone.
@@ -932,7 +962,9 @@ export function PosScreen({
 
         const slip: ReceiptData = { ...receipt, billNo: "OFFLINE" };
         setLastReceipt(slip);
-        if (printAfter) printReceipt(slip);
+        // Offline: no round trip available, so the cached config is
+        // the best there is. Still livePrint, not the stale prop.
+        if (printAfter) printReceipt({ ...slip, print: livePrint });
 
         // Change is owed regardless of whether the server has heard
         // about the sale yet.
@@ -1003,7 +1035,14 @@ export function PosScreen({
       // built above still has a placeholder in it. Print the real one.
       const printed: ReceiptData = { ...receipt, billNo: res.data.billNo || "—" };
       setLastReceipt(printed);
-      if (printAfter) printReceipt(printed);
+      if (printAfter) {
+        // Re-read the settings first. This is what makes a change on the
+        // print settings page show up on the very next bill, instead of
+        // waiting for someone to reload a counter screen that is never
+        // reloaded.
+        const cfg = await freshPrintConfig();
+        printReceipt({ ...printed, print: cfg, qrHandle: cfg.qrHandle });
+      }
 
       // Change stays on screen until the next scan: the person at the
       // till is counting notes out of the drawer while reading it.
@@ -1174,9 +1213,9 @@ export function PosScreen({
 
   /** Shop details a reprint needs, which do not change between bills. */
   const receiptHeader: ReceiptHeader = {
-    print: printConfig,
+    print: livePrint,
     qrDataUrl,
-    qrHandle: printConfig.qrHandle,
+    qrHandle: livePrint.qrHandle,
     shopName,
     gstin,
     locationName,
@@ -1328,7 +1367,18 @@ export function PosScreen({
                         type="button"
                         onClick={() => {
                           setShowMore(false);
-                          reprintLast(lastReceipt);
+                          // The stored slip carries whatever config was
+                          // current when the sale was rung. Re-reading
+                          // means a re-print reflects settings changed
+                          // since, which is the whole point of pressing
+                          // it after adjusting them.
+                          void freshPrintConfig().then((cfg) =>
+                            reprintLast({
+                              ...lastReceipt,
+                              print: cfg,
+                              qrHandle: cfg.qrHandle,
+                            }),
+                          );
                         }}
                         className="block w-full px-3 py-2 text-left text-sm hover:bg-surface-sunken"
                       >

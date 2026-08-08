@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { err, ok, toMessage, type Result } from "@/lib/result";
 
 export type AccountKind = "asset" | "liability" | "equity" | "income" | "expense";
 
@@ -250,22 +251,33 @@ export interface PnlRow {
   amountPaise: number;
 }
 
-export async function getProfitAndLoss(from: string, to: string): Promise<PnlRow[]> {
+export async function getProfitAndLoss(
+  from: string,
+  to: string,
+): Promise<Result<PnlRow[]>> {
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("profit_and_loss", {
     p_from: from,
     p_to: to,
     p_location: null,
   });
-  if (error) throw error;
+
+  if (error) {
+    if (error.code === "57014") {
+      return err("That period was too large to total up in time. Try a shorter range.");
+    }
+    return err(toMessage(error, "The profit and loss could not be built."));
+  }
 
   type Row = { section: string; code: string; name: string; amount_paise: number };
-  return ((data ?? []) as Row[]).map((r) => ({
-    section: r.section,
-    code: r.code,
-    name: r.name,
-    amountPaise: Number(r.amount_paise ?? 0),
-  }));
+  return ok(
+    ((data ?? []) as Row[]).map((r) => ({
+      section: r.section,
+      code: r.code,
+      name: r.name,
+      amountPaise: Number(r.amount_paise ?? 0),
+    })),
+  );
 }
 
 export interface UnpostedRow {
@@ -320,17 +332,28 @@ export interface GstRow {
   taxPaise: number;
 }
 
-export async function getGstSummary(from: string, to: string): Promise<GstRow[]> {
+export async function getGstSummary(
+  from: string,
+  to: string,
+): Promise<Result<GstRow[]>> {
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("gst_summary", { p_from: from, p_to: to });
-  if (error) throw error;
+
+  if (error) {
+    if (error.code === "57014") {
+      return err("That period was too large to total up in time. Try a shorter range.");
+    }
+    return err(toMessage(error, "The GST summary could not be built."));
+  }
 
   type Row = { label: string; taxable_paise: number; tax_paise: number };
-  return ((data ?? []) as Row[]).map((r) => ({
-    label: r.label,
-    taxablePaise: Number(r.taxable_paise ?? 0),
-    taxPaise: Number(r.tax_paise ?? 0),
-  }));
+  return ok(
+    ((data ?? []) as Row[]).map((r) => ({
+      label: r.label,
+      taxablePaise: Number(r.taxable_paise ?? 0),
+      taxPaise: Number(r.tax_paise ?? 0),
+    })),
+  );
 }
 
 export interface StatementRow {

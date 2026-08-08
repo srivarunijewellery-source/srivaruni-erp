@@ -1,12 +1,12 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { Input, Label, FieldError } from "@/components/ui/Field";
+import { FieldError } from "@/components/ui/Field";
 import { Badge } from "@/components/ui/Badge";
 import { formatPaise } from "@/lib/money";
+import { DateRangePicker } from "@/components/ui/DateRangePicker";
 import { ROUTES } from "@/config/nav";
 import { backfillAccounting } from "./actions";
 import type { GstRow } from "./queries";
@@ -16,13 +16,18 @@ export function GstReport({
   from,
   to,
   unpostedCount,
+  error: loadError,
+  adjusted,
 }: {
   rows: GstRow[];
   from: string;
   to: string;
   unpostedCount: number;
+  /** The summary could not be built — usually too wide a period. Shown
+   *  as a message rather than thrown, which would take the page down. */
+  error?: string | null;
+  adjusted?: string | null;
 }) {
-  const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -30,10 +35,6 @@ export function GstReport({
   const output = rows.find((r) => r.label.startsWith("Output"));
   const input = rows.find((r) => r.label.startsWith("Input"));
   const net = rows.find((r) => r.label.startsWith("Net"));
-
-  function go(nextFrom: string, nextTo: string) {
-    router.push(`${ROUTES.gst}?from=${nextFrom}&to=${nextTo}`);
-  }
 
   function runBackfill() {
     start(async () => {
@@ -71,29 +72,27 @@ export function GstReport({
       <FieldError>{error}</FieldError>
 
       <Card>
-        <CardBody className="flex flex-wrap items-end gap-3">
-          <div>
-            <Label htmlFor="from">From</Label>
-            <Input
-              id="from"
-              type="date"
-              value={from}
-              onChange={(e) => go(e.target.value, to)}
-              className="w-44"
-            />
-          </div>
-          <div>
-            <Label htmlFor="to">To</Label>
-            <Input
-              id="to"
-              type="date"
-              value={to}
-              onChange={(e) => go(from, e.target.value)}
-              className="w-44"
-            />
-          </div>
+        <CardBody>
+          <DateRangePicker basePath={ROUTES.gst} from={from} to={to} maxDays={400} />
         </CardBody>
       </Card>
+
+      {adjusted && (
+        <p className="rounded-control border border-status-pending-fg/40 bg-status-pending-bg px-3 py-2 text-sm">
+          {adjusted}
+        </p>
+      )}
+
+      {loadError && (
+        <Card>
+          <CardBody>
+            <p className="text-sm font-medium text-status-danger-fg">
+              This period could not be totalled
+            </p>
+            <p className="mt-1 text-sm text-text-muted">{loadError}</p>
+          </CardBody>
+        </Card>
+      )}
 
       <Card>
         <CardHeader className="font-medium">For the period</CardHeader>

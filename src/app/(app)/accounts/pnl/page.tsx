@@ -5,10 +5,9 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { getProfitAndLoss } from "@/features/accounting/queries";
 import { PnlReport } from "@/features/accounting/AccountingViews";
+import { defaultMonthRange, parseDateRange } from "@/lib/dates";
 
 export const metadata: Metadata = { title: "Profit and loss" };
-
-const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 export default async function PnlPage({
   searchParams,
@@ -21,21 +20,32 @@ export default async function PnlPage({
   }
 
   const { from, to } = await searchParams;
-  const now = new Date();
-  const defaultFrom = new Date(now.getFullYear(), now.getMonth(), 1)
-    .toISOString()
-    .slice(0, 10);
-  const defaultTo = now.toISOString().slice(0, 10);
 
-  const start = from && DATE.test(from) ? from : defaultFrom;
-  const end = to && DATE.test(to) ? to : defaultTo;
+  // parseDateRange, not a shape check.
+  //
+  // The old guard was /^\d{4}-\d{2}-\d{2}$/, which passes 2026-13-45
+  // straight to Postgres (a 500) and passes 0002-08-07 as a perfectly
+  // valid date asking for two thousand years of ledger. A date input
+  // emits exactly that while the year is still being typed, and the
+  // full-history query takes 1.5 seconds — several at once is what blew
+  // the statement timeout.
+  //
+  // 400 days caps it at a financial year plus a margin. Anything longer
+  // is a report to run deliberately, not by mistyping a year.
+  const range = parseDateRange(from, to, defaultMonthRange(), { maxDays: 400 });
 
-  const rows = await getProfitAndLoss(start, end);
+  const result = await getProfitAndLoss(range.from, range.to);
 
   return (
     <>
       <PageHeader title="Profit and loss" description="Income against costs for a period." />
-      <PnlReport rows={rows} from={start} to={end} />
+      <PnlReport
+        rows={result.ok ? result.data : []}
+        from={range.from}
+        to={range.to}
+        error={result.ok ? null : result.error}
+        adjusted={range.adjusted}
+      />
     </>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 
-import { useState } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { formatPaise } from "@/lib/money";
 import { formatDate } from "@/lib/format";
+import { addDays, isValidIsoDate, prettyDate, todayIso } from "@/lib/dates";
 import { ROUTES } from "@/config/nav";
 import { BillPeek } from "@/features/sales/BillPeek";
 import { CustomerPeek } from "@/features/customers/CustomerPeek";
@@ -23,7 +24,6 @@ import type {
   SalespersonRow,
 } from "./dashboard-queries";
 
-const iso = (d: Date) => d.toISOString().slice(0, 10);
 
 export function SalesDashboard({
   branches,
@@ -57,6 +57,26 @@ export function SalesDashboard({
   // to them.
   const [drill, setDrill] = useState<DrillSpec | null>(null);
   const [q, setQ] = useState(filters.q);
+  const [pending, startNav] = useTransition();
+  // The date fields hold their own value and commit on blur.
+  //
+  // Bound straight to `from`/`to` with onChange -> router.push, they
+  // fired a navigation per edited segment: typing a year sent 0002,
+  // 0020, 0202, 2026, four server renders deep. And because the value
+  // came back from the server a beat later, the field visibly reverted
+  // mid-edit, which reads as the picker being broken.
+  const [draftFrom, setDraftFrom] = useState(from);
+  const [draftTo, setDraftTo] = useState(to);
+  useEffect(() => {
+    setDraftFrom(from);
+    setDraftTo(to);
+  }, [from, to]);
+
+  function commitDates(nextFrom: string, nextTo: string) {
+    if (!isValidIsoDate(nextFrom) || !isValidIsoDate(nextTo)) return;
+    if (nextFrom === from && nextTo === to) return;
+    go({ from: nextFrom, to: nextTo });
+  }
 
   /**
    * Every control writes the WHOLE query string.
@@ -78,14 +98,15 @@ export function SalesDashboard({
     };
     const params = new URLSearchParams();
     for (const [k, v] of Object.entries(merged)) if (v) params.set(k, v);
-    router.push(`${ROUTES.sales}?${params.toString()}`);
+    startNav(() => router.push(`${ROUTES.sales}?${params.toString()}`, { scroll: false }));
   }
 
+  /** Store time, not UTC. toISOString() on a local Date rolls the day
+   *  back for anyone west of Greenwich, so "today" on the owner's
+   *  machine was yesterday in the shops. */
   function preset(days: number) {
-    const end = new Date();
-    const start = new Date();
-    start.setDate(start.getDate() - days);
-    go({ from: iso(start), to: iso(end) });
+    const end = todayIso();
+    go({ from: days === 0 ? end : addDays(end, -(days - 1)), to: end });
   }
 
   const active = branches.filter((b) => b.bills > 0);
@@ -114,8 +135,14 @@ export function SalesDashboard({
               <Input
                 id="from"
                 type="date"
-                value={from}
-                onChange={(e) => go({ from: e.target.value })}
+                value={draftFrom}
+                max={draftTo || undefined}
+                disabled={pending}
+                onChange={(e) => setDraftFrom(e.target.value)}
+                onBlur={() => commitDates(draftFrom, draftTo)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") commitDates(draftFrom, draftTo);
+                }}
                 className="w-44"
               />
             </div>
@@ -124,8 +151,14 @@ export function SalesDashboard({
               <Input
                 id="to"
                 type="date"
-                value={to}
-                onChange={(e) => go({ to: e.target.value })}
+                value={draftTo}
+                min={draftFrom || undefined}
+                disabled={pending}
+                onChange={(e) => setDraftTo(e.target.value)}
+                onBlur={() => commitDates(draftFrom, draftTo)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") commitDates(draftFrom, draftTo);
+                }}
                 className="w-44"
               />
             </div>
@@ -140,6 +173,10 @@ export function SalesDashboard({
                 30 days
               </Button>
             </div>
+            <span className="pb-2 text-2xs text-text-muted">
+              {prettyDate(from)} to {prettyDate(to)}
+              {pending ? " · updating…" : ""}
+            </span>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

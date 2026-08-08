@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Card, CardBody } from "@/components/ui/Card";
+import { isoOf, isValidIsoDate } from "@/lib/dates";
 
 /**
  * The window everything on the page is measured over.
@@ -32,7 +33,11 @@ export function DateRangeBar({
   const [pending, start] = useTransition();
   const [custom, setCustom] = useState(false);
 
-  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  // Store time. `d.toISOString().slice(0,10)` converts to UTC first, so
+  // "This month" resolved to the last day of the PREVIOUS month on every
+  // one of these presets, and "Today" was yesterday for the owner in US
+  // Pacific for most of the working day.
+  const iso = (d: Date) => isoOf(d);
 
   function go(nextFrom: string, nextTo: string) {
     const merged = { ...params, from: nextFrom, to: nextTo, page: "" };
@@ -131,21 +136,35 @@ export function DateRangeBar({
 
         {custom && (
           <div className="flex flex-wrap items-center gap-2 border-t border-border pt-2.5">
+            {/* Uncontrolled, committing on blur. Controlled + onChange
+                fired a navigation per edited segment; a no-op onChange
+                would have frozen the field instead. `key` resets it when
+                the server settles on a different range. */}
             <input
+              key={`from-${from}`}
               type="date"
-              value={from}
+              defaultValue={from}
               max={to || undefined}
               disabled={pending}
-              onChange={(e) => go(e.target.value, to)}
+              onBlur={(e) => {
+                if (isValidIsoDate(e.target.value) && e.target.value !== from) {
+                  go(e.target.value, to);
+                }
+              }}
               className="h-9 rounded-control border border-border bg-surface px-2 font-mono text-sm"
             />
             <span className="text-2xs text-text-muted">to</span>
             <input
+              key={`to-${to}`}
               type="date"
-              value={to}
+              defaultValue={to}
               min={from || undefined}
               disabled={pending}
-              onChange={(e) => go(from, e.target.value)}
+              onBlur={(e) => {
+                if (isValidIsoDate(e.target.value) && e.target.value !== to) {
+                  go(from, e.target.value);
+                }
+              }}
               className="h-9 rounded-control border border-border bg-surface px-2 font-mono text-sm"
             />
           </div>

@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, FieldError } from "@/components/ui/Field";
@@ -10,6 +9,7 @@ import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { formatPaise } from "@/lib/money";
 import { formatDate } from "@/lib/format";
+import { DateRangePicker } from "@/components/ui/DateRangePicker";
 import { ROUTES } from "@/config/nav";
 import { reverseJournal } from "./actions";
 import { JournalAmend } from "./JournalAmend";
@@ -148,49 +148,52 @@ export function PnlReport({
   rows,
   from,
   to,
+  error,
+  adjusted,
 }: {
   rows: PnlRow[];
   from: string;
   to: string;
+  /** The report could not be built. Not a crash: the period is usually
+   *  just too wide, and the picker above is how you fix it. */
+  error?: string | null;
+  /** The requested period was not usable and was changed. Saying so
+   *  beats silently reporting on a period nobody asked for. */
+  adjusted?: string | null;
 }) {
-  const router = useRouter();
-
   const income = rows.filter((r) => r.section === "Income");
   const expenses = rows.filter((r) => r.section === "Expenses");
   const totalIncome = income.reduce((s, r) => s + r.amountPaise, 0);
   const totalExpense = expenses.reduce((s, r) => s + r.amountPaise, 0);
   const profit = totalIncome - totalExpense;
 
-  function go(nextFrom: string, nextTo: string) {
-    router.push(`${ROUTES.pnl}?from=${nextFrom}&to=${nextTo}`);
-  }
-
   return (
     <div className="space-y-4">
       <Card>
-        <CardBody className="flex flex-wrap items-end gap-3">
-          <div>
-            <Label htmlFor="from">From</Label>
-            <Input
-              id="from"
-              type="date"
-              value={from}
-              onChange={(e) => go(e.target.value, to)}
-              className="w-44"
-            />
-          </div>
-          <div>
-            <Label htmlFor="to">To</Label>
-            <Input
-              id="to"
-              type="date"
-              value={to}
-              onChange={(e) => go(from, e.target.value)}
-              className="w-44"
-            />
-          </div>
+        <CardBody>
+          <DateRangePicker basePath={ROUTES.pnl} from={from} to={to} maxDays={400} />
         </CardBody>
       </Card>
+
+      {adjusted && (
+        <p className="rounded-control border border-status-pending-fg/40 bg-status-pending-bg px-3 py-2 text-sm">
+          {adjusted}
+        </p>
+      )}
+
+      {error && (
+        <Card>
+          <CardBody>
+            <p className="text-sm font-medium text-status-danger-fg">
+              This period could not be totalled
+            </p>
+            <p className="mt-1 text-sm text-text-muted">{error}</p>
+            <p className="mt-2 text-2xs text-text-subtle">
+              The figures below are blank for that reason — they are not zero.
+            </p>
+          </CardBody>
+        </Card>
+      )}
 
       <Card>
         <CardBody className="flex flex-wrap items-center justify-between gap-4">
@@ -218,7 +221,9 @@ export function PnlReport({
       </Card>
 
       {rows.length === 0 ? (
-        <EmptyState title="Nothing posted in this period" />
+        error ? null : (
+          <EmptyState title="Nothing posted in this period" />
+        )
       ) : (
         <>
           {[

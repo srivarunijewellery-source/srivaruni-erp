@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { saveRegister, type RegisterRow } from "./actions";
 import { ATTENDANCE_STATUSES, type AttendanceStatus } from "./constants";
 import type { AttendanceEntry, StaffMember } from "./queries";
+import { addDays, isValidIsoDate, todayIso } from "@/lib/dates";
 
 interface RowState {
   status: AttendanceStatus;
@@ -311,18 +312,28 @@ export function AttendanceRegister({
 
 export function RegisterDatePicker({ date }: { date: string }) {
   const router = useRouter();
-  const today = new Date().toISOString().slice(0, 10);
+  const [pending, startNav] = useTransition();
+  // Store time. The register is a record of a day in the shop, and the
+  // owner works from US Pacific -- toISOString() there gave tomorrow's
+  // date for most of the afternoon, so "today" was a day that had not
+  // happened yet and the forward arrow stayed disabled.
+  const today = todayIso();
+  const [draft, setDraft] = useState(date);
+
+  useEffect(() => setDraft(date), [date]);
+
+  function open(iso: string) {
+    if (!isValidIsoDate(iso) || iso > today || iso === date) return;
+    startNav(() => router.push(`/team/attendance?on=${iso}`, { scroll: false }));
+  }
 
   function shift(days: number) {
-    const d = new Date(`${date}T00:00:00`);
-    d.setDate(d.getDate() + days);
-    const iso = d.toISOString().slice(0, 10);
-    if (iso <= today) router.push(`/team/attendance?on=${iso}`);
+    open(addDays(date, days));
   }
 
   return (
     <div className="flex items-end gap-2">
-      <Button size="sm" variant="secondary" onClick={() => shift(-1)}>
+      <Button size="sm" variant="secondary" disabled={pending} onClick={() => shift(-1)}>
         &larr;
       </Button>
       <div>
@@ -330,13 +341,23 @@ export function RegisterDatePicker({ date }: { date: string }) {
         <Input
           id="on"
           type="date"
-          value={date}
+          value={draft}
           max={today}
-          onChange={(e) => router.push(`/team/attendance?on=${e.target.value}`)}
+          disabled={pending}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => open(draft)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") open(draft);
+          }}
           className="w-44"
         />
       </div>
-      <Button size="sm" variant="secondary" disabled={date >= today} onClick={() => shift(1)}>
+      <Button
+        size="sm"
+        variant="secondary"
+        disabled={pending || date >= today}
+        onClick={() => shift(1)}
+      >
         &rarr;
       </Button>
     </div>
