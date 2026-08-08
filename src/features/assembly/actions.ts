@@ -243,3 +243,169 @@ export async function setComponentCost(
   revalidatePath(`${PATH}/${assemblyId}`);
   return ok(undefined);
 }
+
+/**
+ * Adds a parent product using the SAME form the inward page uses.
+ *
+ * Deliberately not a cut-down version: a piece made in-house needs its
+ * photo and its colour, plating, stone and size recorded exactly as much
+ * as one that arrived in a carton — arguably more, since there is no
+ * vendor invoice to fall back on later. Reusing the dialog also means
+ * these two screens cannot drift apart.
+ */
+export async function addAssemblyItemFromForm(
+  formData: FormData,
+): Promise<Result<string>> {
+  const assemblyId = String(formData.get("assemblyId") ?? "");
+  const name = String(formData.get("name") ?? "").trim();
+  const categoryId = String(formData.get("categoryId") ?? "");
+  const qty = Math.max(1, Number(formData.get("qty") ?? 1));
+  const labourHours = Math.max(0, Number(formData.get("labourHours") ?? 0));
+  const photoPaths = formData.getAll("photoPaths").map(String).filter(Boolean);
+
+  if (!assemblyId) return err("No assembly on this form.");
+  if (!name) return err("Give the product a name.");
+  if (!categoryId) return err("Choose a category.");
+
+  const supabase = await createClient();
+  const orNull = (k: string) => {
+    const v = String(formData.get(k) ?? "");
+    return v.length > 0 ? v : null;
+  };
+
+  const { data: staffRows } = await supabase.rpc("get_current_staff");
+  const staff = Array.isArray(staffRows) ? staffRows[0] : staffRows;
+  if (!staff) return err("No staff record is linked to this login.");
+
+  // Barcode comes from the column default, same as inward — never
+  // assigned client-side.
+  const { data: item, error: itemError } = await supabase
+    .from("items")
+    .insert({
+      name,
+      category_id: categoryId,
+      item_type_id: orNull("itemTypeId"),
+      colour_id: orNull("colourId"),
+      plating_id: orNull("platingId"),
+      stone_id: orNull("stoneId"),
+      size_id: orNull("sizeId"),
+      created_by: staff.staff_id,
+    })
+    .select("id, barcode")
+    .single();
+  if (itemError) return err(toMessage(itemError));
+
+  const { data: last } = await supabase
+    .from("assembly_items")
+    .select("line_no")
+    .eq("assembly_id", assemblyId)
+    .order("line_no", { ascending: false, nullsFirst: false })
+    .limit(1)
+    .maybeSingle();
+
+  const { error: lineError } = await supabase.from("assembly_items").insert({
+    assembly_id: assemblyId,
+    item_id: item.id,
+    qty,
+    labour_hours: labourHours,
+    line_no: (last?.line_no ?? 0) + 1,
+  });
+
+  if (lineError) {
+    // Orphaned item otherwise: it can never be sold, but it would sit in
+    // the catalog forever. Same cleanup the inward path does.
+    await supabase.from("items").delete().eq("id", item.id);
+    return err(toMessage(lineError));
+  }
+
+  if (photoPaths.length > 0) {
+    await supabase.from("item_photos").insert(
+      photoPaths.map((path, i) => ({
+        item_id: item.id,
+        storage_path: path,
+        is_primary: i === 0,
+        sort_order: i,
+        uploaded_by: staff.staff_id,
+      })),
+    );
+  }
+
+  revalidatePath(`${PATH}/${assemblyId}`);
+  return ok(item.barcode as string);
+}
+
+export interface PriceSuggestion {
+  recommendedMrpPaise: number | null;
+  ruleId: string | null;
+  inBand: boolean | null;
+}
+
+/**
+ * What the pricing rules make of this piece.
+ *
+ * Same recommend_price the inward pricing screen uses, so an assembled
+ * neck set is priced by exactly the rules that price a bought one. The
+ * only difference is where the cost came in from — components rather
+ * than a vendor invoice — and by this point that difference is already
+ * resolved into a single landed figure.
+ */
+export async function suggestAssemblyPrice(
+  itemId: string,
+  landedPaise: number,
+): Promise<Result<PriceSuggestion>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("recommend_price", {
+    p_item: itemId,
+    p_band: null,
+    p_landed: landedPaise,
+  });
+  if (error) return err(toMessage(error));
+
+  const r = (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | null;
+  if (!r || r.recommended_mrp_paise === null) {
+    return err("No rule reaches this item, so there is nothing to suggest.");
+  }
+  return ok({
+    recommendedMrpPaise: Number(r.recommended_mrp_paise),
+    ruleId: (r.rule_id as string | null) ?? null,
+    inBand: (r.in_band as boolean | null) ?? null,
+  });
+}
+
+/**
+ * MRP and selling price for an assembled piece.
+ *
+ * They ALWAYS move together, for the same reason as inward: updating one
+ * alone makes the database compare the new value against the stale other
+ * one still in the row, so a valid MRP gets rejected for being below a
+ * selling price the person already changed on screen. A blank one
+ * mirrors the other.
+ */
+export async function saveAssemblyPrice(
+  assemblyId: string,
+  itemId: string,
+  mrpPaise: number | null,
+  sellingPaise: number | null,
+): Promise<Result<void>> {
+  const mrp = mrpPaise ?? sellingPaise ?? null;
+  const selling = sellingPaise ?? mrpPaise ?? null;
+  if (mrp === null && selling === null) return err("Enter a price.");
+  if (mrp !== null && selling !== null && mrp < selling) {
+    return err(
+      `MRP ${Math.round(mrp / 100)} is below the selling price ${Math.round(selling / 100)}. MRP is the ceiling.`,
+    );
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("items")
+    .update({ mrp_paise: mrp, selling_price_paise: selling })
+    .eq("id", itemId)
+    .select("id");
+
+  if (error) return err(toMessage(error));
+  if (!data || data.length === 0) return err("Only the owner can set prices.");
+
+  revalidatePath(`${PATH}/${assemblyId}`);
+  return ok(undefined);
+}

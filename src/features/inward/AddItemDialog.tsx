@@ -3,6 +3,7 @@
 import { useRef, useState, useTransition } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { addInwardItem } from "./actions";
+import { addAssemblyItemFromForm } from "@/features/assembly/actions";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select, FieldError } from "@/components/ui/Field";
 import { downscale } from "@/lib/photos";
@@ -11,7 +12,14 @@ import { cn } from "@/lib/cn";
 import type { ItemFormOptions } from "@/types/domain";
 
 interface Props {
-  inwardId: string;
+  /** The document this item is being added to. Assembly reuses this
+   *  whole form rather than a cut-down copy: photo upload and the
+   *  attribute pickers are exactly as necessary for a piece made
+   *  in-house as for one that arrived in a carton. */
+  inwardId?: string;
+  assemblyId?: string;
+  /** Assembly needs hours per piece; inward has no such field. */
+  withLabourHours?: boolean;
   options: ItemFormOptions;
 }
 
@@ -28,7 +36,7 @@ interface Photo {
  * staff down. Name, category, quantity are the required path; everything
  * else can wait for the pricing step.
  */
-export function AddItemDialog({ inwardId, options }: Props) {
+export function AddItemDialog({ inwardId, assemblyId, withLabourHours, options }: Props) {
   const [open, setOpen] = useState(false);
   const [categoryId, setCategoryId] = useState("");
   const [photos, setPhotos] = useState<Photo[]>([]);
@@ -52,7 +60,7 @@ export function AddItemDialog({ inwardId, options }: Props) {
     try {
       for (const file of Array.from(files)) {
         const compressed = await downscale(file);
-        const path = `${inwardId}/${crypto.randomUUID()}.jpg`;
+        const path = `${inwardId ?? assemblyId}/${crypto.randomUUID()}.jpg`;
         const { error: upErr } = await supabase.storage
           .from(STORAGE_BUCKETS.itemPhotos)
           .upload(path, compressed, { contentType: "image/jpeg", upsert: false });
@@ -116,9 +124,12 @@ export function AddItemDialog({ inwardId, options }: Props) {
           action={(fd) =>
             start(async () => {
               setError(null);
-              fd.set("inwardId", inwardId);
+              if (assemblyId) fd.set("assemblyId", assemblyId);
+              else if (inwardId) fd.set("inwardId", inwardId);
               photos.forEach((p) => fd.append("photoPaths", p.path));
-              const result = await addInwardItem(fd);
+              const result = assemblyId
+                ? await addAssemblyItemFromForm(fd)
+                : await addInwardItem(fd);
               if (result.ok) {
                 setSaved(result.data);
                 reset();
@@ -207,8 +218,24 @@ export function AddItemDialog({ inwardId, options }: Props) {
             )}
           </div>
 
+          {withLabourHours && (
+            <div>
+              <Label htmlFor="labourHours">Hours per piece</Label>
+              <Input
+                id="labourHours"
+                name="labourHours"
+                type="number"
+                inputMode="decimal"
+                min={0}
+                step="0.25"
+                defaultValue={0}
+              />
+            </div>
+          )}
           <div>
-            <Label htmlFor="qty">Quantity received</Label>
+            <Label htmlFor="qty">
+              {withLabourHours ? "Pieces to make" : "Quantity received"}
+            </Label>
             <Input
               id="qty"
               name="qty"

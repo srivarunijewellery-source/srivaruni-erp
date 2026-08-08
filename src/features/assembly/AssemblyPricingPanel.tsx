@@ -4,11 +4,14 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { Input, FieldError } from "@/components/ui/Field";
+import { NarrowInput, Label, FieldError } from "@/components/ui/Field";
 import { PhotoThumb } from "@/components/ui/PhotoThumb";
 import { itemPhotoUrl } from "@/lib/storage";
 import { formatPaise } from "@/lib/money";
-import { setComponentCost, approveAssembly, rejectAssembly } from "./actions";
+import {
+  setComponentCost, approveAssembly, rejectAssembly,
+  saveAssemblyPrice, suggestAssemblyPrice,
+} from "./actions";
 import type { AssemblyDetail } from "./queries";
 
 /**
@@ -68,7 +71,7 @@ export function AssemblyPricingPanel({
           <CardHeader className="flex flex-wrap items-center gap-3">
             <PhotoThumb src={itemPhotoUrl(p.photoPath)} alt={p.name} size={44} />
             <div className="min-w-0 flex-1">
-              <p className="break-words text-sm font-medium leading-tight">{p.name}</p>
+              <p className="truncate text-sm font-medium">{p.name}</p>
               <p className="font-mono text-2xs text-text-muted">
                 {p.barcode} · {p.qty} to make · {p.labourHours}h each
               </p>
@@ -83,20 +86,22 @@ export function AssemblyPricingPanel({
           <CardBody className="space-y-2">
             <ul className="divide-y divide-border">
               {p.components.map((c) => (
-                <li key={c.id} className="flex items-center gap-2 py-2">
+                <li
+                  key={c.id}
+                  className="grid grid-cols-[36px_minmax(0,1fr)_auto_auto] items-center gap-3 py-2"
+                >
                   <PhotoThumb src={itemPhotoUrl(c.photoPath)} alt={c.name} size={36} />
-                  <div className="min-w-0 flex-1">
-                    <p className="break-words text-sm leading-tight">{c.name}</p>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm">{c.name}</p>
                     <p className="font-mono text-2xs text-text-muted">
                       {c.barcode} · {SOURCE_LABEL[c.costSource]}
                     </p>
                   </div>
-                  <span className="w-12 shrink-0 text-center text-2xs text-text-muted">
-                    × {c.qty}
-                  </span>
+                  <span className="text-2xs text-text-muted">× {c.qty}</span>
                   {/* Blank, not zero, when nothing is known. A zero in a
                       price box reads as a decision someone made. */}
-                  <Input
+                  <NarrowInput
+                    widthClass="w-28"
                     type="number"
                     min={0}
                     step="0.01"
@@ -112,7 +117,7 @@ export function AssemblyPricingPanel({
                       if (!Number.isFinite(paise) || paise === c.unitCostPaise) return;
                       run(() => setComponentCost(assembly.id, c.id, paise));
                     }}
-                    className="h-11 w-28 shrink-0 text-right sm:h-9"
+                    className="text-right"
                     aria-label={`Cost of ${c.name}`}
                   />
                 </li>
@@ -126,6 +131,13 @@ export function AssemblyPricingPanel({
               </span>{" "}
               per piece · {formatPaise(p.unitLandedPaise * p.qty)} for {p.qty}
             </p>
+
+            <PriceRow
+              assemblyId={assembly.id}
+              product={p}
+              pending={pending}
+              onDone={() => router.refresh()}
+            />
           </CardBody>
         </Card>
       ))}
@@ -176,3 +188,126 @@ const SOURCE_LABEL: Record<string, string> = {
   owner: "you set this",
   none: "needs a cost",
 };
+
+
+/**
+ * MRP and selling price for the finished piece.
+ *
+ * The same two fields and the same suggestion button as the inward
+ * pricing screen — an assembled neck set should be priced by the rules
+ * that price a bought one. Only the cost underneath arrived differently.
+ */
+function PriceRow({
+  assemblyId,
+  product,
+  pending,
+  onDone,
+}: {
+  assemblyId: string;
+  product: AssemblyDetail["products"][number];
+  pending: boolean;
+  onDone: () => void;
+}) {
+  const [mrp, setMrp] = useState(
+    product.mrpPaise === null ? "" : (product.mrpPaise / 100).toFixed(2),
+  );
+  const [sp, setSp] = useState(
+    product.sellingPricePaise === null
+      ? ""
+      : (product.sellingPricePaise / 100).toFixed(2),
+  );
+  const [note, setNote] = useState<string | null>(null);
+  const [busy, start] = useTransition();
+
+  const toPaise = (v: string) =>
+    v.trim() === "" ? null : Math.round(Number(v) * 100);
+
+  const margin =
+    product.unitLandedPaise > 0 && toPaise(sp)
+      ? ((toPaise(sp)! - product.unitLandedPaise) / toPaise(sp)!) * 100
+      : null;
+
+  return (
+    <div className="grid gap-3 border-t border-border pt-3 sm:grid-cols-[auto_auto_1fr_auto] sm:items-end">
+      <div>
+        <Label htmlFor={`mrp-${product.id}`}>MRP</Label>
+        <NarrowInput
+          widthClass="w-28"
+          id={`mrp-${product.id}`}
+          type="number"
+          min={0}
+          step="0.01"
+          value={mrp}
+          onChange={(e) => setMrp(e.target.value)}
+          className="text-right"
+        />
+      </div>
+      <div>
+        <Label htmlFor={`sp-${product.id}`}>Selling</Label>
+        <NarrowInput
+          widthClass="w-28"
+          id={`sp-${product.id}`}
+          type="number"
+          min={0}
+          step="0.01"
+          value={sp}
+          onChange={(e) => setSp(e.target.value)}
+          className="text-right"
+        />
+      </div>
+      <p className="pb-2 text-2xs text-text-muted">
+        {margin === null
+          ? "Cost the materials first, then price it."
+          : `${margin.toFixed(1)}% margin on ${formatPaise(product.unitLandedPaise)} landed`}
+        {note ? ` · ${note}` : ""}
+      </p>
+      <div className="flex gap-2">
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={busy || pending || product.unitLandedPaise === 0}
+          onClick={() =>
+            start(async () => {
+              const r = await suggestAssemblyPrice(
+                product.itemId,
+                product.unitLandedPaise,
+              );
+              if (!r.ok) {
+                setNote(r.error);
+                return;
+              }
+              const v = (r.data.recommendedMrpPaise ?? 0) / 100;
+              setMrp(v.toFixed(2));
+              setSp(v.toFixed(2));
+              setNote(
+                r.data.inBand === false
+                  ? "suggested, but outside the band"
+                  : "suggested from the rules",
+              );
+            })
+          }
+        >
+          Suggest
+        </Button>
+        <Button
+          size="sm"
+          disabled={busy || pending}
+          onClick={() =>
+            start(async () => {
+              const r = await saveAssemblyPrice(
+                assemblyId,
+                product.itemId,
+                toPaise(mrp),
+                toPaise(sp),
+              );
+              setNote(r.ok ? "saved" : r.error);
+              if (r.ok) onDone();
+            })
+          }
+        >
+          Save price
+        </Button>
+      </div>
+    </div>
+  );
+}

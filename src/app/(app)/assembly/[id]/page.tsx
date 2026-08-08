@@ -4,7 +4,7 @@ import { requireUser } from "@/features/auth/session";
 import { isOwner } from "@/config/roles";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { getAssembly } from "@/features/assembly/queries";
-import { listCategories } from "@/features/inward/queries";
+import { listItemFormOptions } from "@/features/inward/queries";
 import { AssemblyWorkbench } from "@/features/assembly/AssemblyWorkbench";
 import { AssemblyPricingPanel } from "@/features/assembly/AssemblyPricingPanel";
 
@@ -19,9 +19,9 @@ export default async function AssemblyDetailPage({
   const user = await requireUser();
 
   const owner = isOwner(user.role);
-  const [assembly, categories] = await Promise.all([
+  const [assembly, options] = await Promise.all([
     getAssembly(id, owner),
-    listCategories(),
+    listItemFormOptions(),
   ]);
   // Not found and not-yours look identical: RLS returns nothing for
   // another branch's document, so the app must not distinguish them.
@@ -44,7 +44,7 @@ export default async function AssemblyDetailPage({
       ) : (
         <AssemblyWorkbench
           assembly={assembly}
-          categories={categories}
+          options={options}
           isOwner={owner}
         />
       )}
