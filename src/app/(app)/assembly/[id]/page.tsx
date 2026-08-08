@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { getAssembly } from "@/features/assembly/queries";
 import { listCategories } from "@/features/inward/queries";
 import { AssemblyWorkbench } from "@/features/assembly/AssemblyWorkbench";
+import { AssemblyPricingPanel } from "@/features/assembly/AssemblyPricingPanel";
 
 export const metadata: Metadata = { title: "Assembly" };
 
@@ -30,13 +31,23 @@ export default async function AssemblyDetailPage({
     <>
       <PageHeader
         title={assembly.docNo}
-        description="Materials are listed per piece. The quantity above does the multiplying."
+        description={
+          assembly.status === "submitted"
+            ? "Price each material, then approve. Costs are per one piece."
+            : "Materials are listed per piece. The quantity above does the multiplying."
+        }
       />
-      <AssemblyWorkbench
-        assembly={assembly}
-        categories={categories}
-        isOwner={owner}
-      />
+      {/* Two screens, one document: the floor records what went in, the
+          owner puts a price on it. Same split as inward. */}
+      {owner && assembly.status === "submitted" ? (
+        <AssemblyPricingPanel assembly={assembly} canApprove />
+      ) : (
+        <AssemblyWorkbench
+          assembly={assembly}
+          categories={categories}
+          isOwner={owner}
+        />
+      )}
     </>
   );
 }

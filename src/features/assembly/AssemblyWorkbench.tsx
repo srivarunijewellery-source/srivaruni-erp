@@ -48,6 +48,10 @@ export function AssemblyWorkbench({
   const [adding, setAdding] = useState(assembly.products.length === 0);
 
   const editable = assembly.status === "draft";
+  // Costs belong to the pricing step. A draft is a record of what went
+  // into the piece; putting money on that screen invites someone to
+  // start editing materials to hit a number.
+  const showCosts = isOwner && assembly.status !== "draft";
 
   function run(fn: () => Promise<{ ok: boolean; error?: string }>) {
     setError(null);
@@ -71,12 +75,12 @@ export function AssemblyWorkbench({
             <p className="font-mono text-sm">{assembly.docNo}</p>
             <p className="text-2xs text-text-muted">
               {assembly.locationCode}
-              {isOwner ? ` · labour at ${formatPaise(assembly.labourRatePaise)}/hour` : ""}
+              {showCosts ? ` · labour at ${formatPaise(assembly.labourRatePaise)}/hour` : ""}
             </p>
           </div>
           <div className="flex items-center gap-2">
             <Badge tone={STATUS_TONE[assembly.status]}>{assembly.status}</Badge>
-            {isOwner && totalCost > 0 && (
+            {showCosts && totalCost > 0 && (
               <span className="text-sm">cost {formatPaise(totalCost)}</span>
             )}
           </div>
@@ -96,7 +100,7 @@ export function AssemblyWorkbench({
           product={p}
           open={openId === p.id}
           editable={editable}
-          isOwner={isOwner}
+          showCosts={showCosts}
           pending={pending}
           onToggle={() => setOpenId(openId === p.id ? null : p.id)}
           onRun={run}
@@ -186,7 +190,7 @@ function ProductBlock({
   product,
   open,
   editable,
-  isOwner,
+  showCosts,
   pending,
   onToggle,
   onRun,
@@ -195,7 +199,7 @@ function ProductBlock({
   product: AssemblyProduct;
   open: boolean;
   editable: boolean;
-  isOwner: boolean;
+  showCosts: boolean;
   pending: boolean;
   onToggle: () => void;
   onRun: (fn: () => Promise<{ ok: boolean; error?: string }>) => void;
@@ -221,13 +225,13 @@ function ProductBlock({
             {product.components.length === 1 ? "" : "s"}
           </p>
         </div>
-        {isOwner && (
+        {showCosts && (
           <div className="text-right">
             <p className="tnum text-sm">{formatPaise(product.unitLandedPaise)}</p>
             <p className="text-2xs text-text-subtle">each</p>
           </div>
         )}
-        {isOwner && missing > 0 && <Badge tone="danger">{missing} uncosted</Badge>}
+        {showCosts && missing > 0 && <Badge tone="danger">{missing} uncosted</Badge>}
         <span className="text-2xs text-text-muted">{open ? "hide" : "open"}</span>
       </CardHeader>
 
@@ -273,7 +277,7 @@ function ProductBlock({
                 className="h-11 w-28 sm:h-9"
               />
             </div>
-            <div className={`flex-1 self-end text-right text-2xs text-text-muted ${isOwner ? "" : "hidden"}`}>
+            <div className={`flex-1 self-end text-right text-2xs text-text-muted ${showCosts ? "" : "hidden"}`}>
               material {formatPaise(product.unitMaterialPaise)} + labour{" "}
               {formatPaise(product.unitLabourPaise)} ={" "}
               <span className="text-text-primary">
@@ -294,13 +298,18 @@ function ProductBlock({
             ) : (
               <ul className="divide-y divide-border">
                 {product.components.map((c) => (
-                  <li key={c.id} className="flex items-center gap-3 py-2">
+                  <li key={c.id} className="flex items-center gap-2 py-2">
                     <HoverThumb src={itemPhotoUrl(c.photoPath)} alt={c.name} />
-                    <div className="min-w-24 flex-1">
-                      <p className="truncate text-sm">{c.name}</p>
+                    {/* min-w-0 is what actually lets this shrink AND lets
+                        the name use the space: without it a flex child
+                        keeps its min-content width and pushes everything
+                        else out, which is why the qty box was enormous
+                        and the names were clipped. */}
+                    <div className="min-w-0 flex-1">
+                      <p className="break-words text-sm leading-tight">{c.name}</p>
                       <p className="font-mono text-2xs text-text-muted">{c.barcode}</p>
                     </div>
-                    {isOwner && (
+                    {showCosts && (
                       <span
                         className={`text-2xs ${
                           c.costSource === "none"
@@ -324,7 +333,8 @@ function ProductBlock({
                           updateComponentQty(assemblyId, c.id, Number(e.target.value)),
                         )
                       }
-                      className="h-11 w-20 sm:h-9"
+                      className="h-11 w-16 shrink-0 text-center sm:h-9"
+                      aria-label={`Quantity of ${c.name}`}
                     />
                   </li>
                 ))}

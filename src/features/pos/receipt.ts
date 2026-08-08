@@ -119,7 +119,20 @@ const FRAME_ID = "sv-receipt-frame";
 
 // Whole rupees on the slip, matching every other surface. The bill is
 // still STORED to the paise; this only changes what is printed.
-const rupees = (paise: number) => String(Math.round(paise / 100));
+/**
+ * Two decimals on the printed invoice, always.
+ *
+ * Screens round to the rupee because nobody scanning a dashboard cares
+ * about paise. An invoice is the opposite: it is a tax document, the
+ * line values genuinely carry paise, and the whole point of the round
+ * off line is to show the half-rupee being added or dropped. Printing
+ * "6137" hides both the exactness and the adjustment -- and a total with
+ * no decimals reads like an estimate rather than the amount due.
+ *
+ * So the rounding here is REAL, done on the bill, and this just shows
+ * what was recorded.
+ */
+const rupees = (paise: number) => (paise / 100).toFixed(2);
 
 function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");

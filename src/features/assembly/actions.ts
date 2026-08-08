@@ -227,3 +227,19 @@ export async function saveLabourRate(rupeesPerHour: string): Promise<Result<void
   revalidatePath(PATH);
   return ok(undefined);
 }
+
+/** Owner-entered cost for a component the rules could not price. */
+export async function setComponentCost(
+  assemblyId: string,
+  componentId: string,
+  paise: number,
+): Promise<Result<void>> {
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("set_component_cost", {
+    p_component: componentId,
+    p_paise: paise,
+  });
+  if (error) return err(toMessage(error));
+  revalidatePath(`${PATH}/${assemblyId}`);
+  return ok(undefined);
+}
