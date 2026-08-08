@@ -297,6 +297,13 @@ export interface ProductMovement {
   locationCode: string;
   createdAt: string;
   by: string | null;
+  /** Sale figures, present only on 'sale' rows AND only for the owner.
+   *  Null everywhere else -- a movement that is not a sale has no price,
+   *  and a non-owner must not learn cost from a stock history page. */
+  billNo: string | null;
+  soldPaise: number | null;
+  costPaise: number | null;
+  marginPaise: number | null;
 }
 
 export interface ProductSource {
@@ -307,12 +314,28 @@ export interface ProductSource {
   receivedAt: string | null;
 }
 
-/** Every movement of one item, newest first. The in/out history. */
-export async function getProductMovements(itemId: string): Promise<ProductMovement[]> {
+/**
+ * Every movement of one item, newest first, with what each sale made.
+ *
+ * The quantity alone answers "did it move". The owner's question is
+ * "was it worth moving", which needs the price it actually went out at
+ * — after whatever discount was given on that particular bill, which is
+ * why this reads bill_lines rather than the item's selling price.
+ *
+ * `forOwner` is passed in rather than looked up here so the caller's
+ * single role check governs the whole page. When false the money fields
+ * are never fetched at all, so there is nothing to leak by accident.
+ */
+export async function getProductMovements(
+  itemId: string,
+  forOwner = false,
+): Promise<ProductMovement[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("stock_ledger")
-    .select("id, qty_delta, reason, note, created_at, locations(code), staff:created_by(name)")
+    .select(
+      "id, qty_delta, reason, note, created_at, ref_type, ref_id, locations(code), staff:created_by(name)",
+    )
     .eq("item_id", itemId)
     .order("created_at", { ascending: false })
     .limit(100);
@@ -321,15 +344,54 @@ export async function getProductMovements(itemId: string): Promise<ProductMoveme
   const one = <T,>(v: T | T[] | null): T | undefined =>
     Array.isArray(v) ? v[0] : (v ?? undefined);
 
-  return (data ?? []).map((m) => ({
-    id: m.id,
-    qtyDelta: m.qty_delta,
-    reason: m.reason,
-    note: m.note,
-    locationCode: one(m.locations)?.code ?? "—",
-    createdAt: m.created_at,
-    by: one(m.staff)?.name ?? null,
-  }));
+  const rows = data ?? [];
+
+  // One extra query for all the sale rows, not one per row.
+  const billIds = forOwner
+    ? [...new Set(rows.filter((m) => m.ref_type === "bill" && m.ref_id).map((m) => m.ref_id as string))]
+    : [];
+
+  const sale = new Map<string, { billNo: string; sold: number; cost: number }>();
+  if (billIds.length > 0) {
+    const [{ data: lines }, { data: cost }] = await Promise.all([
+      supabase
+        .from("bill_lines")
+        .select("bill_id, qty, line_total_paise, bills(bill_no)")
+        .eq("item_id", itemId)
+        .in("bill_id", billIds),
+      supabase
+        .from("item_latest_cost")
+        .select("landed_cost_paise")
+        .eq("item_id", itemId)
+        .maybeSingle(),
+    ]);
+    const unitCost = Number(cost?.landed_cost_paise ?? 0);
+    for (const l of lines ?? []) {
+      const b = one(l.bills as never) as { bill_no: string } | undefined;
+      sale.set(l.bill_id as string, {
+        billNo: b?.bill_no ?? "—",
+        sold: Number(l.line_total_paise ?? 0),
+        cost: unitCost * Number(l.qty ?? 0),
+      });
+    }
+  }
+
+  return rows.map((m) => {
+    const s = m.ref_type === "bill" && m.ref_id ? sale.get(m.ref_id as string) : undefined;
+    return {
+      id: m.id,
+      qtyDelta: m.qty_delta,
+      reason: m.reason,
+      note: m.note,
+      locationCode: one(m.locations)?.code ?? "—",
+      createdAt: m.created_at,
+      by: one(m.staff)?.name ?? null,
+      billNo: s?.billNo ?? null,
+      soldPaise: s?.sold ?? null,
+      costPaise: s?.cost ?? null,
+      marginPaise: s ? s.sold - s.cost : null,
+    };
+  });
 }
 
 /** Which vendor supplied this item, via its one inward. */

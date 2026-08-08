@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
 import { PhotoThumb } from "@/components/ui/PhotoThumb";
 import { itemPhotoUrl } from "@/lib/storage";
@@ -15,6 +18,19 @@ import type { SoldItem } from "./queries";
  * are left to reorder or not.
  */
 export function SoldItemsGrid({ items }: { items: SoldItem[] }) {
+  /**
+   * Which photo is enlarged, on touch.
+   *
+   * On a desktop the photo grows on hover, which costs nothing. A phone
+   * has no hover, so the same tap that should let you LOOK at the piece
+   * was navigating away to the product page instead -- you could never
+   * see the picture without leaving the list.
+   *
+   * So on the image only: first tap enlarges, second opens. The rest of
+   * the card is still a plain single-tap link, because that part has
+   * nothing to preview and a two-tap link would just feel broken.
+   */
+  const [peeked, setPeeked] = useState<string | null>(null);
   if (items.length === 0) {
     return (
       <p className="px-4 py-10 text-center text-sm text-text-muted">
@@ -24,7 +40,13 @@ export function SoldItemsGrid({ items }: { items: SoldItem[] }) {
   }
 
   return (
-    <div className="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+    <div
+      className="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+      onTouchStart={(e) => {
+        // Tapping away puts the photo back, so a peek never sticks.
+        if (peeked && !(e.target as HTMLElement).closest("img")) setPeeked(null);
+      }}
+    >
       {items.map((i) => {
         const marginPct =
           i.revenuePaise > 0 ? (i.marginPaise / i.revenuePaise) * 100 : 0;
@@ -34,11 +56,24 @@ export function SoldItemsGrid({ items }: { items: SoldItem[] }) {
             href={ROUTES.productDetail(i.itemId)}
             className="group flex gap-3 rounded-card border border-border bg-surface p-2.5 transition-colors hover:border-brand"
           >
-            <PhotoThumb
-              src={itemPhotoUrl(i.photoPath)}
-              alt={i.name}
-              size={72}
-            />
+            <span
+              onClick={(e) => {
+                // Only intercept where there is no hover to fall back on.
+                // A mouse keeps the old single-click-opens behaviour.
+                if (!window.matchMedia("(hover: none)").matches) return;
+                if (peeked === i.itemId) return; // second tap: let the link run
+                e.preventDefault();
+                e.stopPropagation();
+                setPeeked(i.itemId);
+              }}
+              className="shrink-0"
+            >
+              <PhotoThumb
+                src={itemPhotoUrl(i.photoPath)}
+                alt={i.name}
+                size={peeked === i.itemId ? 160 : 72}
+              />
+            </span>
 
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium group-hover:text-brand">

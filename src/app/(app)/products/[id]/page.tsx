@@ -13,7 +13,7 @@ import {
   listStores,
 } from "@/features/inward/queries";
 import { QtyAdjuster } from "@/features/products/QtyAdjuster";
-import { can } from "@/config/roles";
+import { can, isOwner } from "@/config/roles";
 import { ROUTES } from "@/config/nav";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ProductPhotos } from "@/features/products/ProductPhotos";
@@ -40,6 +40,7 @@ export default async function ProductDetailPage({
 }) {
   const { id } = await params;
   const user = await requireUser();
+  const owner = isOwner(user.role);
 
   const [product, categories, options, stores, movements, source, breakdown] =
     await Promise.all([
@@ -47,7 +48,9 @@ export default async function ProductDetailPage({
       listCategories(),
       listItemFormOptions(),
       listStores(),
-      getProductMovements(id),
+      // Money on the movement rows is owner-only, and is not even
+      // fetched otherwise.
+      getProductMovements(id, owner),
       getProductSource(id),
       // Returns null for anyone but the owner: item_costs is owner-only
       // at the RLS level, so the card simply does not render for staff.
@@ -273,6 +276,16 @@ export default async function ProductDetailPage({
                       <th className="px-2 py-1.5 text-left text-2xs font-semibold uppercase tracking-wide text-text-muted">
                         Reason
                       </th>
+                      {owner && (
+                        <th className="px-2 py-1.5 text-right text-2xs font-semibold uppercase tracking-wide text-text-muted">
+                          Sold for
+                        </th>
+                      )}
+                      {owner && (
+                        <th className="px-2 py-1.5 text-right text-2xs font-semibold uppercase tracking-wide text-text-muted">
+                          Margin
+                        </th>
+                      )}
                     </tr>
                   </thead>
                   <tbody>
@@ -301,7 +314,51 @@ export default async function ProductDetailPage({
                           {m.note && (
                             <span className="block text-text-subtle">{m.note}</span>
                           )}
+                          {owner && m.billNo && (
+                            <span className="block font-mono text-text-subtle">
+                              {m.billNo}
+                            </span>
+                          )}
                         </td>
+                        {owner && (
+                          <td className="tnum px-2 py-1.5 text-right font-mono text-2xs">
+                            {m.soldPaise === null ? (
+                              <span className="text-text-subtle">—</span>
+                            ) : (
+                              <>
+                                {formatPaise(m.soldPaise)}
+                                {/* The cost this margin is measured
+                                    against, so the number can be checked
+                                    rather than taken on trust. */}
+                                <span className="block text-text-subtle">
+                                  cost {formatPaise(m.costPaise ?? 0)}
+                                </span>
+                              </>
+                            )}
+                          </td>
+                        )}
+                        {owner && (
+                          <td className="tnum px-2 py-1.5 text-right font-mono text-2xs">
+                            {m.marginPaise === null ? (
+                              <span className="text-text-subtle">—</span>
+                            ) : (
+                              <span
+                                className={
+                                  m.marginPaise < 0
+                                    ? "text-status-danger-fg"
+                                    : "text-status-done-fg"
+                                }
+                              >
+                                {formatPaise(m.marginPaise)}
+                                <span className="block text-text-subtle">
+                                  {m.soldPaise && m.soldPaise > 0
+                                    ? `${((m.marginPaise / m.soldPaise) * 100).toFixed(0)}%`
+                                    : ""}
+                                </span>
+                              </span>
+                            )}
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
