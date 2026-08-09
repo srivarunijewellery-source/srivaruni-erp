@@ -207,6 +207,7 @@ export default async function DashboardPage({
             grain={grain}
             from={from}
             to={to}
+            params={{ tab, location, dimension }}
           />
         </div>
       )}

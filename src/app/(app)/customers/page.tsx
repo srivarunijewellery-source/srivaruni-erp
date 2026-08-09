@@ -100,6 +100,7 @@ export default async function CustomersPage({
                 grain={grain}
                 from={range.from}
                 to={range.to}
+                params={{ q, sort }}
               />
             </CardBody>
           </Card>

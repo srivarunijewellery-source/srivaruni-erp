@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import type { Grain } from "@/features/dashboard/queries";
 
@@ -28,14 +28,21 @@ export function GrainPicker({
   grain,
   from,
   to,
+  params = {},
 }: {
   basePath: string;
   grain: Grain;
   from: string;
   to: string;
+  /** Passed in rather than read with useSearchParams.
+   *
+   *  useSearchParams forces the nearest Suspense boundary and bails the
+   *  subtree out to client rendering when there is not one — and the
+   *  page already knows its own parameters, so reading them back out of
+   *  the URL was work to create a problem rather than solve one. */
+  params?: Record<string, string>;
 }) {
   const router = useRouter();
-  const params = useSearchParams();
   const [pending, start] = useTransition();
 
   const days = spanDays(from, to);
@@ -56,7 +63,10 @@ export function GrainPicker({
           type="button"
           disabled={pending}
           onClick={() => {
-            const qs = new URLSearchParams(params.toString());
+            const qs = new URLSearchParams();
+            for (const [k, v] of Object.entries(params)) if (v) qs.set(k, v);
+            qs.set("from", from);
+            qs.set("to", to);
             qs.set("grain", key);
             start(() => router.push(`${basePath}?${qs.toString()}`, { scroll: false }));
           }}

@@ -24,6 +24,18 @@ export const resolveSession = cache(async (): Promise<SessionResult> => {
   const { data: userData, error: authError } = await supabase.auth.getUser();
 
   if (authError) {
+    // Not being signed in is not an error.
+    //
+    // getUser() raises AuthSessionMissingError when there is no session
+    // at all, rather than returning user: null. Treated as a failure it
+    // showed a signed-out visitor "Could not load your account — Auth
+    // session missing", which reads like the system is broken when the
+    // truth is simply that nobody has signed in yet.
+    const missing =
+      authError.name === "AuthSessionMissingError" ||
+      /session (missing|from session id)/i.test(authError.message ?? "");
+    if (missing) return { status: "no-session" };
+
     return { status: "error", message: `Auth check failed: ${authError.message}` };
   }
   if (!userData.user) {

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { resolveSession } from "@/features/auth/session";
 import { AppNav } from "@/components/AppNav";
 import { ROUTES } from "@/config/nav";
@@ -6,10 +7,18 @@ import { ROUTES } from "@/config/nav";
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await resolveSession();
 
-  // Rendered, not thrown. Next.js strips thrown error messages from
-  // production Server Component builds, which turns every one of these
-  // into an opaque digest. Rendering keeps the reason visible to the
-  // person who has to act on it.
+  // Nobody signed in? Send them to sign in. Showing a panel that says
+  // "your session ended" to someone who simply opened the app is a wall
+  // with a door behind it -- the only useful action is the redirect, so
+  // just do the redirect.
+  if (session.status === "no-session") {
+    redirect(ROUTES.login);
+  }
+
+  // Everything else IS worth reading: no staff record, or a genuine
+  // failure. Rendered, not thrown -- Next.js strips thrown error
+  // messages from production Server Component builds, which turns each
+  // of these into an opaque digest.
   if (session.status !== "ok") {
     return <SessionProblem session={session} />;
   }
