@@ -299,10 +299,16 @@ export function receiptHtml(d: ReceiptData): string {
   /* An explicit height, never "auto".
      Chrome silently ignores an auto height and falls back to Letter:
      measured, a slip that should have been eighty millimetres wide came
-     out at 215.9. The browser then scales that Letter page down onto the
-     roll, which is why print could look subtly wrong no matter what the
-     margins said. A generous fixed height costs nothing, because a
-     thermal printer feeds only as far as the content actually goes. */
+     out at 215.9. The browser then scales that Letter page down onto
+     the roll, which is why print could look subtly wrong no matter what
+     the margins said.
+     
+     297mm here is only a starting value. It was chosen on the belief
+     that a thermal printer feeds only as far as the content goes -- but
+     that is the DRIVER's choice, and most feed the whole declared page,
+     which is why a short bill was spitting out a hand of blank roll.
+     printReceipt() measures the rendered content and rewrites this rule
+     with the real height before the dialog opens. */
   @page { size: ${cfg.paperMm}mm 297mm; margin: 0; }
   /* Only the MONEY is monospaced. Forcing a fixed-width font on names
      and labels is what made the old slip read like a fax -- it wastes
@@ -602,8 +608,11 @@ export function receiptHtml(d: ReceiptData): string {
   <div class="c xs">Prices are inclusive of GST</div>
   <div class="c xs">${esc(d.billNo)} &middot; ${esc(d.dateText)}</div>
 
-  <!-- Trailing space so the tear-off does not cut the last line. -->
-  <div class="c" style="margin-top:5mm">.</div>
+  <!-- A little clear roll so the tear-off does not cut the last line.
+       No printed character: the old full stop was there to force the
+       browser to allocate the space, which an empty block with a height
+       does just as well without leaving a mark on the slip. -->
+  <div style="height:4mm"></div>
 </body></html>`;
 }
 
@@ -640,6 +649,33 @@ export function printReceipt(d: ReceiptData): void {
 
   const fire = () => {
     try {
+      // Match the page to the slip before printing.
+      //
+      // The stylesheet declares a 297mm page because Chrome will not
+      // accept `auto`. Most drivers then feed all 297mm, so a bill with
+      // four lines came out followed by a foot of blank roll. Measuring
+      // the laid-out content and rewriting @page costs one reflow and
+      // stops the waste.
+      //
+      // Wrapped in its own try: if anything here fails, the slip should
+      // still print on the oversized page rather than not print at all.
+      try {
+        const w = frame.contentWindow;
+        const body = w?.document?.body;
+        if (w && body) {
+          // px -> mm at the CSS reference of 96dpi. +6mm of tolerance so
+          // a rounding error can never clip the last line, which is a
+          // far worse failure than a little spare roll.
+          const mm = Math.ceil((body.scrollHeight * 25.4) / 96) + 6;
+          const style = w.document.createElement("style");
+          const paper = d.print?.paperMm ?? DEFAULT_PRINT.paperMm;
+          style.textContent = `@page { size: ${paper}mm ${mm}mm; margin: 0; }`;
+          w.document.head.appendChild(style);
+        }
+      } catch {
+        // Measurement is an optimisation, never a precondition.
+      }
+
       frame.contentWindow?.focus();
       frame.contentWindow?.print();
     } catch (e) {
