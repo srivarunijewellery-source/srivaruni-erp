@@ -15,27 +15,55 @@ export interface LabelItem {
   photoPath: string | null;
 }
 
-const SELECT =
-  "id, barcode, design_code, name, mrp_paise, size:size_id(value)" as const;
+// No embedded size here. The foreign key is COMPOSITE --
+// (size_key, size_id) -> attribute_options(attr_key, id) -- and
+// PostgREST cannot resolve a single-column embed against it, so
+// `size:size_id(value)` fails the whole query with PGRST200. Sizes are
+// resolved by a second lookup below, the same way the pricing screen
+// resolves its attribute labels.
+const SELECT = "id, barcode, design_code, name, mrp_paise, size_id" as const;
 
-function toLabelItem(r: {
-  id: string;
-  barcode: string;
-  design_code: string | null;
-  name: string;
-  mrp_paise: number | null;
-  size?: { value: string } | { value: string }[] | null;
-}): LabelItem {
-  const size = Array.isArray(r.size) ? r.size[0] : r.size;
+function toLabelItem(
+  r: {
+    id: string;
+    barcode: string;
+    design_code: string | null;
+    name: string;
+    mrp_paise: number | null;
+    size_id?: string | null;
+  },
+  sizes?: Map<string, string>,
+): LabelItem {
   return {
     itemId: r.id,
     barcode: r.barcode,
     designCode: r.design_code,
     name: r.name,
-    size: size?.value ?? null,
+    size: (r.size_id && sizes?.get(r.size_id)) || null,
     mrpPaise: r.mrp_paise,
     photoPath: null,
   };
+}
+
+/**
+ * Size labels for a batch of rows, in one query.
+ *
+ * Returns an empty map when nothing carries a size, so callers never
+ * branch on it -- a missing size simply prints nothing.
+ */
+async function sizeLabels(
+  rows: Array<{ size_id?: string | null }>,
+): Promise<Map<string, string>> {
+  const ids = [...new Set(rows.map((r) => r.size_id).filter((x): x is string => Boolean(x)))];
+  if (ids.length === 0) return new Map();
+
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("attribute_options")
+    .select("id, value")
+    .in("id", ids);
+
+  return new Map((data ?? []).map((a) => [a.id as string, a.value as string]));
 }
 
 /** Search-as-you-type for the ad hoc print queue. */
@@ -53,7 +81,8 @@ export async function searchLabelItems(query: string, limit = 15): Promise<Label
     .limit(limit);
 
   if (error) throw error;
-  return (data ?? []).map(toLabelItem);
+  const sizes = await sizeLabels(data ?? []);
+  return (data ?? []).map((r) => toLabelItem(r, sizes));
 }
 
 /** Full label data for a known set of items, in the order requested. */
@@ -64,7 +93,8 @@ export async function getLabelItems(itemIds: string[]): Promise<LabelItem[]> {
   const { data, error } = await supabase.from("items").select(SELECT).in("id", itemIds);
   if (error) throw error;
 
-  const byId = new Map((data ?? []).map((r) => [r.id, toLabelItem(r)]));
+  const sizes = await sizeLabels(data ?? []);
+  const byId = new Map((data ?? []).map((r) => [r.id, toLabelItem(r, sizes)]));
   return itemIds.map((id) => byId.get(id)).filter((x): x is LabelItem => Boolean(x));
 }
 
@@ -95,12 +125,17 @@ export async function getInwardLinesForLabels(inwardId: string): Promise<InwardL
     items: Parameters<typeof toLabelItem>[0] | Parameters<typeof toLabelItem>[0][] | null;
   };
   const lines = (data.inward_lines ?? []) as Row[];
+  const sizes = await sizeLabels(
+    lines.map((r) => (Array.isArray(r.items) ? r.items[0] : r.items)).filter(Boolean) as Array<{
+      size_id?: string | null;
+    }>,
+  );
 
   return lines
     .map((r) => {
       const item = Array.isArray(r.items) ? r.items[0] : r.items;
       if (!item) return null;
-      return { item: toLabelItem(item), qty: Number(r.qty ?? 0), lineNo: r.line_no ?? 0 };
+      return { item: toLabelItem(item, sizes), qty: Number(r.qty ?? 0), lineNo: r.line_no ?? 0 };
     })
     .filter((x): x is InwardLabelLine & { lineNo: number } => x !== null)
     // Code order, the same order the inward document and the pricing
@@ -138,12 +173,17 @@ export async function getAssemblyLinesForLabels(
     items: Parameters<typeof toLabelItem>[0] | Parameters<typeof toLabelItem>[0][] | null;
   };
   const lines = (data.assembly_items ?? []) as Row[];
+  const sizes = await sizeLabels(
+    lines.map((r) => (Array.isArray(r.items) ? r.items[0] : r.items)).filter(Boolean) as Array<{
+      size_id?: string | null;
+    }>,
+  );
 
   return lines
     .map((r) => {
       const item = Array.isArray(r.items) ? r.items[0] : r.items;
       if (!item) return null;
-      return { item: toLabelItem(item), qty: Number(r.qty ?? 0), lineNo: r.line_no ?? 0 };
+      return { item: toLabelItem(item, sizes), qty: Number(r.qty ?? 0), lineNo: r.line_no ?? 0 };
     })
     .filter((x): x is InwardLabelLine & { lineNo: number } => x !== null)
     .sort(byItemCode((l) => l.item.barcode, (l) => l.lineNo))
