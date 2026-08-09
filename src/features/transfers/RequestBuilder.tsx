@@ -48,15 +48,33 @@ export function RequestBuilder({
   );
 
   function change(item: PickableItem, qty: number) {
-    const clamped = Math.max(0, Math.min(qty, item.qtyAvailable));
+    changeById(item.itemId, qty, item.qtyAvailable);
+  }
+
+  /**
+   * Edits a line by id, not by a card that happens to be on screen.
+   *
+   * The picker shows 60 of several thousand pieces, in stock only, in
+   * name order. An item already on the request but outside that window
+   * — or since sold out at the sending store — simply had no card, and
+   * so could not be changed or removed at all. That is what "the
+   * request is not editable" was: the lines were fine, there was just
+   * nothing to click.
+   */
+  function changeById(itemId: string, qty: number, available: number | null) {
+    // A line already on the request can always be REDUCED, whatever the
+    // shelf says now. Only increases are held to what is actually there.
+    const cap = available ?? Number.MAX_SAFE_INTEGER;
+    const current = quantities.get(itemId) ?? 0;
+    const clamped = qty <= current ? Math.max(0, qty) : Math.max(0, Math.min(qty, cap));
 
     start(async () => {
-      setQuantity({ itemId: item.itemId, qty: clamped });
+      setQuantity({ itemId, qty: clamped });
       setError(null);
 
       const fd = new FormData();
       fd.set("transferId", transferId);
-      fd.set("itemId", item.itemId);
+      fd.set("itemId", itemId);
       fd.set("qty", String(clamped));
 
       const result = await setTransferLine(fd);
@@ -66,20 +84,91 @@ export function RequestBuilder({
 
   const total = [...quantities.values()].reduce((n, q) => n + q, 0);
 
-  if (items.length === 0) {
-    return (
-      <Card>
-        <CardBody>
-          <p className="text-sm text-text-muted">
-            Nothing on the shelf at {fromCode} matches that. Clear the filters, or check
-            the stock is actually held there.
-          </p>
-        </CardBody>
-      </Card>
-    );
-  }
+  const onRequest = lines
+    .map((l) => ({ line: l, qty: quantities.get(l.itemId) ?? 0 }))
+    .filter((x) => x.qty > 0);
 
   return (
+    <>
+      {/* What is on the request, always, regardless of what the picker
+          below happens to be showing. */}
+      {onRequest.length > 0 && (
+        <Card className="mb-4">
+          <CardHeader className="flex items-center justify-between gap-3">
+            <span className="font-medium">On this request</span>
+            <span className="tnum font-mono text-sm">
+              {total} {total === 1 ? "piece" : "pieces"}
+            </span>
+          </CardHeader>
+          <CardBody className="p-0">
+            <ul className="divide-y divide-border">
+              {onRequest.map(({ line, qty }) => (
+                <li
+                  key={line.itemId}
+                  className="grid grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-3 px-3 py-2"
+                >
+                  <PhotoThumb src={itemPhotoUrl(line.photoPath)} alt={line.name} size={40} />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm">{line.name}</p>
+                    <p className="font-mono text-2xs text-text-muted">
+                      {line.barcode}
+                      {line.qtyAvailable < qty && (
+                        <span className="text-status-danger-fg">
+                          {" "}
+                          · only {line.qtyAvailable} on shelf now
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={pending}
+                      onClick={() => changeById(line.itemId, qty - 1, line.qtyAvailable)}
+                      aria-label={`One fewer ${line.name}`}
+                    >
+                      −
+                    </Button>
+                    <span className="tnum w-8 text-center font-mono text-sm font-semibold">
+                      {qty}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={pending || qty >= line.qtyAvailable}
+                      onClick={() => changeById(line.itemId, qty + 1, line.qtyAvailable)}
+                      aria-label={`One more ${line.name}`}
+                    >
+                      +
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={pending}
+                      onClick={() => changeById(line.itemId, 0, line.qtyAvailable)}
+                      aria-label={`Remove ${line.name}`}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </CardBody>
+        </Card>
+      )}
+
+      {items.length === 0 ? (
+        <Card>
+          <CardBody>
+            <p className="text-sm text-text-muted">
+              Nothing on the shelf at {fromCode} matches that. Clear the filters, or
+              check the stock is actually held there.
+            </p>
+          </CardBody>
+        </Card>
+      ) : (
     <Card>
       <CardHeader className="flex items-center justify-between gap-3">
         <span className="font-medium">Available at {fromCode}</span>
@@ -170,5 +259,7 @@ export function RequestBuilder({
         </ul>
       </CardBody>
     </Card>
+      )}
+    </>
   );
 }
