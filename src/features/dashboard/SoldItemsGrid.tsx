@@ -41,7 +41,7 @@ export function SoldItemsGrid({ items }: { items: SoldItem[] }) {
 
   return (
     <div
-      className="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+      className="grid gap-3 overflow-x-hidden p-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
       onTouchStart={(e) => {
         // Tapping away puts the photo back, so a peek never sticks.
         if (peeked && !(e.target as HTMLElement).closest("img")) setPeeked(null);
@@ -56,6 +56,13 @@ export function SoldItemsGrid({ items }: { items: SoldItem[] }) {
             href={ROUTES.productDetail(i.itemId)}
             className="group flex gap-3 rounded-card border border-border bg-surface p-2.5 transition-colors hover:border-brand"
           >
+            {/* The slot stays 72px whatever happens. Enlarging by
+                changing `size` grew the thumbnail's real box, which
+                widened the card, which widened the grid, which gave the
+                whole page a horizontal scroll on a phone -- every other
+                card shifted sideways because of one tapped photo.
+                A transform paints larger without occupying more space,
+                so the layout cannot move. */}
             <span
               onClick={(e) => {
                 // Only intercept where there is no hover to fall back on.
@@ -66,13 +73,15 @@ export function SoldItemsGrid({ items }: { items: SoldItem[] }) {
                 e.stopPropagation();
                 setPeeked(i.itemId);
               }}
-              className="shrink-0"
+              className="relative shrink-0"
             >
-              <PhotoThumb
-                src={itemPhotoUrl(i.photoPath)}
-                alt={i.name}
-                size={peeked === i.itemId ? 160 : 72}
-              />
+              <span
+                className={`block origin-top-left transition-transform ${
+                  peeked === i.itemId ? "z-20 scale-[2.2] shadow-raised" : ""
+                }`}
+              >
+                <PhotoThumb src={itemPhotoUrl(i.photoPath)} alt={i.name} size={72} />
+              </span>
             </span>
 
             <div className="min-w-0 flex-1">

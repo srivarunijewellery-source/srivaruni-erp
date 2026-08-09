@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { Button } from "@/components/ui/Button";
-import { Input, Label, Select, FieldError } from "@/components/ui/Field";
+import { Input, NarrowInput, Label, Select, FieldError } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { formatPaise } from "@/lib/money";
 import {
@@ -47,8 +47,26 @@ export function BillActions({
   const [error, setError] = useState<string | null>(null);
 
   const [staffId, setStaffId] = useState("");
-  const [method, setMethod] = useState<string>("cash");
-  const [reference, setReference] = useState("");
+  /**
+   * How the bill was settled, as a list.
+   *
+   * This used to be one method and one reference, and it always sent a
+   * single line for the whole total — so a bill actually paid part cash
+   * part UPI could not be recorded, even though bill_set_payments has
+   * always accepted a split and sets payment_mode to "mixed" when it
+   * gets one. The limit was here, not in the database.
+   */
+  const [splits, setSplits] = useState<
+    Array<{ key: string; method: string; amount: string; reference: string }>
+  >([]);
+
+  // Recomputed from the rows rather than tracked alongside them, so the
+  // two can never disagree about how much has been accounted for.
+  const splitSum = useMemo(
+    () =>
+      splits.reduce((n, sp) => n + Math.round((Number(sp.amount) || 0) * 100), 0),
+    [splits],
+  );
   const [phone, setPhone] = useState("");
   const [hits, setHits] = useState<CustomerHit[]>([]);
 
@@ -150,7 +168,20 @@ export function BillActions({
             <Action
               label="Change payment"
               hint="Cash, UPI, card, bank"
-              onClick={() => setMode("payment")}
+              onClick={() => {
+                // Opens holding the whole total on the bill's current
+                // method, so changing one payment to two is adding a row
+                // rather than building it from nothing.
+                setSplits([
+                  {
+                    key: "s-0",
+                    method: bill.paymentMode ?? "cash",
+                    amount: (bill.totalPaise / 100).toFixed(2),
+                    reference: "",
+                  },
+                ]);
+                setMode("payment");
+              }}
             />
             <Action
               label="Change customer"
@@ -195,50 +226,136 @@ export function BillActions({
 
         {mode === "payment" && (
           <div className="space-y-2">
-            <div className="flex flex-wrap gap-1.5">
-              {METHODS.map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => setMethod(m)}
-                  className={`rounded-control px-3 py-1.5 text-sm capitalize ${
-                    method === m
-                      ? "bg-brand text-brand-fg"
-                      : "border border-border hover:bg-surface-sunken"
+            {splits.map((sp, idx) => (
+              <div key={sp.key} className="flex flex-wrap items-end gap-2">
+                <div className="min-w-32 flex-1">
+                  <Label htmlFor={`m-${sp.key}`}>Method</Label>
+                  <Select
+                    id={`m-${sp.key}`}
+                    value={sp.method}
+                    onChange={(e) =>
+                      setSplits((prev) =>
+                        prev.map((x, i) =>
+                          i === idx ? { ...x, method: e.target.value } : x,
+                        ),
+                      )
+                    }
+                  >
+                    {METHODS.map((m) => (
+                      <option key={m} value={m} className="capitalize">
+                        {m}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor={`a-${sp.key}`}>Amount</Label>
+                  <NarrowInput
+                    widthClass="w-28"
+                    id={`a-${sp.key}`}
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={sp.amount}
+                    onChange={(e) =>
+                      setSplits((prev) =>
+                        prev.map((x, i) =>
+                          i === idx ? { ...x, amount: e.target.value } : x,
+                        ),
+                      )
+                    }
+                    className="text-right"
+                  />
+                </div>
+                <div className="min-w-28 flex-1">
+                  <Label htmlFor={`r-${sp.key}`}>Reference</Label>
+                  <Input
+                    id={`r-${sp.key}`}
+                    value={sp.reference}
+                    onChange={(e) =>
+                      setSplits((prev) =>
+                        prev.map((x, i) =>
+                          i === idx ? { ...x, reference: e.target.value } : x,
+                        ),
+                      )
+                    }
+                    placeholder={sp.method === "upi" ? "UPI ref" : "Last 4"}
+                  />
+                </div>
+                {splits.length > 1 && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() =>
+                      setSplits((prev) => prev.filter((_, i) => i !== idx))
+                    }
+                  >
+                    Remove
+                  </Button>
+                )}
+              </div>
+            ))}
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() =>
+                  setSplits((prev) => [
+                    ...prev,
+                    {
+                      key: `s-${Date.now()}`,
+                      // Pre-filled with what is still unaccounted for, so
+                      // the common case — one more line for the rest — is
+                      // no typing at all.
+                      method: "cash",
+                      amount: ((bill.totalPaise - splitSum) / 100).toFixed(2),
+                      reference: "",
+                    },
+                  ])
+                }
+              >
+                Add another method
+              </Button>
+              <span
+                className={`text-2xs ${
+                  splitSum === bill.totalPaise
+                    ? "text-text-muted"
+                    : "text-status-danger-fg"
+                }`}
+              >
+                {formatPaise(splitSum)} of {formatPaise(bill.totalPaise)}
+                {splitSum !== bill.totalPaise &&
+                  ` · ${formatPaise(Math.abs(bill.totalPaise - splitSum))} ${
+                    splitSum < bill.totalPaise ? "short" : "over"
                   }`}
-                >
-                  {m}
-                </button>
-              ))}
+              </span>
             </div>
-            <div>
-              <Label htmlFor="ref">Reference</Label>
-              <Input
-                id="ref"
-                value={reference}
-                onChange={(e) => setReference(e.target.value)}
-                placeholder={method === "upi" ? "UPI ref" : "Last 4 digits"}
-              />
-            </div>
+
             <p className="text-2xs text-text-muted">
-              The whole {formatPaise(bill.totalPaise)} moves to {method}. The drawer
-              corrects itself — a sale keyed as cash that was really UPI leaves the till
-              short at close.
+              The bill total does not change here, only how it was settled. The
+              drawer corrects itself — a sale keyed as cash that was really UPI
+              leaves the till short at close.
             </p>
             <Row
               onBack={() => setMode("menu")}
-              disabled={pending}
+              // Blocked rather than left to the server: the person can see
+              // exactly how far out they are and fix it in place.
+              disabled={pending || splitSum !== bill.totalPaise}
               onGo={() =>
                 run(
                   () =>
-                    setBillPayments(bill.billId, [
-                      {
-                        method,
-                        amount_paise: bill.totalPaise,
-                        reference: reference || undefined,
-                      },
-                    ]),
-                  `${bill.billNo} is now ${method}.`,
+                    setBillPayments(
+                      bill.billId,
+                      splits
+                        .filter((sp) => Math.round(Number(sp.amount) * 100) > 0)
+                        .map((sp) => ({
+                          method: sp.method,
+                          amount_paise: Math.round(Number(sp.amount) * 100),
+                          reference: sp.reference || undefined,
+                        })),
+                    ),
+                  `${bill.billNo} payment updated.`,
                 )
               }
             />

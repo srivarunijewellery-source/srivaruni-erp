@@ -199,6 +199,15 @@ export async function openRegister(
     p_denoms: denominations,
   });
   if (error) return err(toMessage(error));
+
+  // Send it now rather than waiting for the daily cron.
+  //
+  // The cron runs once at 09:00 IST, so a counter opened in the evening
+  // sat queued until the next morning -- by which time the till has been
+  // open, used and closed, and the notification is a historical note
+  // rather than something anyone can act on. closeRegister already did
+  // this; opening was simply missed.
+  await pokeDispatchBestEffort();
   revalidatePath(ROUTES.pos);
   return ok(String(data));
 }
