@@ -4,6 +4,7 @@ import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { ROUTES } from "@/config/nav";
 import { DocumentPricingBar } from "./DocumentPricingBar";
+import { PriceSheetUpload } from "./PriceSheetUpload";
 import { saveInwardDiscount } from "./bulkPricingActions";
 import type { PriceBand } from "@/types/domain";
 import {
@@ -166,6 +167,11 @@ export function PricingPanel({
           {error}
         </p>
       )}
+
+      {/* Sits above the band bar: when a vendor has sent a sheet it is
+          the fastest route to a priced document, and the rules below are
+          the fallback for what it could not match. */}
+      <PriceSheetUpload inwardId={inwardId} vendorPriceMode={tax?.priceMode ?? null} />
 
       <DocumentPricingBar
         inwardId={inwardId}
