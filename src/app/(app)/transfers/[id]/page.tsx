@@ -45,12 +45,13 @@ export default async function TransferDetailPage({
   // request that has reached this page already has its lines. This section
   // only covers adding a forgotten item to one still sitting at "requested".
   const canAddMore = transfer.status === "requested" && can(user, "transfer.request");
-  const [pickable, filterOptions] = canAddMore
+  const [pickResult, filterOptions] = canAddMore
     ? await Promise.all([
         listPickableStock(transfer.fromLocationId, { query: q, category }),
         listStockFilterOptions(transfer.fromLocationId),
       ])
-    : [[], { categories: [], itemTypes: [], platings: [] }];
+    : [{ items: [], total: 0 }, { categories: [], itemTypes: [], platings: [], stones: [] }];
+  const pickable = pickResult.items;
 
   const filterValue: StockFilterState = {
     from: transfer.fromLocationId,
@@ -58,6 +59,11 @@ export default async function TransferDetailPage({
     category,
     itemType: "",
     plating: "",
+    stone: "",
+    qty: "",
+    exCategories: [],
+    exStones: [],
+    exPlatings: [],
     inStock: true,
     minAge: "",
   };

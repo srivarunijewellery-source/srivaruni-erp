@@ -275,8 +275,16 @@ export async function listPickableStock(
     inStockOnly?: boolean;
     minAgeDays?: number;
     limit?: number;
+    stone?: string;
+    /** Exactly this many on the shelf. "Show me the threes" is a real
+     *  question when deciding what to move: a three splits, a one does not. */
+    qty?: number;
+    excludeCategories?: string[];
+    excludeStones?: string[];
+    excludePlatings?: string[];
+    offset?: number;
   } = {},
-): Promise<PickableItem[]> {
+): Promise<{ items: PickableItem[]; total: number }> {
   const supabase = await createClient();
 
   const { data, error } = await supabase.rpc("list_pickable_stock", {
@@ -287,7 +295,15 @@ export async function listPickableStock(
     p_plating: opts.plating || null,
     p_in_stock_only: opts.inStockOnly ?? true,
     p_min_age_days: opts.minAgeDays ?? null,
-    p_limit: opts.limit ?? 200,
+    p_limit: opts.limit ?? 60,
+    p_stone: opts.stone || null,
+    p_qty: opts.qty ?? null,
+    // Empty arrays would exclude nothing but still cost a comparison per
+    // row, so they go over as null.
+    p_exclude_categories: opts.excludeCategories?.length ? opts.excludeCategories : null,
+    p_exclude_stones: opts.excludeStones?.length ? opts.excludeStones : null,
+    p_exclude_platings: opts.excludePlatings?.length ? opts.excludePlatings : null,
+    p_offset: opts.offset ?? 0,
   });
 
   if (error) throw error;
@@ -302,13 +318,21 @@ export async function listPickableStock(
     category: string;
     item_type: string | null;
     plating: string | null;
+    stone: string | null;
     photo_path: string | null;
     selling_price_paise: number | null;
     qty_available: number;
     age_days: number | null;
+    total_count: number;
   };
 
-  return ((data ?? []) as Row[]).map((r) => ({
+  const rows = (data ?? []) as Row[];
+
+  return {
+    // The window function repeats the total on every row, so any row
+    // carries it. Zero rows means zero matches.
+    total: Number(rows[0]?.total_count ?? 0),
+    items: rows.map((r) => ({
     itemId: r.item_id,
     barcode: r.barcode,
     name: r.name,
@@ -317,9 +341,11 @@ export async function listPickableStock(
     plating: r.plating,
     photoPath: r.photo_path,
     qtyAvailable: Number(r.qty_available ?? 0),
-    ageDays: r.age_days === null ? null : Number(r.age_days),
-    sellingPricePaise: r.selling_price_paise,
-  }));
+      ageDays: r.age_days === null ? null : Number(r.age_days),
+      sellingPricePaise: r.selling_price_paise,
+      stone: r.stone,
+    })),
+  };
 }
 
 /**
@@ -335,11 +361,14 @@ export async function listStockFilterOptions(locationId: string): Promise<StockF
 
   if (error) throw error;
 
-  const row = data as { categories: string[]; item_types: string[]; platings: string[] } | null;
+  const row = data as {
+    categories: string[]; item_types: string[]; platings: string[]; stones: string[];
+  } | null;
 
   return {
     categories: row?.categories ?? [],
     itemTypes: row?.item_types ?? [],
     platings: row?.platings ?? [],
+    stones: row?.stones ?? [],
   };
 }

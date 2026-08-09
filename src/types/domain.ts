@@ -189,6 +189,7 @@ export interface PickableItem {
   category: string;
   itemType: string | null;
   plating: string | null;
+  stone: string | null;
   photoPath: string | null;
   qtyAvailable: number;
   /** Days since stock of this item last moved into this store. Null if never. */
@@ -201,6 +202,7 @@ export interface StockFilterOptions {
   categories: string[];
   itemTypes: string[];
   platings: string[];
+  stones: string[];
 }
 
 export interface StockRow {

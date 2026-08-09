@@ -183,7 +183,9 @@ export async function searchAddableStock(
 ): Promise<Result<PickableItem[]>> {
   if (!query.trim()) return ok([]);
   try {
-    const items = await listPickableStock(locationId, { query, inStockOnly: true, limit: 12 });
+    const { items } = await listPickableStock(locationId, {
+      query, inStockOnly: true, limit: 12,
+    });
     return ok(items);
   } catch (e) {
     return err(toMessage(e));

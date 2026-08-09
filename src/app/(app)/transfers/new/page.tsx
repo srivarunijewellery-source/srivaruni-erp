@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { StockFilterBar, type StockFilterState } from "@/features/transfers/StockFilterBar";
 import { NewRequestBuilder } from "@/features/transfers/NewRequestBuilder";
 import { ROUTES } from "@/config/nav";
+import { Pager } from "@/components/ui/Pager";
 
 export const metadata: Metadata = { title: "New transfer" };
 
@@ -30,29 +31,52 @@ export default async function NewTransferPage({
   const fromLocationId = sp.from || user.locationId || locations[0]?.id || "";
   const fromLocation = locations.find((l) => l.id === fromLocationId);
 
+  // Multi-value exclusions arrive as comma-joined strings, which keeps
+  // the URL readable and shareable rather than repeating the key.
+  const csv = (v: string | undefined) =>
+    (v ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+
   const filters: StockFilterState = {
     from: fromLocationId,
     q: sp.q ?? "",
     category: sp.category ?? "",
     itemType: sp.itemType ?? "",
     plating: sp.plating ?? "",
+    stone: sp.stone ?? "",
+    qty: sp.qty ?? "",
+    exCategories: csv(sp.exCategories),
+    exStones: csv(sp.exStones),
+    exPlatings: csv(sp.exPlatings),
     inStock: sp.inStock !== "0",
     minAge: sp.minAge ?? "",
   };
 
-  const [items, options] = fromLocationId
+  const PAGE = 60;
+  const page = Math.max(0, Number(sp.page ?? "0") || 0);
+
+  const [result, options] = fromLocationId
     ? await Promise.all([
         listPickableStock(fromLocationId, {
           query: filters.q,
           category: filters.category,
           itemType: filters.itemType,
           plating: filters.plating,
+          stone: filters.stone,
+          qty: filters.qty ? Number(filters.qty) : undefined,
+          excludeCategories: filters.exCategories,
+          excludeStones: filters.exStones,
+          excludePlatings: filters.exPlatings,
           inStockOnly: filters.inStock,
           minAgeDays: filters.minAge ? Number(filters.minAge) : undefined,
+          limit: PAGE,
+          offset: page * PAGE,
         }),
         listStockFilterOptions(fromLocationId),
       ])
-    : [[], { categories: [], itemTypes: [], platings: [] }];
+    : [
+        { items: [], total: 0 },
+        { categories: [], itemTypes: [], platings: [], stones: [] },
+      ];
 
   return (
     <>
@@ -67,12 +91,30 @@ export default async function NewTransferPage({
         />
 
         {fromLocation && (
-          <NewRequestBuilder
-            fromLocationId={fromLocation.id}
-            fromCode={fromLocation.code}
-            items={items}
-            locations={locations}
-          />
+          <>
+            <Pager
+              basePath={ROUTES.transferNew}
+              params={sp}
+              page={page}
+              pageSize={PAGE}
+              total={result.total}
+              shown={result.items.length}
+            />
+            <NewRequestBuilder
+              fromLocationId={fromLocation.id}
+              fromCode={fromLocation.code}
+              items={result.items}
+              locations={locations}
+            />
+            <Pager
+              basePath={ROUTES.transferNew}
+              params={sp}
+              page={page}
+              pageSize={PAGE}
+              total={result.total}
+              shown={result.items.length}
+            />
+          </>
         )}
       </div>
     </>
