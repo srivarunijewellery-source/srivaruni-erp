@@ -393,3 +393,45 @@ export async function cancelTransfer(formData: FormData): Promise<Result> {
   revalidate(parsed.data.transferId);
   return ok(undefined);
 }
+
+/**
+ * Corrects the reason and note on a request that has not moved yet.
+ *
+ * The reason is what the receiving store reads to understand why a
+ * hundred and eighty pieces are arriving, and it is typed in a hurry
+ * while raising the request. Being unable to fix a typo in it meant
+ * cancelling the whole transfer and rebuilding the lines, which is why
+ * nobody bothered and the wrong reason stayed.
+ *
+ * Only while it is still a request. Once picking starts the document is
+ * a record of what people acted on, and rewriting its stated purpose
+ * after the fact is how a paper trail stops being one.
+ */
+export async function updateTransferHeader(
+  transferId: string,
+  reason: string,
+  note: string,
+): Promise<Result<void>> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("transfers")
+    .update({
+      reason: reason.trim() || null,
+      note: note.trim() || null,
+    })
+    .eq("id", transferId)
+    .eq("status", "requested")
+    .select("id");
+
+  if (error) return err(toMessage(error));
+  // .select() so RLS filtering it out reports as a failure rather than a
+  // silent 200 that wrote nothing.
+  if (!data || data.length === 0) {
+    return err("That transfer can no longer be edited — picking has already started.");
+  }
+
+  revalidatePath(ROUTES.transferDetail(transferId));
+  revalidatePath(ROUTES.transfers);
+  return ok(undefined);
+}

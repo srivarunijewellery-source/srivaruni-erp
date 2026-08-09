@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { RequestBuilder } from "@/features/transfers/RequestBuilder";
+import { TransferHeaderEditor } from "@/features/transfers/TransferHeaderEditor";
 import { StockFilterBar, type StockFilterState } from "@/features/transfers/StockFilterBar";
 import { PickPanel } from "@/features/transfers/PickPanel";
 import { ApprovalPanel } from "@/features/transfers/ApprovalPanel";
@@ -155,6 +156,19 @@ export default async function TransferDetailPage({
             {transfer.docketNo && <Detail label="Docket" value={transfer.docketNo} mono />}
             {transfer.rejectedReason && (
               <Detail label="Sent back because" value={transfer.rejectedReason} />
+            )}
+            {/* Sits with the values it edits, rather than in a settings
+                screen somewhere else. Only while it is still a request:
+                once picking starts the document records what people
+                acted on. */}
+            {canAddMore && (
+              <div className="sm:col-span-2">
+                <TransferHeaderEditor
+                  transferId={transfer.id}
+                  reason={transfer.reason}
+                  note={transfer.note}
+                />
+              </div>
             )}
           </CardBody>
         </Card>
