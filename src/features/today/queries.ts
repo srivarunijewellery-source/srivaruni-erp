@@ -19,11 +19,18 @@ export interface DaySummary {
   marginPaise: number;
   returnsPaise: number;
   returnsCount: number;
+  /** Distinct people, so someone who bought twice counts once. */
+  customers: number;
+  /** Bills with no customer attached. Kept separate: each is a person,
+   *  but one walk-in cannot be told from another, so folding them into
+   *  the distinct count would be inventing a number. */
+  walkins: number;
 }
 
 const EMPTY: DaySummary = {
   bills: 0, pieces: 0, revenuePaise: 0, discountPaise: 0, taxPaise: 0,
   costPaise: 0, marginPaise: 0, returnsPaise: 0, returnsCount: 0,
+  customers: 0, walkins: 0,
 };
 
 /**
@@ -62,6 +69,8 @@ export async function getDaySummary(
     marginPaise: n("margin_paise"),
     returnsPaise: n("returns_paise"),
     returnsCount: n("returns_count"),
+    customers: n("customers"),
+    walkins: n("walkins"),
   };
 }
 

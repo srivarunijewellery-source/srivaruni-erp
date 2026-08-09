@@ -12,6 +12,7 @@ import { formatPaise } from "@/lib/money";
 import { listStores, listItemFormOptions } from "@/features/inward/queries";
 import { listVendorOptions } from "@/features/vendors/queries";
 import { DateRangeBar } from "@/features/dashboard/DateRangeBar";
+import { GrainPicker, defaultGrain } from "@/components/ui/GrainPicker";
 import {
   DIMENSIONS,
   getExpensePivot,
@@ -90,7 +91,12 @@ export default async function DashboardPage({
   const from = sp.from || monthsAgo(12);
   const to = sp.to || todayIso();
   const location = sp.location || "";
-  const grain = (GRAINS.includes(sp.grain as Grain) ? sp.grain : "month") as Grain;
+  // Follows the range unless explicitly chosen. Fixed at "month" it drew
+  // one bar for a seven day window, which is a number pretending to be a
+  // chart.
+  const grain = (GRAINS.includes(sp.grain as Grain)
+    ? sp.grain
+    : defaultGrain(from, to)) as Grain;
   const dimension = (DIMENSIONS.some((d) => d.key === sp.dimension)
     ? sp.dimension
     : "category") as Dimension;
@@ -193,6 +199,17 @@ export default async function DashboardPage({
         from={from}
         to={to}
       />
+
+      {tab === "sales" && (
+        <div className="mb-3">
+          <GrainPicker
+            basePath={ROUTES.insights}
+            grain={grain}
+            from={from}
+            to={to}
+          />
+        </div>
+      )}
 
       <FilterBar
         basePath={ROUTES.insights}

@@ -395,3 +395,74 @@ export async function getCustomerOverview(
     })),
   };
 }
+
+export interface VisitCohort {
+  visitNo: number;
+  label: string;
+  customers: number;
+  revenuePaise: number;
+}
+
+/**
+ * How many people bought for the first time in this window, the second,
+ * and so on. The visit number counts a customer's whole history, so
+ * shortening the range does not turn regulars back into new faces.
+ */
+export async function getVisitCohorts(
+  from: string,
+  to: string,
+  locationId: string | null,
+): Promise<VisitCohort[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("dash_customer_visits", {
+    p_from: from,
+    p_to: to,
+    p_location: locationId,
+  });
+  if (error) return [];
+
+  const LABELS = ["", "1st visit", "2nd visit", "3rd visit", "4th visit", "5th+ visit"];
+  return ((data ?? []) as Array<Record<string, unknown>>).map((r) => {
+    const n = Number(r.visit_no ?? 0);
+    return {
+      visitNo: n,
+      label: LABELS[n] ?? `${n}th visit`,
+      customers: Number(r.customers ?? 0),
+      revenuePaise: Number(r.revenue_paise ?? 0),
+    };
+  });
+}
+
+export interface SpendPoint {
+  bucket: string;
+  label: string;
+  bills: number;
+  customers: number;
+  revenuePaise: number;
+  avgBillPaise: number;
+}
+
+export async function getSpendByPeriod(
+  from: string,
+  to: string,
+  locationId: string | null,
+  grain: string,
+): Promise<SpendPoint[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("dash_customer_spend_by_period", {
+    p_from: from,
+    p_to: to,
+    p_location: locationId,
+    p_grain: grain,
+  });
+  if (error) return [];
+
+  return ((data ?? []) as Array<Record<string, unknown>>).map((r) => ({
+    bucket: String(r.bucket),
+    label: String(r.label),
+    bills: Number(r.bills ?? 0),
+    customers: Number(r.customers ?? 0),
+    revenuePaise: Number(r.revenue_paise ?? 0),
+    avgBillPaise: Number(r.avg_bill_paise ?? 0),
+  }));
+}

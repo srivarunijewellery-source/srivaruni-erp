@@ -54,6 +54,9 @@ export default async function TodayPage({
 
   const marginPct =
     day && day.revenuePaise > 0 ? (day.marginPaise / day.revenuePaise) * 100 : null;
+  // Per bill, not per customer: someone who came back the same day spent
+  // twice, and averaging that away hides the second visit.
+  const avgBill = day && day.bills > 0 ? Math.round(day.revenuePaise / day.bills) : 0;
 
   const qs = new URLSearchParams();
   qs.set("from", range.from);
@@ -105,7 +108,7 @@ export default async function TodayPage({
             </p>
           </Link>
 
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
             <Figure
               label="Profit"
               value={formatPaise(day.marginPaise)}
@@ -120,6 +123,20 @@ export default async function TodayPage({
                   ? `${((day.discountPaise / (day.revenuePaise + day.discountPaise)) * 100).toFixed(1)}% of gross`
                   : undefined
               }
+            />
+            <Figure
+              label="Customers"
+              value={String(day.customers)}
+              hint={
+                day.walkins > 0
+                  ? `plus ${day.walkins} walk-in${day.walkins === 1 ? "" : "s"}`
+                  : "unique, counted once each"
+              }
+            />
+            <Figure
+              label="Average bill"
+              value={formatPaise(avgBill)}
+              hint={day.bills > 0 ? `across ${day.bills} bills` : "no sales yet"}
             />
             <Figure
               label="Cost of goods sold"
