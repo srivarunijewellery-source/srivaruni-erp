@@ -12,7 +12,8 @@ import { formatPaise } from "@/lib/money";
 import { listStores, listItemFormOptions } from "@/features/inward/queries";
 import { listVendorOptions } from "@/features/vendors/queries";
 import { DateRangeBar } from "@/features/dashboard/DateRangeBar";
-import { GrainPicker, defaultGrain } from "@/components/ui/GrainPicker";
+import { GrainPicker } from "@/components/ui/GrainPicker";
+import { defaultGrain } from "@/lib/grain";
 import {
   DIMENSIONS,
   getExpensePivot,

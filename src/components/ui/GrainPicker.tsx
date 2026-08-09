@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import type { Grain } from "@/features/dashboard/queries";
+import { spanDays } from "@/lib/grain";
 
 const ALL: Array<{ key: Grain; label: string }> = [
   { key: "day", label: "Daily" },
@@ -83,23 +84,4 @@ export function GrainPicker({
   );
 }
 
-export function spanDays(from: string, to: string): number {
-  const a = Date.parse(`${from}T00:00:00Z`);
-  const b = Date.parse(`${to}T00:00:00Z`);
-  if (Number.isNaN(a) || Number.isNaN(b)) return 1;
-  return Math.round((b - a) / 86400000) + 1;
-}
 
-/**
- * The grain a range implies, when nobody has chosen one.
- *
- * Roughly 7–30 bars is what a chart this size can carry: fewer and it is
- * a table with extra steps, more and the bars are too thin to compare.
- */
-export function defaultGrain(from: string, to: string): Grain {
-  const days = spanDays(from, to);
-  if (days <= 31) return "day";
-  if (days <= 120) return "week";
-  if (days <= 800) return "month";
-  return "year";
-}
