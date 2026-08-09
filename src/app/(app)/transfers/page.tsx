@@ -21,7 +21,22 @@ export default async function TransfersPage() {
   const transfers = await listTransfers();
 
   const columns: ReadonlyArray<Column<TransferSummary>> = [
-    { key: "doc", header: "Document", render: (r) => <span className="font-mono">{r.docNo}</span> },
+    {
+      key: "doc",
+      header: "Document",
+      // The document number opens the transfer. Without this the only
+      // way in was the Pick button, which starts picking rather than
+      // showing you the request -- so a transfer that had been raised
+      // could be acted on but never read or corrected.
+      render: (r) => (
+        <Link
+          href={ROUTES.transferDetail(r.id)}
+          className="font-mono text-brand hover:underline"
+        >
+          {r.docNo}
+        </Link>
+      ),
+    },
     {
       key: "route",
       header: "Route",

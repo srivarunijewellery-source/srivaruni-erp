@@ -36,8 +36,22 @@ export function TransferActions({
     }
   })();
 
+  // A request can still be changed, and that has to be visible from the
+  // list. The step button already opened this document, but it is
+  // labelled "Pick" -- which reads as "start picking", not "open it and
+  // change what was asked for". Someone wanting to add a piece had no
+  // reason to press it.
+  const editable = transfer.status === "requested" && can(role, "transfer.request");
+
   return (
     <div className="flex items-center justify-end gap-2">
+      {editable && (
+        <Link href={ROUTES.transferDetail(transfer.id)}>
+          <Button size="sm" variant="secondary">
+            Edit
+          </Button>
+        </Link>
+      )}
       <Link href={ROUTES.transferDetail(transfer.id)}>
         <Button size="sm" variant={step?.primary ? "primary" : "secondary"}>
           {step?.label ?? "Open"}
