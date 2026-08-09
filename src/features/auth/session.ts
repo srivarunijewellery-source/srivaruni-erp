@@ -1,4 +1,6 @@
 import { cache } from "react";
+import { redirect } from "next/navigation";
+import { ROUTES } from "@/config/nav";
 import { createClient } from "@/lib/supabase/server";
 import type { CurrentUser } from "@/types/domain";
 
@@ -94,9 +96,25 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
 /**
  * For server components that cannot render without a user.
  *
- * Each branch says what actually happened. Next.js strips these messages
- * in production builds, so the app shell also renders them directly
- * rather than relying on the error boundary alone.
+ * No session REDIRECTS rather than throwing.
+ *
+ * The app layout already redirects, but a layout and the page beneath it
+ * render concurrently in Next.js — so a page calling this could throw
+ * before the layout's redirect ever took effect, and the person got an
+ * opaque "an error occurred in the Server Components render" instead of
+ * the login screen. That is what the production log showed on / and
+ * /pricing.
+ *
+ * It happens without anyone signing out: Supabase rotates the refresh
+ * token, and when several tabs or a burst of RSC requests race, the
+ * losers arrive holding a token that has just been replaced. The right
+ * answer for a request with no valid session is always the same — send
+ * them to sign in — so it is done here, once, rather than in 122 call
+ * sites.
+ *
+ * The remaining branches still throw: they are real conditions someone
+ * has to read and act on, and the app shell renders their text directly
+ * because Next.js strips thrown messages in production builds.
  */
 export async function requireUser(): Promise<CurrentUser> {
   const result = await resolveSession();
@@ -105,9 +123,7 @@ export async function requireUser(): Promise<CurrentUser> {
     case "ok":
       return result.user;
     case "no-session":
-      throw new Error(
-        "Your session has expired or did not reach the server. Sign in again.",
-      );
+      redirect(ROUTES.login);
     case "no-staff-record":
       throw new Error(
         `Signed in as ${result.email ?? result.authUserId}, but no staff record is linked to this login. Ask the owner to add you.`,

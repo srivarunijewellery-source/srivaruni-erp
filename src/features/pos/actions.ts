@@ -45,6 +45,13 @@ export interface FinaliseInput {
   print_receipt?: boolean;
   note?: string | null;
   session_id?: string | null;
+  /** Store credit settling part of this bill.
+   *
+   *  Declared here rather than redeemed afterwards: the credit has to
+   *  count toward the payment check, and allocating it in the same
+   *  transaction means a credit can never be spent by a sale that then
+   *  fails. */
+  credit_paise?: number;
 }
 
 /**
@@ -79,6 +86,7 @@ export async function finaliseSale(
     p_print: input.print_receipt ?? true,
     p_note: input.note ?? null,
     p_session: input.session_id ?? null,
+    p_credit_paise: input.credit_paise ?? 0,
   });
 
   if (error) return err(toMessage(error));

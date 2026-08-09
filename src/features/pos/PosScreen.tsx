@@ -50,7 +50,6 @@ import {
   fetchCustomerCredits,
   fetchDrawer,
   recordBillGifts,
-  redeemCustomerCredit,
   searchCatalog,
 } from "./actions";
 import { getCustomerAction } from "./customer-actions";
@@ -952,6 +951,11 @@ export function PosScreen({
         print_receipt: printAfter,
         note: null,
         session_id: sessionId,
+        // Sent WITH the sale, not applied after it. The server counts it
+        // toward the payment check and allocates it in the same
+        // transaction, so a bill part-settled by credit can no longer be
+        // rejected for the payments not adding up.
+        credit_paise: creditPaise,
       };
 
       /**
@@ -1016,18 +1020,11 @@ export function PosScreen({
 
       const res = { ok: true as const, data: attemptSale.data };
 
-      // Credit is spent against a bill that already exists, so this can
-      // only happen now. A failure here leaves a real, paid bill behind,
-      // so it is reported rather than thrown -- the sale stands and the
-      // credit can be applied by hand.
-      if (creditPaise > 0) {
-        const cr = await attempt(() => redeemCustomerCredit(res.data.id, creditPaise));
-        if (!cr.ok) {
-          setError(
-            `Sale ${res.data.billNo} went through, but the credit note could not be applied: ${cr.error}`,
-          );
-        }
-      }
+      // Credit is no longer redeemed here. It goes with the sale and is
+      // allocated inside the same transaction, which removes the window
+      // where a bill existed as paid but the credit note had not yet
+      // been spent -- and the older sequence could not work at all,
+      // because the payment check ran before the credit was applied.
 
       // Gifts are recorded against the bill once it exists. Same
       // best-effort treatment as credit: the sale has happened, so a
