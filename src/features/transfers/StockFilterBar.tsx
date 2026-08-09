@@ -199,26 +199,26 @@ export function StockFilterBar({
             </Select>
           </div>
 
-        <ExcludeRow
-          label="Exclude categories"
-          all={options.categories}
-          chosen={value.exCategories}
-          onChange={(next) => apply({ exCategories: next })}
-        />
-        <ExcludeRow
-          label="Exclude stones"
-          all={options.stones}
-          chosen={value.exStones}
-          onChange={(next) => apply({ exStones: next })}
-        />
-        <ExcludeRow
-          label="Exclude plating"
-          all={options.platings}
-          chosen={value.exPlatings}
-          onChange={(next) => apply({ exPlatings: next })}
-        />
-
         </div>
+
+        <ExcludeControl
+          groups={[
+            {
+              key: "exCategories",
+              label: "categories",
+              all: options.categories,
+              chosen: value.exCategories,
+            },
+            { key: "exStones", label: "stones", all: options.stones, chosen: value.exStones },
+            {
+              key: "exPlatings",
+              label: "plating",
+              all: options.platings,
+              chosen: value.exPlatings,
+            },
+          ]}
+          onChange={(key, next) => apply({ [key]: next } as Partial<StockFilterState>)}
+        />
 
         <form
           onSubmit={(e) => {
@@ -264,62 +264,135 @@ export function StockFilterBar({
 }
 
 
-/**
- * Toggle chips for "everything except these".
- *
- * Chips rather than a multi-select: what is excluded has to be visible
- * at a glance, because an exclusion you have forgotten about looks
- * exactly like missing stock. A struck-through chip says so; a collapsed
- * multi-select showing "3 selected" does not.
- *
- * Hidden entirely when there is nothing to exclude, so a store with no
- * stones recorded does not carry a dead row.
- */
-function ExcludeRow({
-  label,
-  all,
-  chosen,
-  onChange,
-}: {
+
+type ExcludeKey = "exCategories" | "exStones" | "exPlatings";
+
+interface ExcludeGroup {
+  key: ExcludeKey;
   label: string;
   all: string[];
   chosen: string[];
-  onChange: (next: string[]) => void;
+}
+
+/**
+ * Exclusions, folded away until wanted.
+ *
+ * The first cut printed every value as a chip: sixty categories, thirteen
+ * stones and every plating, all on screen at once, above the grid they
+ * were meant to filter. It buried the thing being filtered.
+ *
+ * So: one line by default. What is currently excluded shows as struck
+ * chips — because an exclusion you have forgotten about looks exactly
+ * like missing stock, and it has to stay visible. Everything else lives
+ * behind a button, in a scrollable panel with a search box, since sixty
+ * categories is a list to search rather than a set to scan.
+ */
+function ExcludeControl({
+  groups,
+  onChange,
+}: {
+  groups: ExcludeGroup[];
+  onChange: (key: ExcludeKey, next: string[]) => void;
 }) {
-  if (all.length === 0) return null;
+  const [open, setOpen] = useState(false);
+  const [find, setFind] = useState("");
+
+  const active = groups.flatMap((g) =>
+    g.chosen.map((v) => ({ key: g.key, value: v, chosen: g.chosen })),
+  );
+  const usable = groups.filter((g) => g.all.length > 0);
+  if (usable.length === 0) return null;
+
+  const needle = find.trim().toLowerCase();
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      <span className="mr-1 text-2xs uppercase tracking-wide text-text-subtle">
-        {label}
-      </span>
-      {all.map((v) => {
-        const on = chosen.includes(v);
-        return (
-          <button
-            key={v}
-            type="button"
-            onClick={() =>
-              onChange(on ? chosen.filter((x) => x !== v) : [...chosen, v])
-            }
-            className={`rounded-full px-2.5 py-1 text-2xs transition-colors ${
-              on
-                ? "bg-status-danger-bg text-status-danger-fg line-through"
-                : "border border-border text-text-muted hover:border-brand"
-            }`}
-          >
-            {v}
-          </button>
-        );
-      })}
-      {chosen.length > 0 && (
+    <div className="border-t border-border pt-3">
+      <div className="flex flex-wrap items-center gap-1.5">
         <button
           type="button"
-          onClick={() => onChange([])}
-          className="ml-1 text-2xs text-brand hover:underline"
+          onClick={() => setOpen((o) => !o)}
+          className="rounded-control border border-border px-3 py-1.5 text-2xs hover:border-brand hover:text-brand"
         >
-          clear
+          {open ? "Done" : "Exclude…"}
         </button>
+
+        {active.length === 0 ? (
+          <span className="text-2xs text-text-subtle">
+            nothing excluded
+          </span>
+        ) : (
+          <>
+            {active.map(({ key, value, chosen }) => (
+              <button
+                key={`${key}-${value}`}
+                type="button"
+                title="Remove this exclusion"
+                onClick={() => onChange(key, chosen.filter((x) => x !== value))}
+                className="rounded-full bg-status-danger-bg px-2.5 py-1 text-2xs text-status-danger-fg line-through"
+              >
+                {value}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => groups.forEach((g) => g.chosen.length && onChange(g.key, []))}
+              className="ml-1 text-2xs text-brand hover:underline"
+            >
+              clear all
+            </button>
+          </>
+        )}
+      </div>
+
+      {open && (
+        <div className="mt-2 rounded-control border border-border p-2">
+          <Input
+            autoFocus
+            value={find}
+            onChange={(e) => setFind(e.target.value)}
+            placeholder="Find a category, stone or plating"
+            className="h-9 w-full"
+          />
+          <div className="mt-2 max-h-64 space-y-3 overflow-auto">
+            {usable.map((g) => {
+              const shown = g.all.filter(
+                (v) => !needle || v.toLowerCase().includes(needle),
+              );
+              if (shown.length === 0) return null;
+              return (
+                <div key={g.key}>
+                  <p className="mb-1 text-2xs uppercase tracking-wide text-text-subtle">
+                    {g.label}
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {shown.map((v) => {
+                      const on = g.chosen.includes(v);
+                      return (
+                        <button
+                          key={v}
+                          type="button"
+                          onClick={() =>
+                            onChange(
+                              g.key,
+                              on ? g.chosen.filter((x) => x !== v) : [...g.chosen, v],
+                            )
+                          }
+                          className={`rounded-full px-2.5 py-1 text-2xs transition-colors ${
+                            on
+                              ? "bg-status-danger-bg text-status-danger-fg line-through"
+                              : "border border-border text-text-muted hover:border-brand"
+                          }`}
+                        >
+                          {v}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       )}
     </div>
   );
