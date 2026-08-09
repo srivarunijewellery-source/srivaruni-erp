@@ -179,6 +179,46 @@ export function NewRequestBuilder({
                           <> · {item.ageDays}d here</>
                         )}
                       </p>
+
+                      {/* What it sells for, what it cost, and who it came
+                          from — deciding what to move is a judgement
+                          about what is worth moving, and that cannot be
+                          made from a photograph alone.
+
+                          Each line appears only when there is something
+                          to show: cost is null for anyone but the owner,
+                          vendor for anyone below manager. Rendering an
+                          empty row would leave staff staring at a dash
+                          wondering what they are missing. */}
+                      {(item.mrpPaise !== null || item.landedCostPaise !== null) && (
+                        <p className="tnum mt-1 text-2xs">
+                          {item.mrpPaise !== null && (
+                            <span className="font-medium">{formatPaise(item.mrpPaise)}</span>
+                          )}
+                          {item.landedCostPaise !== null && item.landedCostPaise > 0 && (
+                            <span className="text-text-muted">
+                              {" "}
+                              · cost {formatPaise(item.landedCostPaise)}
+                              {item.sellingPricePaise !== null &&
+                                item.sellingPricePaise > 0 && (
+                                  <>
+                                    {" "}
+                                    ·{" "}
+                                    {(
+                                      ((item.sellingPricePaise - item.landedCostPaise) /
+                                        item.sellingPricePaise) *
+                                      100
+                                    ).toFixed(0)}
+                                    %
+                                  </>
+                                )}
+                            </span>
+                          )}
+                        </p>
+                      )}
+                      {item.vendor && (
+                        <p className="truncate text-2xs text-text-subtle">{item.vendor}</p>
+                      )}
                     </button>
 
                     {qty > 0 && (

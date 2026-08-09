@@ -324,6 +324,9 @@ export async function listPickableStock(
     qty_available: number;
     age_days: number | null;
     total_count: number;
+    vendor: string | null;
+    mrp_paise: number | null;
+    landed_cost_paise: number | null;
   };
 
   const rows = (data ?? []) as Row[];
@@ -344,6 +347,9 @@ export async function listPickableStock(
       ageDays: r.age_days === null ? null : Number(r.age_days),
       sellingPricePaise: r.selling_price_paise,
       stone: r.stone,
+      vendor: r.vendor,
+      mrpPaise: r.mrp_paise,
+      landedCostPaise: r.landed_cost_paise,
     })),
   };
 }

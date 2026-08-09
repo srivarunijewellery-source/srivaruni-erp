@@ -195,6 +195,13 @@ export interface PickableItem {
   /** Days since stock of this item last moved into this store. Null if never. */
   ageDays: number | null;
   sellingPricePaise: Paise | null;
+  /** Null for anyone below manager: the vendors table carries payment
+   *  terms and is gated accordingly. */
+  vendor: string | null;
+  mrpPaise: Paise | null;
+  /** Owner only. Null for everyone else, enforced by RLS rather than by
+   *  this screen remembering to hide it. */
+  landedCostPaise: Paise | null;
 }
 
 /** What the filter bar can offer, scoped to what a store actually holds. */

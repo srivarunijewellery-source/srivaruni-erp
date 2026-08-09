@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { PhotoThumb } from "@/components/ui/PhotoThumb";
 import { FieldError } from "@/components/ui/Field";
 import { itemPhotoUrl } from "@/lib/storage";
+import { formatPaise } from "@/lib/money";
 import { cn } from "@/lib/cn";
 import { setTransferLine } from "./actions";
 import type { PickableItem, TransferLine } from "@/types/domain";
@@ -117,6 +118,27 @@ export function RequestBuilder({
                   </p>
                   <p className="font-mono text-2xs text-text-muted">{item.barcode}</p>
                   <p className="text-2xs text-text-subtle">{item.qtyAvailable} on shelf</p>
+
+                  {/* Same figures as the new-transfer picker, so the two
+                      screens do not disagree about what a piece is
+                      worth. Each line only appears when its value is
+                      readable by this person. */}
+                  {(item.mrpPaise !== null || item.landedCostPaise !== null) && (
+                    <p className="tnum mt-1 text-2xs">
+                      {item.mrpPaise !== null && (
+                        <span className="font-medium">{formatPaise(item.mrpPaise)}</span>
+                      )}
+                      {item.landedCostPaise !== null && item.landedCostPaise > 0 && (
+                        <span className="text-text-muted">
+                          {" "}
+                          · cost {formatPaise(item.landedCostPaise)}
+                        </span>
+                      )}
+                    </p>
+                  )}
+                  {item.vendor && (
+                    <p className="truncate text-2xs text-text-subtle">{item.vendor}</p>
+                  )}
                 </button>
 
                 {qty > 0 && (
