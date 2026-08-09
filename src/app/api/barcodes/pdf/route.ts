@@ -76,6 +76,7 @@ export async function POST(request: Request) {
     barcode: item.barcode,
     designCode: item.designCode,
     name: item.name,
+    size: item.size,
     mrpPaise: item.mrpPaise,
     qty: qtyById.get(item.itemId) ?? 1,
   }));

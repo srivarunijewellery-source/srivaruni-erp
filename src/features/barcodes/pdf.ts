@@ -36,6 +36,9 @@ export interface LabelData {
   barcode: string;
   designCode: string | null;
   name: string;
+  /** Printed beside the name. Bangles are why: a 2.6 and a 2.8 are the
+   *  same design, and the wrong one on the shelf is a returned sale. */
+  size?: string | null;
   mrpPaise: number | null;
   qty: number;
 }
@@ -294,14 +297,20 @@ export async function generateLabelsPdf(
       // Cased here rather than in the data: how a name PRINTS is a
       // display choice, and the stored name has to stay as typed or
       // search stops matching what people search for.
+      // Size rides with the name rather than on its own line: the panel
+      // has room for two lines and a bangle name usually needs both, so
+      // a third line would push the name to one and truncate it. Joined
+      // with a middle dot so it reads as part of the description and not
+      // as a stray number.
       const printedName = uppercaseItems ? item.name.toUpperCase() : item.name;
+      const withSize = item.size ? `${printedName} \u00b7 ${item.size}` : printedName;
 
       // Bold reads better across a counter but eats width, so a long
       // name wraps sooner. Measured with the SAME font it is drawn in,
       // or the wrap points come out wrong and text overruns the panel.
       const nameFont = boldNames ? bold : regular;
 
-      for (const line of wrap(printedName, nameFont, nameSize, rMaxW, Math.min(2, maxNameLines))) {
+      for (const line of wrap(withSize, nameFont, nameSize, rMaxW, Math.min(2, maxNameLines))) {
         page.drawText(line, { x: rx, y: ny, size: nameSize, font: nameFont, color: rgb(0, 0, 0) });
         ny -= nameSize + 0.8;
       }

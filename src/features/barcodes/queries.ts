@@ -6,12 +6,17 @@ export interface LabelItem {
   barcode: string;
   designCode: string | null;
   name: string;
+  /** Bangles are the reason this exists: a 2.6 and a 2.8 are the same
+   *  design and the wrong one is a returned sale. Printed beside the
+   *  name so it is read at the same moment as the piece. */
+  size: string | null;
   /** Legal MRP, not the (possibly discounted) selling price -- this is what a price tag declares. */
   mrpPaise: number | null;
   photoPath: string | null;
 }
 
-const SELECT = "id, barcode, design_code, name, mrp_paise" as const;
+const SELECT =
+  "id, barcode, design_code, name, mrp_paise, size:size_id(value)" as const;
 
 function toLabelItem(r: {
   id: string;
@@ -19,12 +24,15 @@ function toLabelItem(r: {
   design_code: string | null;
   name: string;
   mrp_paise: number | null;
+  size?: { value: string } | { value: string }[] | null;
 }): LabelItem {
+  const size = Array.isArray(r.size) ? r.size[0] : r.size;
   return {
     itemId: r.id,
     barcode: r.barcode,
     designCode: r.design_code,
     name: r.name,
+    size: size?.value ?? null,
     mrpPaise: r.mrp_paise,
     photoPath: null,
   };
