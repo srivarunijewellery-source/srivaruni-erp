@@ -84,7 +84,13 @@ function PickPanelBody({ transfer }: { transfer: TransferDetail }) {
             <span className="font-medium">On this request</span>
           </CardHeader>
           <CardBody className="py-0">
-            <LineProgress lines={transfer.lines} mode="pick" showAvailable />
+            <LineProgress
+              lines={transfer.lines}
+              mode="pick"
+              showAvailable
+              transferId={transfer.id}
+              adjustable
+            />
           </CardBody>
         </Card>
       </div>
@@ -168,7 +174,13 @@ function PickPanelBody({ transfer }: { transfer: TransferDetail }) {
           <span className="font-medium">On this request</span>
         </CardHeader>
         <CardBody className="py-0">
-          <LineProgress lines={transfer.lines} mode="pick" showAvailable />
+          <LineProgress
+              lines={transfer.lines}
+              mode="pick"
+              showAvailable
+              transferId={transfer.id}
+              adjustable
+            />
         </CardBody>
       </Card>
     </div>

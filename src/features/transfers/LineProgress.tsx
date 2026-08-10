@@ -1,6 +1,11 @@
+"use client";
+
+import { useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { PhotoThumb } from "@/components/ui/PhotoThumb";
 import { itemPhotoUrl } from "@/lib/storage";
 import { cn } from "@/lib/cn";
+import { scanPick, scanReceive } from "./actions";
 import type { TransferLine } from "@/types/domain";
 
 type Mode = "pick" | "receive";
@@ -17,11 +22,39 @@ export function LineProgress({
   lines,
   mode,
   showAvailable,
+  transferId,
+  adjustable,
 }: {
   lines: TransferLine[];
   mode: Mode;
   showAvailable?: boolean;
+  /** Needed only when adjustable. */
+  transferId?: string;
+  /**
+   * Lets any line be corrected, not just the last one scanned.
+   *
+   * "Undo that scan" only ever reached the most recent scan, and only
+   * while its card was still on screen — reload the page, or notice the
+   * mistake three scans later, and there was no way back. On a rail of
+   * two hundred pieces that is most mistakes.
+   */
+  adjustable?: boolean;
 }) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+
+  function nudge(barcode: string, delta: number) {
+    if (!transferId) return;
+    start(async () => {
+      const fd = new FormData();
+      fd.set("transferId", transferId);
+      fd.set("barcode", barcode);
+      fd.set("delta", String(delta));
+      const r = mode === "pick" ? await scanPick(fd) : await scanReceive(fd);
+      if (r.ok) router.refresh();
+    });
+  }
+
   return (
     <ul className="divide-y divide-border">
       {lines.map((l) => {
@@ -91,6 +124,29 @@ export function LineProgress({
               </p>
               {!extra && !zeroTarget && short > 0 && (
                 <p className="text-2xs text-status-danger-fg">{short} short</p>
+              )}
+
+              {adjustable && (
+                <div className="mt-1 flex items-center justify-end gap-1">
+                  <button
+                    type="button"
+                    disabled={pending || counted === 0}
+                    onClick={() => nudge(l.barcode, -1)}
+                    aria-label={`One fewer ${l.name}`}
+                    className="rounded-control border border-border px-2 py-0.5 text-2xs disabled:opacity-40"
+                  >
+                    −
+                  </button>
+                  <button
+                    type="button"
+                    disabled={pending || (target > 0 && counted >= target)}
+                    onClick={() => nudge(l.barcode, 1)}
+                    aria-label={`One more ${l.name}`}
+                    className="rounded-control border border-border px-2 py-0.5 text-2xs disabled:opacity-40"
+                  >
+                    +
+                  </button>
+                </div>
               )}
             </div>
           </li>

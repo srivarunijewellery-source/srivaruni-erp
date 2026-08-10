@@ -112,7 +112,12 @@ export function ReceivePanel({ transfer }: { transfer: TransferDetail }) {
           <span className="font-medium">What was sent</span>
         </CardHeader>
         <CardBody className="py-0">
-          <LineProgress lines={transfer.lines} mode="receive" />
+          <LineProgress
+            lines={transfer.lines}
+            mode="receive"
+            transferId={transfer.id}
+            adjustable
+          />
         </CardBody>
       </Card>
     </div>
