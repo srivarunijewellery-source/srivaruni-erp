@@ -153,10 +153,23 @@ function PickPanelBody({ transfer }: { transfer: TransferDetail }) {
       </Card>
 
       <Card>
-        <CardHeader className="flex items-center justify-between gap-3">
+        <CardHeader className="flex flex-wrap items-center justify-between gap-3">
           <span className="font-medium">Scan into the box</span>
-          <span className="tnum font-mono text-sm">
-            {picked} / {requested}
+          <span className="flex items-center gap-3">
+            <span className="tnum font-mono text-sm">
+              {picked} / {requested}
+            </span>
+            {/* The slip was only offered before picking started, so a
+                lost or coffee-stained sheet meant finishing the rail
+                from memory. The route has always allowed it mid-pick;
+                nothing rendered the link. It reprints with the ticks
+                where they are now, which is more useful than the
+                original anyway. */}
+            <a href={ROUTES.transferSlip(transfer.id)} target="_blank" rel="noreferrer">
+              <Button type="button" variant="secondary" size="sm">
+                Pickup slip
+              </Button>
+            </a>
           </span>
         </CardHeader>
         <CardBody>

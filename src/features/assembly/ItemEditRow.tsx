@@ -121,7 +121,7 @@ export function ItemEditRow({
           [
             ["colourId", "Colour", options.colours],
             ["platingId", "Plating", options.platings],
-            ["stoneId", "Stone", options.stones],
+            ["stoneId", "Style", options.stones],
             ["sizeId", "Size", options.sizes],
           ] as const
         ).map(([key, label, list]) => (

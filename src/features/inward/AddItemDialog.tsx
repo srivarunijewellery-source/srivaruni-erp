@@ -168,21 +168,27 @@ export function AddItemDialog({ inwardId, assemblyId, withLabourHours, options }
                 ))}
               </Select>
             </div>
-            <div>
-              <Label htmlFor="itemTypeId">Type</Label>
-              <Select id="itemTypeId" name="itemTypeId" disabled={types.length === 0}>
-                <option value="">{types.length ? "Optional" : "None for this category"}</option>
-                {types.map((t) => (
-                  <option key={t.id} value={t.id}>{t.name}</option>
-                ))}
-              </Select>
-            </div>
+            {/* Only when there is something to choose. No item types are
+                defined, so this rendered as a permanently disabled box
+                reading "None for this category" — which looks like a
+                fault rather than an unused feature. */}
+            {types.length > 0 && (
+              <div>
+                <Label htmlFor="itemTypeId">Type</Label>
+                <Select id="itemTypeId" name="itemTypeId">
+                  <option value="">Optional</option>
+                  {types.map((t) => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </Select>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <AttrSelect id="colourId"  label="Colour"  options={options.colours} />
             <AttrSelect id="platingId" label="Plating" options={options.platings} />
-            <AttrSelect id="stoneId"   label="Stone"   options={options.stones} />
+            <AttrSelect id="stoneId"   label="Style"   options={options.stones} />
             <AttrSelect id="sizeId"    label="Size"    options={options.sizes} />
           </div>
 

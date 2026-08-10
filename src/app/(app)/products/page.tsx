@@ -144,12 +144,18 @@ export default async function ProductsPage({
             allLabel: "All categories",
             options: categories.map((c) => ({ value: c.id, label: c.name })),
           },
-          {
-            key: "itemType",
-            label: "Item type",
-            allLabel: "All types",
-            options: types.map((t) => ({ value: t.id, label: t.name })),
-          },
+          // Omitted when nothing is defined: a filter offering only
+          // "All types" is a control that cannot do anything.
+          ...(types.length > 0
+            ? [
+                {
+                  key: "itemType" as const,
+                  label: "Item type",
+                  allLabel: "All types",
+                  options: types.map((t) => ({ value: t.id, label: t.name })),
+                },
+              ]
+            : []),
           {
             key: "plating",
             label: "Plating",
@@ -158,8 +164,8 @@ export default async function ProductsPage({
           },
           {
             key: "stone",
-            label: "Stone",
-            allLabel: "All stones",
+            label: "Style",
+            allLabel: "All styles",
             options: options.stones.map((o) => ({ value: o.id, label: o.value })),
           },
           {

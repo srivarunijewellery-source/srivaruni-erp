@@ -653,7 +653,7 @@ function AttributeModal({
   const fields = [
     { name: "colourId", label: "Colour", value: line.colourId, opts: options.colours },
     { name: "platingId", label: "Plating", value: line.platingId, opts: options.platings },
-    { name: "stoneId", label: "Stone", value: line.stoneId, opts: options.stones },
+    { name: "stoneId", label: "Style", value: line.stoneId, opts: options.stones },
     { name: "sizeId", label: "Size", value: line.sizeId, opts: options.sizes },
   ];
 

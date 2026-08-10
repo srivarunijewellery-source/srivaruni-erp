@@ -105,12 +105,18 @@ export default async function StockPage({
             allLabel: "All categories",
             options: facets.categories.map((c) => ({ value: c, label: c })),
           },
-          {
-            key: "itemType",
-            label: "Item type",
-            allLabel: "All types",
-            options: facets.itemTypes.map((t) => ({ value: t, label: t })),
-          },
+          // Same reasoning as the products page: no item types exist, so
+          // this offered only "All types".
+          ...(facets.itemTypes.length > 0
+            ? [
+                {
+                  key: "itemType" as const,
+                  label: "Item type",
+                  allLabel: "All types",
+                  options: facets.itemTypes.map((t) => ({ value: t, label: t })),
+                },
+              ]
+            : []),
         ]}
       />
 

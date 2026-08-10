@@ -150,7 +150,7 @@ export function StockFilterBar({
           </div>
 
           <div>
-            <Label htmlFor="stone">Stone</Label>
+            <Label htmlFor="stone">Style</Label>
             <Select
               id="stone"
               value={value.stone}
@@ -158,7 +158,7 @@ export function StockFilterBar({
               disabled={options.stones.length === 0}
             >
               <option value="">
-                {options.stones.length === 0 ? "Not set on any item" : "All stones"}
+                {options.stones.length === 0 ? "Not set on any item" : "All styles"}
               </option>
               {options.stones.map((st) => (
                 <option key={st} value={st}>
@@ -209,7 +209,7 @@ export function StockFilterBar({
               all: options.categories,
               chosen: value.exCategories,
             },
-            { key: "exStones", label: "stones", all: options.stones, chosen: value.exStones },
+            { key: "exStones", label: "styles", all: options.stones, chosen: value.exStones },
             {
               key: "exPlatings",
               label: "plating",
@@ -350,7 +350,7 @@ function ExcludeControl({
             autoFocus
             value={find}
             onChange={(e) => setFind(e.target.value)}
-            placeholder="Find a category, stone or plating"
+            placeholder="Find a category, style or plating"
             className="h-9 w-full"
           />
           <div className="mt-2 max-h-64 space-y-3 overflow-auto">

@@ -244,8 +244,8 @@ export default async function DashboardPage({
                 },
                 {
                   key: "istone",
-                  label: "Stone",
-                  allLabel: "All stones",
+                  label: "Style",
+                  allLabel: "All styles",
                   options: itemOptions.stones.map((o) => ({
                     value: o.id,
                     label: o.value,

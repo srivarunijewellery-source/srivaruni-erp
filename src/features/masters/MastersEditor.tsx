@@ -48,7 +48,12 @@ export function MastersEditor({ data }: { data: MastersData }) {
 
       <Attributes label="Colours"  attrKey="colour"  rows={data.colours}  onError={setError} />
       <Attributes label="Plating"  attrKey="plating" rows={data.platings} onError={setError} />
-      <Attributes label="Stones"   attrKey="stone"   rows={data.stones}   onError={setError} />
+      {/* Labelled Style, keyed "stone". The values here are Temple /
+          Antique, CZ / AD, Jadau, Daily Wear, Panchalohalu — a style of
+          piece, not the material set into it. The key stays as it is
+          because renaming the column touches every query that reads it;
+          the label is what anyone actually reads. */}
+      <Attributes label="Styles"   attrKey="stone"   rows={data.stones}   onError={setError} />
       <Attributes label="Sizes"    attrKey="size"    rows={data.sizes}    onError={setError} />
     </div>
   );

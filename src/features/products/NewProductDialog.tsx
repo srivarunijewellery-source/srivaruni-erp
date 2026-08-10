@@ -126,7 +126,7 @@ export function NewProductDialog({
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Attr name="colourId"  label="Colour"  opts={options.colours} />
             <Attr name="platingId" label="Plating" opts={options.platings} />
-            <Attr name="stoneId"   label="Stone"   opts={options.stones} />
+            <Attr name="stoneId"   label="Style"   opts={options.stones} />
             <Attr name="sizeId"    label="Size"    opts={options.sizes} />
           </div>
 

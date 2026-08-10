@@ -33,15 +33,26 @@ export async function GET(
 
   const lines = transfer.lines.filter((l) => qtyOf(l) > 0);
 
+  // Reprinting mid-pick should not hand back a blank sheet: the point of
+  // asking for it again is usually that the first one is lost or wet and
+  // the rail is half done. The tick column carries what is already
+  // scanned, so picking continues from where it stopped.
+  const inProgress = transfer.status === "picking";
+
   const rows: unknown[][] = [
     [sealed ? "Packing list" : "Picking list", transfer.docNo],
     ["From", transfer.fromName, "To", transfer.toName],
     ["Courier", transfer.courier ?? "", "Docket", transfer.docketNo ?? ""],
     ["Reason", transfer.reason ?? ""],
     [],
-    ["Checked", "Barcode", "Item", "Category", "Qty", "Unit value", "Line value"],
+    [
+      inProgress ? "Picked" : "Checked",
+      "Barcode", "Item", "Category", "Qty", "Unit value", "Line value",
+    ],
     ...lines.map((l) => [
-      "",
+      // Blank to tick by hand before picking starts; the running count
+      // once it has.
+      inProgress ? `${l.qtyPicked} of ${qtyOf(l)}` : "",
       l.barcode,
       l.name,
       l.category,

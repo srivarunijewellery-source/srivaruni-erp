@@ -189,7 +189,7 @@ function EditForm({
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Attr name="colourId"  label="Colour"  value={product.colourId}  opts={options.colours} />
         <Attr name="platingId" label="Plating" value={product.platingId} opts={options.platings} />
-        <Attr name="stoneId"   label="Stone"   value={product.stoneId}   opts={options.stones} />
+        <Attr name="stoneId"   label="Style"   value={product.stoneId}   opts={options.stones} />
         <Attr name="sizeId"    label="Size"    value={product.sizeId}    opts={options.sizes} />
       </div>
 
