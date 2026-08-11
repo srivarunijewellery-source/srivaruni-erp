@@ -394,3 +394,56 @@ export async function splitInwardLines(
     remaining: Number(d.remaining ?? 0),
   });
 }
+
+/**
+ * The lines that are stopping this document being approved.
+ *
+ * approve_inward refuses on a missing purchase rate or a missing
+ * MRP/selling price. This applies exactly that test, so the screen can
+ * name the offenders instead of asking the owner to hunt for them
+ * through a hundred rows.
+ */
+export async function unpricedLines(
+  inwardId: string,
+): Promise<Result<{ unpriced: number; total: number; names: string[]; message?: string }>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("split_unpriced_lines", {
+    p_inward: inwardId,
+    p_apply: false,
+  });
+  if (error) return err(toMessage(error));
+
+  const d = (data ?? {}) as Record<string, unknown>;
+  return ok({
+    unpriced: Number(d.unpriced ?? 0),
+    total: Number(d.total ?? 0),
+    names: (d.names as string[] | null) ?? [],
+    message: (d.message as string | null) ?? undefined,
+  });
+}
+
+/** Moves the unpriced lines to a new draft, leaving the rest approvable. */
+export async function splitUnpricedLines(
+  inwardId: string,
+): Promise<Result<{ docNo: string; moved: number; remaining: number; message?: string }>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("split_unpriced_lines", {
+    p_inward: inwardId,
+    p_apply: true,
+  });
+  if (error) return err(toMessage(error));
+
+  const d = (data ?? {}) as Record<string, unknown>;
+  if (Number(d.moved ?? 0) === 0) {
+    return err(String(d.message ?? "Nothing needed moving."));
+  }
+
+  await revalidateInwardCosts(inwardId);
+  if (d.inward_id) await revalidateInwardCosts(String(d.inward_id));
+
+  return ok({
+    docNo: String(d.doc_no),
+    moved: Number(d.moved ?? 0),
+    remaining: Number(d.remaining ?? 0),
+  });
+}

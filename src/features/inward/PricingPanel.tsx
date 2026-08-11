@@ -5,7 +5,11 @@ import Link from "next/link";
 import { ROUTES } from "@/config/nav";
 import { DocumentPricingBar } from "./DocumentPricingBar";
 import { PriceSheetUpload } from "./PriceSheetUpload";
-import { splitInwardLines } from "./pricingActions";
+import {
+  splitInwardLines,
+  splitUnpricedLines,
+  unpricedLines,
+} from "./pricingActions";
 import { saveInwardDiscount } from "./bulkPricingActions";
 import type { PriceBand } from "@/types/domain";
 import {
@@ -174,12 +178,20 @@ export function PricingPanel({
           the fallback for what it could not match. */}
       <PriceSheetUpload inwardId={inwardId} vendorPriceMode={tax?.priceMode ?? null} />
 
-      {/* Reuses the same selection the band bar uses: tick the lines that
-          are wrong, move them off, approve the rest today. */}
-      {!isApproved && picked.size > 0 && picked.size < lines.length && (
+      {/* Always visible while unapproved, rather than only once lines
+          are ticked.
+          
+          The first version appeared only after selecting rows, so
+          nobody discovered it: you cannot tick your way to a feature you
+          do not know exists. It now states the position -- how many
+          lines are holding up approval -- and offers the one action that
+          resolves it. Ticking specific rows is still supported for the
+          case where a line IS priced but wrong. */}
+      {!isApproved && (
         <SplitBar
           inwardId={inwardId}
           lineIds={[...picked]}
+          totalLines={lines.length}
           onDone={() => setPicked(new Set())}
         />
       )}
@@ -937,45 +949,106 @@ function TaxBanner({ tax }: { tax: InwardTaxSummary }) {
 function SplitBar({
   inwardId,
   lineIds,
+  totalLines,
   onDone,
 }: {
   inwardId: string;
   lineIds: string[];
+  totalLines: number;
   onDone: () => void;
 }) {
   const [busy, start] = useTransition();
   const [note, setNote] = useState<string | null>(null);
+  const [blocked, setBlocked] = useState<{ count: number; names: string[] } | null>(null);
+
+  // Asked once on mount: the answer is what makes this bar worth
+  // reading, and it is the same test approval will apply.
+  useEffect(() => {
+    let live = true;
+    void unpricedLines(inwardId).then((r) => {
+      if (live && r.ok) setBlocked({ count: r.data.unpriced, names: r.data.names });
+    });
+    return () => {
+      live = false;
+    };
+  }, [inwardId]);
+
+  const ticked = lineIds.length;
+  const stuck = blocked?.count ?? 0;
+  const allTicked = ticked > 0 && ticked >= totalLines;
+
+  // Nothing unpriced and nothing ticked: the document is approvable and
+  // this bar has nothing to say.
+  if (stuck === 0 && ticked === 0 && note === null) return null;
 
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-card border border-border bg-surface p-3">
-        <span className="text-sm">
-          {lineIds.length} {lineIds.length === 1 ? "line" : "lines"} ticked
-        </span>
-        <Button
-          size="sm"
-          variant="secondary"
-          disabled={busy}
-          onClick={() =>
-            start(async () => {
-              setNote(null);
-              const r = await splitInwardLines(inwardId, lineIds);
-              if (!r.ok) {
-                setNote(r.error);
-                return;
-              }
-              onDone();
-              setNote(
-                `${r.data.moved} moved to ${r.data.docNo}. ${r.data.remaining} left here, ready to approve.`,
-              );
-            })
-          }
-        >
-          {busy ? "Moving…" : "Move to a new inward"}
-        </Button>
-        <span className="text-2xs text-text-muted">
-          {note ??
-            "Their prices go with them. Fix and resubmit that document, or delete it if the pieces never came."}
-        </span>
+    <div className="space-y-2 rounded-card border border-border bg-surface p-3">
+      <div className="flex flex-wrap items-center gap-3">
+        {stuck > 0 && (
+          <span className="text-sm">
+            <span className="text-status-danger-fg">{stuck}</span> of {totalLines}{" "}
+            {stuck === 1 ? "line is" : "lines are"} not priced, so this document
+            cannot be approved yet.
+          </span>
+        )}
+
+        {stuck > 0 && stuck < totalLines && (
+          <Button
+            size="sm"
+            disabled={busy}
+            onClick={() =>
+              start(async () => {
+                setNote(null);
+                const r = await splitUnpricedLines(inwardId);
+                if (!r.ok) {
+                  setNote(r.error);
+                  return;
+                }
+                setBlocked({ count: 0, names: [] });
+                setNote(
+                  `${r.data.moved} moved to ${r.data.docNo}. ${r.data.remaining} left here — approve them now.`,
+                );
+              })
+            }
+          >
+            {busy ? "Moving…" : `Move the ${stuck} unpriced and approve the rest`}
+          </Button>
+        )}
+
+        {ticked > 0 && (
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={busy || allTicked}
+            title={allTicked ? "That would move every line" : undefined}
+            onClick={() =>
+              start(async () => {
+                setNote(null);
+                const r = await splitInwardLines(inwardId, lineIds);
+                if (!r.ok) {
+                  setNote(r.error);
+                  return;
+                }
+                onDone();
+                setNote(
+                  `${r.data.moved} moved to ${r.data.docNo}. ${r.data.remaining} left here.`,
+                );
+              })
+            }
+          >
+            Move the {ticked} ticked
+          </Button>
+        )}
+      </div>
+
+      <p className="text-2xs text-text-muted">
+        {note ??
+          (stuck > 0 && blocked?.names.length
+            ? `Waiting on: ${blocked.names.slice(0, 3).join(", ")}${
+                blocked.names.length > 3 ? ` and ${blocked.names.length - 3} more` : ""
+              }`
+            : "Moved lines keep their prices. Fix and resubmit that document, or delete it if the pieces never came.")}
+      </p>
     </div>
   );
 }
