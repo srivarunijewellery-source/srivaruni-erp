@@ -8,6 +8,8 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FilterBar } from "@/components/ui/FilterBar";
 import { ProductsTable } from "@/features/products/ProductsTable";
+import { ProductGrid } from "@/features/products/ProductGrid";
+import { PriceRangeFilter } from "@/components/ui/PriceRangeFilter";
 import { NewProductDialog } from "@/features/products/NewProductDialog";
 import {
   listCategories,
@@ -32,6 +34,9 @@ export default async function ProductsPage({
     page?: string;
     location?: string;
     stock?: string;
+    minPrice?: string;
+    maxPrice?: string;
+    view?: string;
   }>;
 }) {
   const {
@@ -45,6 +50,9 @@ export default async function ProductsPage({
     page: pageRaw = "0",
     location = "",
     stock = "",
+    minPrice = "",
+    maxPrice = "",
+    view = "",
   } = await searchParams;
 
   const user = await requireUser();
@@ -61,6 +69,9 @@ export default async function ProductsPage({
       status,
       locationId: location,
       stock,
+      // Typed in rupees in the URL so a shared link stays readable.
+      minPricePaise: minPrice ? Number(minPrice) * 100 : undefined,
+      maxPricePaise: maxPrice ? Number(maxPrice) * 100 : undefined,
     }, PAGE, page * PAGE),
     listCategories(),
     listItemFormOptions(),
@@ -79,6 +90,14 @@ export default async function ProductsPage({
     ? options.itemTypes.filter((t) => t.categoryId === category)
     : options.itemTypes;
 
+  // The slider track spans what the catalogue actually contains, rounded
+  // up to a clean thousand. A fixed ceiling would either cut off the
+  // expensive pieces or leave most of the track empty.
+  const priceCeilingPaise = Math.max(
+    100000,
+    Math.ceil((result.maxSellingPricePaise ?? 3200000) / 100000) * 100000,
+  );
+
   const rows = result.rows;
   const total = result.total;
   const pages = Math.ceil(total / PAGE);
@@ -88,6 +107,7 @@ export default async function ProductsPage({
   const qs = (over: Record<string, string>) => {
     const p = new URLSearchParams({
       q, category, itemType, plating, stone, vendor, status, location, stock,
+      minPrice, maxPrice, view,
       page: String(page), ...over,
     });
     for (const [k, v] of [...p.entries()]) if (!v || (k === "page" && v === "0")) p.delete(k);
@@ -102,7 +122,8 @@ export default async function ProductsPage({
   );
 
   const filtered = Boolean(
-    q || category || itemType || plating || stone || vendor || status || location || stock,
+    q || category || itemType || plating || stone || vendor || status || location ||
+      stock || minPrice || maxPrice,
   );
 
   return (
@@ -125,7 +146,8 @@ export default async function ProductsPage({
 
       <FilterBar
         basePath={ROUTES.products}
-        value={{ q, category, itemType, plating, stone, vendor, status, location, stock, page: String(page) }}
+        value={{ q, category, itemType, plating, stone, vendor, status, location, stock,
+                 minPrice, maxPrice, view, page: String(page) }}
         searchLabel="Search name or tag"
         searchPlaceholder="Scan a tag or type an item name"
         selects={[
@@ -197,6 +219,38 @@ export default async function ProductsPage({
         ]}
       />
 
+      <div className="mb-3 flex flex-wrap items-end justify-between gap-4">
+        <PriceRangeFilter
+          basePath={ROUTES.products}
+          params={{ q, category, itemType, plating, stone, vendor, status, location, stock, view }}
+          minPaise={minPrice ? Number(minPrice) * 100 : null}
+          maxPaise={maxPrice ? Number(maxPrice) * 100 : null}
+          floorPaise={0}
+          ceilingPaise={priceCeilingPaise}
+        />
+
+        {/* Cards by default; the table is still there for anyone
+            comparing figures down a column. */}
+        <div className="flex gap-1.5">
+          <Link
+            href={qs({ view: "", page: "0" })}
+            className={`rounded-full px-3 py-1.5 text-2xs ${
+              view !== "table" ? "bg-brand text-brand-fg" : "border border-border"
+            }`}
+          >
+            Cards
+          </Link>
+          <Link
+            href={qs({ view: "table", page: "0" })}
+            className={`rounded-full px-3 py-1.5 text-2xs ${
+              view === "table" ? "bg-brand text-brand-fg" : "border border-border"
+            }`}
+          >
+            Table
+          </Link>
+        </div>
+      </div>
+
       {rows.length === 0 ? (
         <EmptyState
           title={filtered ? "Nothing matches that" : "No products yet"}
@@ -214,7 +268,11 @@ export default async function ProductsPage({
               ` · showing ${page * PAGE + 1}\u2013${page * PAGE + rows.length}`}
           </p>
 
-          <ProductsTable rows={rows} showPricing={canEditPricing} />
+          {view === "table" ? (
+            <ProductsTable rows={rows} showPricing={canEditPricing} />
+          ) : (
+            <ProductGrid rows={rows} />
+          )}
 
           {pages > 1 && (
             <div className="mt-3 flex flex-wrap items-center justify-between gap-3">

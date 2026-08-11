@@ -37,6 +37,9 @@ export interface ProductFilters {
   stoneId?: string;
   /** Recovered from the old material inward, so worth filtering on. */
   vendorId?: string;
+  /** Selling price bounds, in paise. Either end may stand alone. */
+  minPricePaise?: number;
+  maxPricePaise?: number;
   status?: string;
   /** Only items with stock at this location. */
   locationId?: string;
@@ -67,7 +70,14 @@ export async function listProducts(
   filters: ProductFilters = {},
   limit = 60,
   offset = 0,
-): Promise<{ rows: ProductRow[]; total: number }> {
+): Promise<{
+  rows: ProductRow[];
+  total: number;
+  /** Dearest priced item in the catalogue, for sizing a price slider.
+   *  Unaffected by the current filters, so the track cannot shrink as
+   *  someone drags it. */
+  maxSellingPricePaise: number | null;
+}> {
   const supabase = await createClient();
 
   // Two select shapes rather than one built by concatenation: joining
@@ -118,6 +128,16 @@ export async function listProducts(
   if (filters.stoneId) q = q.eq("stone_id", filters.stoneId);
   if (filters.vendorId) q = q.eq("vendor_id", filters.vendorId);
   if (filters.status) q = q.eq("status", filters.status);
+
+  // Price bounds ignore unpriced items entirely rather than treating a
+  // null as zero — an item awaiting pricing is not a cheap item, and
+  // sweeping them into the bottom of every range would bury the answer.
+  if (filters.minPricePaise !== undefined) {
+    q = q.gte("selling_price_paise", filters.minPricePaise);
+  }
+  if (filters.maxPricePaise !== undefined) {
+    q = q.lte("selling_price_paise", filters.maxPricePaise);
+  }
 
   const term = query.trim();
   if (term) q = q.or(`barcode.ilike.%${term}%,name.ilike.%${term}%`);
@@ -186,12 +206,24 @@ export async function listProducts(
   // builder cannot express. It is filtered here, on the page, and the
   // count is corrected to match so the pager never promises rows it
   // cannot deliver.
+  // The dearest piece in the catalogue, so a price slider can size its
+  // track to reality. Deliberately NOT affected by the current filters:
+  // the track must not shrink as someone drags it.
+  const { data: ceiling } = await supabase
+    .from("items")
+    .select("selling_price_paise")
+    .not("selling_price_paise", "is", null)
+    .order("selling_price_paise", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const maxSellingPricePaise = ceiling?.selling_price_paise ?? null;
+
   if (filters.stock === "out") {
     const outOnly = mapped.filter((r) => r.onHand <= 0);
-    return { rows: outOnly, total: outOnly.length };
+    return { rows: outOnly, total: outOnly.length, maxSellingPricePaise };
   }
 
-  return { rows: mapped, total: count ?? mapped.length };
+  return { rows: mapped, total: count ?? mapped.length, maxSellingPricePaise };
 }
 
 export interface ProductDetail extends ProductRow {
