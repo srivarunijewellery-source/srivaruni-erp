@@ -28,6 +28,7 @@ export function ApprovalPanel({ transfer }: { transfer: TransferDetail }) {
   const [reason, setReason] = useState("");
   const [rejecting, setRejecting] = useState(false);
 
+
   const sent = transfer.lines.reduce((n, l) => n + l.qtySent, 0);
   const anyAdjusted = transfer.lines.some((l) => l.qtySent !== l.qtyPicked);
   const shortLines = transfer.lines.filter((l) => l.qtyRequested > 0 && l.qtyPicked < l.qtyRequested);
@@ -144,14 +145,79 @@ export function ApprovalPanel({ transfer }: { transfer: TransferDetail }) {
 }
 
 function LineEditor({ transfer, disabled }: { transfer: TransferDetail; disabled: boolean }) {
+  /**
+   * Narrowing the box before approving it.
+   *
+   * A transfer can carry three hundred lines. Approving that means
+   * scrolling all of them to find the handful that are short, extra or
+   * adjusted — the ones that actually need a decision. Everything else
+   * is confirmation, and confirmation does not need to be read one row
+   * at a time.
+   */
+  const [view, setView] = useState<"all" | "short" | "extra" | "adjusted">("all");
+  const [find, setFind] = useState("");
+
+  const shortLines = transfer.lines.filter(
+    (l) => l.qtyRequested > 0 && l.qtyPicked < l.qtyRequested,
+  );
+  const extraLines = transfer.lines.filter((l) => l.qtyRequested === 0);
+  const adjustedLines = transfer.lines.filter((l) => l.qtySent !== l.qtyPicked);
+
+  const needle = find.trim().toLowerCase();
+  const shown = transfer.lines.filter((l) => {
+    if (view === "short" && !shortLines.includes(l)) return false;
+    if (view === "extra" && !extraLines.includes(l)) return false;
+    if (view === "adjusted" && !adjustedLines.includes(l)) return false;
+    if (!needle) return true;
+    return (
+      l.name.toLowerCase().includes(needle) || l.barcode.toLowerCase().includes(needle)
+    );
+  });
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="flex flex-wrap items-center justify-between gap-2">
         <span className="font-medium">In the box</span>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {([
+            ["all", `All ${transfer.lines.length}`],
+            ["short", `Short ${shortLines.length}`],
+            ["extra", `Extra ${extraLines.length}`],
+            ["adjusted", `Adjusted ${adjustedLines.length}`],
+          ] as const).map(([key, label]) => {
+            const count = key === "all" ? transfer.lines.length
+              : key === "short" ? shortLines.length
+              : key === "extra" ? extraLines.length
+              : adjustedLines.length;
+            return (
+              <button
+                key={key}
+                type="button"
+                disabled={count === 0 && key !== "all"}
+                onClick={() => setView(key)}
+                className={`rounded-full px-2.5 py-1 text-2xs disabled:opacity-30 ${
+                  view === key ? "bg-brand text-brand-fg" : "border border-border"
+                }`}
+              >
+                {label}
+              </button>
+            );
+          })}
+          <Input
+            value={find}
+            onChange={(e) => setFind(e.target.value)}
+            placeholder="Find a piece"
+            className="h-8 w-36"
+          />
+        </div>
       </CardHeader>
       <CardBody className="py-0">
         <ul className="divide-y divide-border">
-          {transfer.lines.map((l) => (
+          {shown.length === 0 && (
+            <li className="py-6 text-center text-sm text-text-muted">
+              Nothing matches that.
+            </li>
+          )}
+          {shown.map((l) => (
             <QtyRow
               key={l.id}
               transferId={transfer.id}

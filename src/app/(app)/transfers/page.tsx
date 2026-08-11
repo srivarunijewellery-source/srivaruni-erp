@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { requireUser } from "@/features/auth/session";
 import { listTransfers } from "@/features/transfers/queries";
+import { getTransferPipeline } from "@/features/transfers/actions";
+import { TransferPipeline } from "@/features/transfers/TransferPipeline";
 import { TRANSFER_STATUS } from "@/config/status";
 import { can } from "@/config/roles";
 import { ROUTES } from "@/config/nav";
@@ -18,7 +20,10 @@ export const metadata: Metadata = { title: "Transfers" };
 
 export default async function TransfersPage() {
   const user = await requireUser();
-  const transfers = await listTransfers();
+  const [transfers, pipeline] = await Promise.all([
+    listTransfers(),
+    getTransferPipeline(),
+  ]);
 
   const columns: ReadonlyArray<Column<TransferSummary>> = [
     {
@@ -81,12 +86,27 @@ export default async function TransfersPage() {
         description="Anyone can raise a request. Stock only moves once it is approved, and lands only when the receiving store confirms."
         action={
           can(user, "transfer.request") && (
-            <Link href={ROUTES.transferNew}>
-              <Button variant="primary">New transfer</Button>
-            </Link>
+            <div className="flex gap-2">
+              {/* Straight to picking, skipping the request. There is
+                  nobody to ask when the owner is deciding what to send. */}
+              <Link href={`${ROUTES.transferNew}?mode=pick`}>
+                <Button variant="secondary">Pick directly</Button>
+              </Link>
+              <Link href={ROUTES.transferNew}>
+                <Button variant="primary">New transfer</Button>
+              </Link>
+            </div>
           )
         }
       />
+
+      {/* What is in movement, before the list of documents: the question
+          is usually "what is out there", not "which papers exist". */}
+      {pipeline.ok && pipeline.data.length > 0 && (
+        <div className="mb-4">
+          <TransferPipeline cells={pipeline.data} />
+        </div>
+      )}
 
       {transfers.length === 0 ? (
         <EmptyState

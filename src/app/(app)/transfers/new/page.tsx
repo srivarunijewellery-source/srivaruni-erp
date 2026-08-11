@@ -105,6 +105,7 @@ export default async function NewTransferPage({
               fromCode={fromLocation.code}
               items={result.items}
               locations={locations}
+              directPick={sp.mode === "pick"}
             />
             <Pager
               basePath={ROUTES.transferNew}

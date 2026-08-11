@@ -15,6 +15,7 @@ export const ROUTES = {
   transferSlip: (id: string) => `/transfers/${id}/slip`,
   transit: "/transfers/transit",
   stock: "/stock",
+  stockReconcile: "/stock/reconcile",
   products: "/products",
   vendors: "/vendors",
   customers: "/customers",
@@ -110,6 +111,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { href: ROUTES.transfers,   label: "Transfers" },
       { href: ROUTES.transit,     label: "In transit" },
       { href: ROUTES.adjustments, label: "Adjustments" },
+      { href: ROUTES.stockReconcile, label: "Reconcile", requires: "cost.view" },
     ],
   },
   {

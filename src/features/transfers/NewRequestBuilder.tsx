@@ -9,7 +9,7 @@ import { Input, Label, Select, FieldError } from "@/components/ui/Field";
 import { itemPhotoUrl } from "@/lib/storage";
 import { formatPaise } from "@/lib/money";
 import { cn } from "@/lib/cn";
-import { createTransferRequest } from "./actions";
+import { createTransferRequest, startDirectPick } from "./actions";
 import { ROUTES } from "@/config/nav";
 import type { PickableItem, StoreLocation } from "@/types/domain";
 
@@ -27,11 +27,16 @@ export function NewRequestBuilder({
   fromCode,
   items,
   locations,
+  directPick,
 }: {
   fromLocationId: string;
   fromCode: string;
   items: PickableItem[];
   locations: StoreLocation[];
+  /** Skip the request: open the document straight into picking, then
+   *  scan pieces in. Same screen, because the decisions are identical —
+   *  where it goes, and why. */
+  directPick?: boolean;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -76,12 +81,17 @@ export function NewRequestBuilder({
     }
 
     start(async () => {
-      const result = await createTransferRequest({
-        fromLocationId,
-        toLocationId,
-        reason: reason.trim(),
-        lines: [...cart.entries()].map(([itemId, qty]) => ({ itemId, qty })),
-      });
+      // Direct pick opens empty and is filled by scanning: an item
+      // scanned in is recorded as qty_requested 0, which is accurate —
+      // nobody requested it.
+      const result = directPick
+        ? await startDirectPick(fromLocationId, toLocationId, reason.trim(), "")
+        : await createTransferRequest({
+            fromLocationId,
+            toLocationId,
+            reason: reason.trim(),
+            lines: [...cart.entries()].map(([itemId, qty]) => ({ itemId, qty })),
+          });
       if (result.ok) router.push(ROUTES.transferDetail(result.data));
       else setError(result.error);
     });

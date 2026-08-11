@@ -435,3 +435,66 @@ export async function updateTransferHeader(
   revalidatePath(ROUTES.transfers);
   return ok(undefined);
 }
+
+/**
+ * Opens a transfer already in picking, with no request step.
+ *
+ * The request exists so one store can ASK another for stock. When the
+ * owner is standing at Boduppal deciding what to send to Zaheerabad
+ * there is nobody to ask — the request becomes a form filled in and
+ * approved by the same person a minute later.
+ *
+ * Everything after this point is unchanged: scan, mark picked, approve,
+ * dispatch, receive. Items are added by scanning them, which records
+ * them as qty_requested 0 — accurate, since nobody requested them.
+ */
+export async function startDirectPick(
+  fromId: string,
+  toId: string,
+  reason: string,
+  note: string,
+): Promise<Result<string>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("start_direct_pick", {
+    p_from: fromId,
+    p_to: toId,
+    p_reason: reason.trim() || null,
+    p_note: note.trim() || null,
+  });
+  if (error) return err(toMessage(error));
+
+  revalidatePath(ROUTES.transfers);
+  return ok(String(data));
+}
+
+export interface PipelineCell {
+  stage: string;
+  category: string;
+  style: string;
+  items: number;
+  pieces: number;
+  retailPaise: number;
+}
+
+/** What is in movement, split by category and style. */
+export async function getTransferPipeline(
+  locationId?: string,
+): Promise<Result<PipelineCell[]>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("transfer_pipeline_breakdown", {
+    p_location: locationId ?? null,
+    p_stage: null,
+  });
+  if (error) return err(toMessage(error));
+
+  return ok(
+    ((data ?? []) as Array<Record<string, unknown>>).map((r) => ({
+      stage: String(r.stage),
+      category: String(r.category),
+      style: String(r.style),
+      items: Number(r.items ?? 0),
+      pieces: Number(r.pieces ?? 0),
+      retailPaise: Number(r.retail_paise ?? 0),
+    })),
+  );
+}

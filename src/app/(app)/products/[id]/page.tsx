@@ -6,6 +6,7 @@ import {
   getProductMovements,
   getProductSource,
   getCostBreakdown,
+  getTransferPosition,
 } from "@/features/products/queries";
 import {
   listCategories,
@@ -42,7 +43,8 @@ export default async function ProductDetailPage({
   const user = await requireUser();
   const owner = isOwner(user.role);
 
-  const [product, categories, options, stores, movements, source, breakdown] =
+  const [product, categories, options, stores, movements, source, breakdown,
+         transferPosition] =
     await Promise.all([
       getProduct(id),
       listCategories(),
@@ -55,6 +57,8 @@ export default async function ProductDetailPage({
       // Returns null for anyone but the owner: item_costs is owner-only
       // at the RLS level, so the card simply does not render for staff.
       getCostBreakdown(id),
+      // What is committed to transfers, per store.
+      getTransferPosition(id),
     ]);
 
   if (!product) notFound();
@@ -117,6 +121,50 @@ export default async function ProductDetailPage({
                   ))}
                 </ul>
               )}
+              {/* What is spoken for. On hand alone hides the box by the
+                  door: a piece scanned into a transfer is physically gone
+                  but still counted here until dispatch, and selling it
+                  makes the transfer arrive short. */}
+              {transferPosition.length > 0 && (
+                <div className="mt-3 space-y-2 border-t border-border pt-2">
+                  {transferPosition.map((t) => (
+                    <div key={t.locationCode}>
+                      <p className="text-2xs uppercase tracking-wide text-text-subtle">
+                        {t.locationCode} · in movement
+                      </p>
+                      <dl className="mt-0.5 space-y-0.5 text-2xs">
+                        {t.requested > 0 && (
+                          <MoveRow
+                            k="Requested"
+                            v={`${t.requested}`}
+                            hint="still sellable — not yet committed"
+                          />
+                        )}
+                        {t.picked > 0 && (
+                          <MoveRow k="Picked" v={`${t.picked}`} hint="in the box" warn />
+                        )}
+                        {t.approved > 0 && (
+                          <MoveRow k="Approved to send" v={`${t.approved}`} warn />
+                        )}
+                        {t.inTransit > 0 && (
+                          <MoveRow
+                            k="In transit"
+                            v={`${t.inTransit}`}
+                            hint="already out of the count above"
+                          />
+                        )}
+                        <MoveRow
+                          k="Net after transfers"
+                          v={`${t.netAfter}`}
+                          strong
+                          warn={t.netAfter < 0}
+                        />
+                      </dl>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <p className="mt-2 border-t border-border pt-2 text-2xs text-text-subtle">
                 Added {formatDate(product.createdAt)}
               </p>
@@ -405,6 +453,33 @@ function Row({ label, value }: { label: string; value: string }) {
     <div className="flex justify-between">
       <span className="text-text-muted">{label}</span>
       <span className="tnum">{value}</span>
+    </div>
+  );
+}
+
+
+/** One line of the in-movement block. Named apart from Row, which this
+ *  file already uses for the "where it came from" card. */
+function MoveRow({
+  k,
+  v,
+  hint,
+  warn,
+  strong,
+}: {
+  k: string;
+  v: string;
+  hint?: string;
+  warn?: boolean;
+  strong?: boolean;
+}) {
+  return (
+    <div className="flex items-baseline justify-between gap-2">
+      <dt className={warn ? "text-status-danger-fg" : "text-text-muted"}>
+        {k}
+        {hint && <span className="ml-1 text-text-subtle">· {hint}</span>}
+      </dt>
+      <dd className={`tnum ${strong ? "font-semibold" : ""}`}>{v}</dd>
     </div>
   );
 }

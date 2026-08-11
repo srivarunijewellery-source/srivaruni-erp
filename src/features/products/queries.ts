@@ -592,3 +592,75 @@ export async function getCostBreakdown(itemId: string): Promise<CostBreakdown | 
     landedUnitCostPaise: Number(c.landed_unit_cost_paise ?? 0),
   };
 }
+
+export interface TransferPosition {
+  locationCode: string;
+  locationName: string;
+  onHand: number;
+  requested: number;
+  picked: number;
+  approved: number;
+  inTransit: number;
+  /** What the store will hold once everything committed has gone. */
+  netAfter: number;
+}
+
+/**
+ * Where this item stands against transfers, per store.
+ *
+ * On hand alone hides the box by the door. A request does NOT reduce
+ * availability — the piece is still on the shelf and still sellable —
+ * but everything from picking onward is spoken for, and selling it means
+ * the transfer arrives short.
+ *
+ * Stock physically leaves at dispatch, so "in transit" is already out of
+ * the on-hand figure. Requested, picked and approved are not, which is
+ * exactly why they need showing.
+ */
+export async function getTransferPosition(
+  itemId: string,
+): Promise<TransferPosition[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("item_transfer_state")
+    .select("location_id, qty_requested, qty_picked, qty_approved, qty_in_transit")
+    .eq("item_id", itemId);
+
+  if (error || !data || data.length === 0) return [];
+
+  const { data: stock } = await supabase
+    .from("stock_balances")
+    .select("location_id, qty, locations(code, name)")
+    .eq("item_id", itemId);
+
+  const held = new Map(
+    (stock ?? []).map((s) => {
+      const l = (Array.isArray(s.locations) ? s.locations[0] : s.locations) as
+        | { code: string; name: string }
+        | undefined;
+      return [s.location_id as string, { qty: Number(s.qty ?? 0), loc: l }];
+    }),
+  );
+
+  return data.map((r) => {
+    const s = held.get(r.location_id as string);
+    const onHand = s?.qty ?? 0;
+    const requested = Number(r.qty_requested ?? 0);
+    const picked = Number(r.qty_picked ?? 0);
+    const approved = Number(r.qty_approved ?? 0);
+
+    return {
+      locationCode: s?.loc?.code ?? "—",
+      locationName: s?.loc?.name ?? "—",
+      onHand,
+      requested,
+      picked,
+      approved,
+      inTransit: Number(r.qty_in_transit ?? 0),
+      // Requested is excluded on purpose: it has not been committed to
+      // anything yet and may never be picked.
+      netAfter: onHand - picked - approved,
+    };
+  });
+}
