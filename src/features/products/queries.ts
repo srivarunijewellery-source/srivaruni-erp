@@ -108,14 +108,24 @@ export async function listProducts(
         .from("items")
         .select(WITH_LOCATION, { count: "exact" })
         .gt("stock_balances.qty", 0)
+        // id as a tiebreaker: items created in one inward share a
+        // timestamp to the microsecond, and without a second key their
+        // order is undefined between queries — so a row can appear on
+        // two pages or on none.
         .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
         .range(offset, offset + limit - 1)
     : supabase
         .from("items")
         // count: exact gives the size of the whole match set, not the
         // page, which is what lets the UI say "of 6,547".
         .select(PLAIN, { count: "exact" })
+        // id as a tiebreaker: items created in one inward share a
+        // timestamp to the microsecond, and without a second key their
+        // order is undefined between queries — so a row can appear on
+        // two pages or on none.
         .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
         .range(offset, offset + limit - 1);
 
   if (needsStockJoin && filters.locationId) {
