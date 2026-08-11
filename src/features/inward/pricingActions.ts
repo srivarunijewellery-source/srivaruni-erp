@@ -355,3 +355,42 @@ export async function listItemPhotos(
     })),
   );
 }
+
+/**
+ * Moves disputed lines onto a new draft inward so the rest can be
+ * approved today.
+ *
+ * Ninety-eight of a hundred are right and two are wrong; without this
+ * the whole carton waits on the two, and the tempting shortcut is to
+ * approve a document you know is wrong — which puts a bad cost into the
+ * ledger and onto the shelf.
+ *
+ * The two land on a fresh draft with their prices intact: edit and
+ * resubmit it, or delete it if the pieces were never sent.
+ */
+export async function splitInwardLines(
+  inwardId: string,
+  lineIds: string[],
+): Promise<Result<{ inwardId: string; docNo: string; moved: number; remaining: number }>> {
+  if (lineIds.length === 0) return err("Choose at least one line to move.");
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("split_inward_lines", {
+    p_inward: inwardId,
+    p_line_ids: lineIds,
+  });
+  if (error) return err(toMessage(error));
+
+  const d = (data ?? {}) as Record<string, unknown>;
+  // Both documents' costs changed, and this file's convention is to go
+  // through revalidateInwardCosts rather than revalidatePath directly.
+  await revalidateInwardCosts(inwardId);
+  await revalidateInwardCosts(String(d.inward_id));
+
+  return ok({
+    inwardId: String(d.inward_id),
+    docNo: String(d.doc_no),
+    moved: Number(d.moved ?? 0),
+    remaining: Number(d.remaining ?? 0),
+  });
+}

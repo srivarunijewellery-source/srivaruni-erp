@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ROUTES } from "@/config/nav";
 import { DocumentPricingBar } from "./DocumentPricingBar";
 import { PriceSheetUpload } from "./PriceSheetUpload";
+import { splitInwardLines } from "./pricingActions";
 import { saveInwardDiscount } from "./bulkPricingActions";
 import type { PriceBand } from "@/types/domain";
 import {
@@ -172,6 +173,16 @@ export function PricingPanel({
           the fastest route to a priced document, and the rules below are
           the fallback for what it could not match. */}
       <PriceSheetUpload inwardId={inwardId} vendorPriceMode={tax?.priceMode ?? null} />
+
+      {/* Reuses the same selection the band bar uses: tick the lines that
+          are wrong, move them off, approve the rest today. */}
+      {!isApproved && picked.size > 0 && picked.size < lines.length && (
+        <SplitBar
+          inwardId={inwardId}
+          lineIds={[...picked]}
+          onDone={() => setPicked(new Set())}
+        />
+      )}
 
       <DocumentPricingBar
         inwardId={inwardId}
@@ -912,6 +923,59 @@ function TaxBanner({ tax }: { tax: InwardTaxSummary }) {
           </p>
         </div>
       </div>
+    </div>
+  );
+}
+
+
+/**
+ * Moves the ticked lines to a new draft inward.
+ *
+ * Appears only when SOME lines are ticked -- all of them would be a
+ * rename rather than a split, and the database refuses that anyway.
+ */
+function SplitBar({
+  inwardId,
+  lineIds,
+  onDone,
+}: {
+  inwardId: string;
+  lineIds: string[];
+  onDone: () => void;
+}) {
+  const [busy, start] = useTransition();
+  const [note, setNote] = useState<string | null>(null);
+
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-card border border-border bg-surface p-3">
+        <span className="text-sm">
+          {lineIds.length} {lineIds.length === 1 ? "line" : "lines"} ticked
+        </span>
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={busy}
+          onClick={() =>
+            start(async () => {
+              setNote(null);
+              const r = await splitInwardLines(inwardId, lineIds);
+              if (!r.ok) {
+                setNote(r.error);
+                return;
+              }
+              onDone();
+              setNote(
+                `${r.data.moved} moved to ${r.data.docNo}. ${r.data.remaining} left here, ready to approve.`,
+              );
+            })
+          }
+        >
+          {busy ? "Moving…" : "Move to a new inward"}
+        </Button>
+        <span className="text-2xs text-text-muted">
+          {note ??
+            "Their prices go with them. Fix and resubmit that document, or delete it if the pieces never came."}
+        </span>
     </div>
   );
 }
