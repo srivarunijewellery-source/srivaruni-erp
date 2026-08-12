@@ -67,7 +67,10 @@ export function NewRequestBuilder({
 
   function submit() {
     setError(null);
-    if (cart.size === 0) {
+    // A request must say what is being asked for. A direct pick starts
+    // empty by definition — the box is filled by scanning — so this
+    // check would block the very flow it is meant to protect.
+    if (!directPick && cart.size === 0) {
       setError("Select at least one item before creating the request.");
       return;
     }
