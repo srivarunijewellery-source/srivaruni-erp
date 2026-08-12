@@ -112,7 +112,12 @@ export function LineProgress({
             <div className="shrink-0 text-right">
               <p className="tnum font-mono text-sm font-semibold">
                 {extra ? (
-                  l.qtySent
+                  // What is in the box, not what was approved to send.
+                  // qty_sent stays 0 until approval, so an extra line
+                  // read "0" on the very screen where it had just been
+                  // scanned — the picker sees the piece go in and the
+                  // row says nothing happened.
+                  counted
                 ) : mode === "receive" && zeroTarget ? (
                   <span className="text-text-muted">not shipped</span>
                 ) : (

@@ -31,6 +31,16 @@ function PickPanelBody({ transfer }: { transfer: TransferDetail }) {
 
   const requested = transfer.lines.reduce((n, l) => n + l.qtyRequested, 0);
   const picked = transfer.lines.reduce((n, l) => n + l.qtyPicked, 0);
+  /**
+   * A direct pick has nothing to measure against.
+   *
+   * "2 / 0 scanned" is what a fraction reads like when nobody requested
+   * anything: the denominator is a target, and on a direct pick the box
+   * IS the target. Showing a count instead of a ratio is the honest
+   * version, and it stops the same screen appearing to contradict
+   * itself.
+   */
+  const noTarget = requested === 0;
   const shortLines = transfer.lines.filter((l) => l.qtyPicked < l.qtyRequested);
   const complete = shortLines.length === 0;
 
@@ -107,7 +117,9 @@ function PickPanelBody({ transfer }: { transfer: TransferDetail }) {
                 {complete ? "Everything requested is in the box." : "Ready to send for approval"}
               </p>
               <p className="tnum mt-0.5 font-mono text-sm text-text-muted">
-                {picked} / {requested} scanned
+                {noTarget
+                  ? `${picked} ${picked === 1 ? "piece" : "pieces"} scanned`
+                  : `${picked} / ${requested} scanned`}
               </p>
             </div>
             <Button
@@ -157,7 +169,7 @@ function PickPanelBody({ transfer }: { transfer: TransferDetail }) {
           <span className="font-medium">Scan into the box</span>
           <span className="flex items-center gap-3">
             <span className="tnum font-mono text-sm">
-              {picked} / {requested}
+              {noTarget ? picked : `${picked} / ${requested}`}
             </span>
             {/* The slip was only offered before picking started, so a
                 lost or coffee-stained sheet meant finishing the rail
