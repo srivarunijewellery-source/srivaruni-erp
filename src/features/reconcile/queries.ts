@@ -1,30 +1,9 @@
+import type { ReconRow, ReconIssue, LedgerEntry } from "./types";
 import { createClient } from "@/lib/supabase/server";
 
-export type ReconIssue =
-  | "negative"
-  | "short_received"
-  | "sold_while_committed"
-  | "priced_no_cost";
-
-export interface ReconRow {
-  issue: ReconIssue;
-  itemId: string;
-  barcode: string;
-  itemName: string;
-  locationCode: string | null;
-  onHand: number;
-  committed: number;
-  delta: number;
-  detail: string;
-  lastMoved: string | null;
-}
-
-export const ISSUE_LABEL: Record<ReconIssue, string> = {
-  negative: "Below zero",
-  short_received: "Short on arrival",
-  sold_while_committed: "Sold while committed",
-  priced_no_cost: "Priced with no cost",
-};
+// Re-exported so server callers have one import site.
+export type { ReconRow, ReconIssue, LedgerEntry } from "./types";
+export { ISSUE_LABEL } from "./types";
 
 /**
  * What needs a person to look at it.
@@ -53,15 +32,6 @@ export async function listReconciliation(locationId?: string): Promise<ReconRow[
     detail: String(r.detail ?? ""),
     lastMoved: (r.last_moved as string | null) ?? null,
   }));
-}
-
-export interface LedgerEntry {
-  at: string;
-  qtyDelta: number;
-  reason: string;
-  refType: string | null;
-  docNo: string | null;
-  runningQty: number;
 }
 
 /**

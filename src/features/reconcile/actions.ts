@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { err, ok, toMessage, type Result } from "@/lib/result";
-import { getItemLedger, type LedgerEntry } from "./queries";
+import { getItemLedger } from "./queries";
+import type { LedgerEntry } from "./types";
 
 export async function fetchItemLedger(
   itemId: string,

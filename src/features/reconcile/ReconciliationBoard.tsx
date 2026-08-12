@@ -9,7 +9,7 @@ import { NarrowInput, Select, Label, FieldError } from "@/components/ui/Field";
 import { Badge } from "@/components/ui/Badge";
 import { ROUTES } from "@/config/nav";
 import { formatDateTime } from "@/lib/format";
-import { ISSUE_LABEL, type ReconRow, type LedgerEntry } from "./queries";
+import { ISSUE_LABEL, type ReconRow, type LedgerEntry } from "./types";
 import { fetchItemLedger, settleDiscrepancy } from "./actions";
 
 const TONE: Record<string, "danger" | "pending" | "neutral"> = {
