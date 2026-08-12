@@ -283,6 +283,8 @@ export async function listPickableStock(
     excludeStones?: string[];
     excludePlatings?: string[];
     offset?: number;
+    /** Only pieces with nothing committed to another open transfer. */
+    freeOnly?: boolean;
   } = {},
 ): Promise<{ items: PickableItem[]; total: number }> {
   const supabase = await createClient();
@@ -304,6 +306,7 @@ export async function listPickableStock(
     p_exclude_stones: opts.excludeStones?.length ? opts.excludeStones : null,
     p_exclude_platings: opts.excludePlatings?.length ? opts.excludePlatings : null,
     p_offset: opts.offset ?? 0,
+    p_free_only: opts.freeOnly ?? false,
   });
 
   if (error) throw error;
@@ -324,6 +327,7 @@ export async function listPickableStock(
     qty_available: number;
     age_days: number | null;
     total_count: number;
+    committed: number;
     vendor: string | null;
     mrp_paise: number | null;
     landed_cost_paise: number | null;
@@ -348,6 +352,7 @@ export async function listPickableStock(
       sellingPricePaise: r.selling_price_paise,
       stone: r.stone,
       vendor: r.vendor,
+      committed: Number(r.committed ?? 0),
       mrpPaise: r.mrp_paise,
       landedCostPaise: r.landed_cost_paise,
     })),

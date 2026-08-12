@@ -19,6 +19,22 @@ export interface PivotCell {
   items: number;
   pieces: number;
   retailPaise: number;
+  /** On the shelf at the origin store — the denominator that makes the
+   *  movement figure mean something. */
+  onHand: number;
+}
+
+/** A piece on the shelf with nothing committed against it. */
+export interface FreeItem {
+  itemId: string;
+  barcode: string;
+  name: string;
+  category: string;
+  style: string;
+  photoPath: string | null;
+  sellingPricePaise: number;
+  qty: number;
+  locationCode: string;
 }
 
 export interface PivotItem {

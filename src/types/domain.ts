@@ -202,6 +202,10 @@ export interface PickableItem {
   /** Owner only. Null for everyone else, enforced by RLS rather than by
    *  this screen remembering to hide it. */
   landedCostPaise: Paise | null;
+  /** Pieces already spoken for by another open transfer out of this
+   *  store. Picking on top of this is how one piece gets promised
+   *  twice. */
+  committed: number;
 }
 
 /** What the filter bar can offer, scoped to what a store actually holds. */

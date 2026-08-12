@@ -62,6 +62,7 @@ export default async function TransferDetailPage({
     plating: "",
     stone: "",
     qty: "",
+    freeOnly: false,
     exCategories: [],
     exStones: [],
     exPlatings: [],

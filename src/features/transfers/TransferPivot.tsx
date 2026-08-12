@@ -9,8 +9,14 @@ import { NarrowInput, Label } from "@/components/ui/Field";
 import { itemPhotoUrl } from "@/lib/storage";
 import { formatPaise } from "@/lib/money";
 import { ROUTES } from "@/config/nav";
-import { loadPivot, loadPivotItems } from "./pivotActions";
-import { STAGES, type PivotCell, type PivotFilters, type PivotItem } from "./pivotTypes";
+import { loadPivot, loadPivotItems, loadFreeStock } from "./pivotActions";
+import {
+  STAGES,
+  type PivotCell,
+  type PivotFilters,
+  type PivotItem,
+  type FreeItem,
+} from "./pivotTypes";
 
 /**
  * What is in movement, as a grid you can open.
@@ -53,6 +59,9 @@ export function TransferPivot({
     style: string | null;
   } | null>(null);
   const [items, setItems] = useState<PivotItem[] | null>(null);
+  // The second sheet: what is sitting in the same bucket uncommitted.
+  const [free, setFree] = useState<FreeItem[] | null>(null);
+  const [sheet, setSheet] = useState<"moving" | "free">("moving");
 
   useEffect(() => {
     start(async () => {
@@ -74,15 +83,28 @@ export function TransferPivot({
     cells.filter((c) => c.category === cat).reduce((n, c) => n + c.pieces, 0);
   const colTotal = (sty: string) =>
     cells.filter((c) => c.style === sty).reduce((n, c) => n + c.pieces, 0);
+  // Stock totals are summed the same way, so a cell and its totals are
+  // read the same: moving / on the shelf.
+  const rowStock = (cat: string) =>
+    cells.filter((c) => c.category === cat).reduce((n, c) => n + c.onHand, 0);
+  const colStock = (sty: string) =>
+    cells.filter((c) => c.style === sty).reduce((n, c) => n + c.onHand, 0);
+  const grandStock = cells.reduce((n, c) => n + c.onHand, 0);
   const grand = cells.reduce((n, c) => n + c.pieces, 0);
   const grandValue = cells.reduce((n, c) => n + c.retailPaise, 0);
 
   function open(category: string | null, style: string | null) {
     setDrill({ category, style });
     setItems(null);
+    setFree(null);
+    setSheet("moving");
     start(async () => {
-      const r = await loadPivotItems(filters, category, style);
-      setItems(r.ok ? r.data : []);
+      const [m, f] = await Promise.all([
+        loadPivotItems(filters, category, style),
+        loadFreeStock(filters, category, style),
+      ]);
+      setItems(m.ok ? m.data : []);
+      setFree(f.ok ? f.data : []);
     });
   }
 
@@ -241,9 +263,10 @@ export function TransferPivot({
                               type="button"
                               onClick={() => open(cat, sty)}
                               className="hover:text-brand hover:underline"
-                              title={`${c.items} designs · ${formatPaise(c.retailPaise)}`}
+                              title={`${c.items} designs · ${formatPaise(c.retailPaise)} · ${c.onHand} on the shelf`}
                             >
                               {c.pieces}
+                              <span className="text-text-subtle">/{c.onHand}</span>
                             </button>
                           ) : (
                             <span className="text-text-subtle">·</span>
@@ -258,6 +281,9 @@ export function TransferPivot({
                         className="hover:text-brand hover:underline"
                       >
                         {rowTotal(cat)}
+                        <span className="font-normal text-text-subtle">
+                          /{rowStock(cat)}
+                        </span>
                       </button>
                     </td>
                   </tr>
@@ -272,6 +298,7 @@ export function TransferPivot({
                         className="hover:text-brand hover:underline"
                       >
                         {colTotal(s)}
+                        <span className="font-normal text-text-subtle">/{colStock(s)}</span>
                       </button>
                     </td>
                   ))}
@@ -283,6 +310,7 @@ export function TransferPivot({
                       title={formatPaise(grandValue)}
                     >
                       {grand}
+                      <span className="font-normal text-text-subtle">/{grandStock}</span>
                     </button>
                   </td>
                 </tr>
@@ -296,9 +324,22 @@ export function TransferPivot({
         <Card>
           <CardBody className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
+              {/* Says what is actually in view, filters included — "All
+                  styles" while filtered to Jadau would be a lie about a
+                  list the person is looking at. */}
               <p className="text-sm font-medium">
-                {drill.category ?? "All categories"} ·{" "}
-                {drill.style ?? "All styles"}
+                {drill.category ??
+                  (filters.categories.length
+                    ? filters.categories.join(", ")
+                    : "All categories")}{" "}
+                ·{" "}
+                {drill.style ??
+                  (filters.styles.length ? filters.styles.join(", ") : "All styles")}
+                {filters.stages.length > 0 && (
+                  <span className="ml-1 font-normal text-text-muted">
+                    · {filters.stages.join(", ")}
+                  </span>
+                )}
                 {items && (
                   <span className="ml-2 text-2xs font-normal text-text-muted">
                     {items.reduce((n, i) => n + i.qty, 0)} pieces across {items.length}{" "}
@@ -306,16 +347,72 @@ export function TransferPivot({
                   </span>
                 )}
               </p>
-              <button
-                type="button"
-                onClick={() => setDrill(null)}
-                className="text-2xs text-brand hover:underline"
-              >
-                close
-              </button>
+              <div className="flex items-center gap-1.5">
+                {/* Two sheets: what is committed, and what is still free
+                    in the same bucket. The second is the question that
+                    always follows the first. */}
+                <button
+                  type="button"
+                  onClick={() => setSheet("moving")}
+                  className={`rounded-full px-2.5 py-1 text-2xs ${
+                    sheet === "moving" ? "bg-brand text-brand-fg" : "border border-border"
+                  }`}
+                >
+                  In movement {items ? items.length : ""}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSheet("free")}
+                  className={`rounded-full px-2.5 py-1 text-2xs ${
+                    sheet === "free" ? "bg-brand text-brand-fg" : "border border-border"
+                  }`}
+                >
+                  In store, not moving {free ? free.length : ""}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDrill(null)}
+                  className="ml-1 text-2xs text-brand hover:underline"
+                >
+                  close
+                </button>
+              </div>
             </div>
 
-            {items === null ? (
+            {sheet === "free" ? (
+              free === null ? (
+                <p className="py-6 text-center text-2xs text-text-muted">Loading…</p>
+              ) : free.length === 0 ? (
+                <p className="py-6 text-center text-2xs text-text-muted">
+                  Everything in this bucket is already committed to a transfer.
+                </p>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {free.map((i) => (
+                    <Link
+                      key={i.itemId}
+                      href={ROUTES.productDetail(i.itemId)}
+                      className="flex gap-3 rounded-card border border-border p-2 hover:border-brand"
+                    >
+                      <PhotoThumb src={itemPhotoUrl(i.photoPath)} alt={i.name} size={56} />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-2xs font-medium">{i.name}</p>
+                        <p className="truncate font-mono text-2xs text-text-muted">
+                          {i.barcode}
+                        </p>
+                        <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-2xs">
+                          <span className="tnum">{i.qty} on shelf</span>
+                          <span className="text-text-subtle">{i.locationCode}</span>
+                        </p>
+                        <p className="tnum text-2xs text-text-subtle">
+                          {formatPaise(i.sellingPricePaise)}
+                        </p>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )
+            ) : items === null ? (
               <p className="py-6 text-center text-2xs text-text-muted">Loading…</p>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">

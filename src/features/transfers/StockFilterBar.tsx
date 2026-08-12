@@ -16,7 +16,11 @@ export interface StockFilterState {
   stone: string;
   /** Exactly this many on the shelf, as a string because it comes from
    *  the URL. Empty means any. */
+  /** Pieces on hand, as a FLOOR — "3 or more". Exact match hid every
+   *  four and five, and depth is what the question is about. */
   qty: string;
+  /** Nothing already committed to another transfer. */
+  freeOnly: boolean;
   /** Everything EXCEPT these. Multi-value, because "not rings and not
    *  bangles" is one thought, and forcing it through repeated single
    *  selects is how people give up and scroll instead. */
@@ -63,6 +67,7 @@ export function StockFilterBar({
     if (merged.plating) params.set("plating", merged.plating);
     if (merged.stone) params.set("stone", merged.stone);
     if (merged.qty) params.set("qty", merged.qty);
+    if (merged.freeOnly) params.set("freeOnly", "1");
     // Comma-joined so the URL stays readable and shareable.
     if (merged.exCategories.length) params.set("exCategories", merged.exCategories.join(","));
     if (merged.exStones.length) params.set("exStones", merged.exStones.join(","));
@@ -178,7 +183,7 @@ export function StockFilterBar({
               <option value="">Any quantity</option>
               {[1, 2, 3, 4, 5, 6].map((n) => (
                 <option key={n} value={String(n)}>
-                  exactly {n}
+                  {n} or more
                 </option>
               ))}
             </Select>
@@ -200,6 +205,15 @@ export function StockFilterBar({
           </div>
 
         </div>
+
+        <label className="flex items-center gap-1.5 text-2xs">
+          <input
+            type="checkbox"
+            checked={value.freeOnly}
+            onChange={(e) => apply({ freeOnly: e.target.checked })}
+          />
+          only pieces not already on a transfer
+        </label>
 
         <ExcludeControl
           groups={[

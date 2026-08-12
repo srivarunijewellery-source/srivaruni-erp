@@ -2,25 +2,31 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { err, ok, toMessage, type Result } from "@/lib/result";
-import type { PivotCell, PivotItem, PivotFilters } from "./pivotTypes";
+import type { PivotCell, PivotItem, PivotFilters, FreeItem } from "./pivotTypes";
 
+/**
+ * Every filter, sent to BOTH calls.
+ *
+ * The grid used to receive the category and style lists and the
+ * drill-down did not, so clicking a total ignored whatever chips were
+ * ticked and returned the whole catalogue. Building the arguments once
+ * is what stops the two drifting apart again.
+ */
 function args(f: PivotFilters) {
   return {
     p_stages: f.stages.length ? f.stages : null,
     p_from_location: f.fromLocation || null,
     p_to_location: f.toLocation || null,
     p_min_qty: f.minQty ?? null,
+    p_categories: f.categories.length ? f.categories : null,
+    p_styles: f.styles.length ? f.styles : null,
   };
 }
 
 /** The grid. */
 export async function loadPivot(f: PivotFilters): Promise<Result<PivotCell[]>> {
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("transfer_pivot", {
-    ...args(f),
-    p_categories: f.categories.length ? f.categories : null,
-    p_styles: f.styles.length ? f.styles : null,
-  });
+  const { data, error } = await supabase.rpc("transfer_pivot", args(f));
   if (error) return err(toMessage(error));
 
   return ok(
@@ -30,6 +36,43 @@ export async function loadPivot(f: PivotFilters): Promise<Result<PivotCell[]>> {
       items: Number(r.items ?? 0),
       pieces: Number(r.pieces ?? 0),
       retailPaise: Number(r.retail_paise ?? 0),
+      onHand: Number(r.on_hand ?? 0),
+    })),
+  );
+}
+
+/**
+ * What is sitting in the same bucket with nothing committed against it.
+ *
+ * The natural second question after "what is moving": of the Jadau
+ * earrings at Boduppal, which ones could still be sent.
+ */
+export async function loadFreeStock(
+  f: PivotFilters,
+  category: string | null,
+  style: string | null,
+): Promise<Result<FreeItem[]>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("stock_not_in_transfer", {
+    p_location: f.fromLocation || null,
+    p_categories: f.categories.length ? f.categories : null,
+    p_styles: f.styles.length ? f.styles : null,
+    p_category: category,
+    p_style: style,
+  });
+  if (error) return err(toMessage(error));
+
+  return ok(
+    ((data ?? []) as Array<Record<string, unknown>>).map((r) => ({
+      itemId: String(r.item_id),
+      barcode: String(r.barcode),
+      name: String(r.name),
+      category: String(r.category),
+      style: String(r.style),
+      photoPath: (r.photo_path as string | null) ?? null,
+      sellingPricePaise: Number(r.selling_price_paise ?? 0),
+      qty: Number(r.qty ?? 0),
+      locationCode: String(r.location_code),
     })),
   );
 }
@@ -49,6 +92,8 @@ export async function loadPivotItems(
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("transfer_pivot_items", {
     ...args(f),
+    // The clicked cell narrows WITHIN the filters above; null on an axis
+    // means "every value still in view on it".
     p_category: category,
     p_style: style,
   });
