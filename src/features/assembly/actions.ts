@@ -118,11 +118,17 @@ export async function addComponent(
   const { error } = existing
     ? await supabase
         .from("assembly_components")
-        .update({ qty: existing.qty + Math.max(1, qty) })
+        // A fraction of a bundle is a real quantity; only a
+        // non-positive one is meaningless.
+        .update({ qty: existing.qty + Math.max(0.001, qty) })
         .eq("id", existing.id)
     : await supabase
         .from("assembly_components")
-        .insert({ assembly_item_id: productId, item_id: itemId, qty: Math.max(1, qty) });
+        .insert({
+          assembly_item_id: productId,
+          item_id: itemId,
+          qty: Math.max(0.001, qty),
+        });
 
   if (error) return err(toMessage(error));
   revalidatePath(`${PATH}/${assemblyId}`);
@@ -692,7 +698,7 @@ export async function addCustomComponent(
     assembly_item_id: productId,
     item_id: null,
     description: d,
-    qty: Math.max(1, qty),
+    qty: Math.max(0.001, qty),
     override_cost_paise: Math.max(0, costPaise),
   });
   if (error) return err(toMessage(error));

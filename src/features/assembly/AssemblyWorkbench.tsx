@@ -354,6 +354,10 @@ function ProductBlock({
                       widthClass="w-20"
                       type="number"
                       min={0}
+                      // Raw materials come in halves and quarters. Without
+                      // a step the browser validates against whole numbers
+                      // and rejects 3.5 before it is ever submitted.
+                      step="0.001"
                       defaultValue={c.qty}
                       disabled={!editable || pending}
                       onBlur={(e) =>
@@ -556,7 +560,8 @@ function CustomLine({
           widthClass="w-16"
           id="cl-qty"
           type="number"
-          min={1}
+          min={0}
+          step="0.001"
           value={qty}
           onChange={(e) => setQty(e.target.value)}
           className="text-center"
