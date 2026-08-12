@@ -132,17 +132,34 @@ export function NewRequestBuilder({
 
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-text-muted">
-              {totalPieces === 0
-                ? "Nothing selected yet"
-                : `${totalPieces} ${totalPieces === 1 ? "piece" : "pieces"} selected · ${formatPaise(totalValue)} at retail`}
+              {directPick
+                ? "Choose where it is going, then scan pieces into the box."
+                : totalPieces === 0
+                  ? "Nothing selected yet"
+                  : `${totalPieces} ${totalPieces === 1 ? "piece" : "pieces"} selected · ${formatPaise(totalValue)} at retail`}
             </p>
-            <Button variant="primary" size="lg" disabled={pending || cart.size === 0} onClick={submit}>
-              {pending ? "Creating…" : "Create request"}
+            <Button
+              variant="primary"
+              size="lg"
+              // Direct pick has nothing to select yet: the box is filled
+              // by scanning, so requiring a selection first would be
+              // asking for the work twice.
+              disabled={pending || (!directPick && cart.size === 0)}
+              onClick={submit}
+            >
+              {pending
+                ? directPick
+                  ? "Opening…"
+                  : "Creating…"
+                : directPick
+                  ? "Start scanning"
+                  : "Create request"}
             </Button>
           </div>
         </CardBody>
       </Card>
 
+      {!directPick && (
       <Card>
         <CardHeader>
           <span className="font-medium">Available at {fromCode}</span>
@@ -276,6 +293,7 @@ export function NewRequestBuilder({
           )}
         </CardBody>
       </Card>
+      )}
     </div>
   );
 }

@@ -55,7 +55,12 @@ export default async function NewTransferPage({
   const PAGE = 60;
   const page = Math.max(0, Number(sp.page ?? "0") || 0);
 
-  const [result, options] = fromLocationId
+  // Direct pick never renders the browse grid, so fetching sixty items
+  // and their photos, costs and commitments is work thrown away — and
+  // it is the slowest part of this page.
+  const directPick = sp.mode === "pick";
+
+  const [result, options] = fromLocationId && !directPick
     ? await Promise.all([
         listPickableStock(fromLocationId, {
           query: filters.q,
@@ -82,41 +87,57 @@ export default async function NewTransferPage({
 
   return (
     <>
-      <PageHeader title="New transfer" description="Select what's moving before you raise it." />
+      <PageHeader
+        title={directPick ? "Pick directly" : "New transfer"}
+        description={
+          directPick
+            ? "Say where it is going, then scan pieces straight into the box."
+            : "Select what's moving before you raise it."
+        }
+      />
 
       <div className="space-y-4">
+        {!directPick && (
         <StockFilterBar
           basePath={ROUTES.transferNew}
           locations={locations}
           options={options}
           value={filters}
         />
+        )}
 
         {fromLocation && (
           <>
-            <Pager
-              basePath={ROUTES.transferNew}
-              params={sp}
-              page={page}
-              pageSize={PAGE}
-              total={result.total}
-              shown={result.items.length}
-            />
+            {/* Paging belongs to the browse grid. On the scanner screen
+                it would announce "Nothing matches these filters" above a
+                list that was never meant to exist. */}
+            {!directPick && (
+              <Pager
+                basePath={ROUTES.transferNew}
+                params={sp}
+                page={page}
+                pageSize={PAGE}
+                total={result.total}
+                shown={result.items.length}
+              />
+            )}
             <NewRequestBuilder
               fromLocationId={fromLocation.id}
               fromCode={fromLocation.code}
               items={result.items}
               locations={locations}
-              directPick={sp.mode === "pick"}
+              directPick={directPick}
             />
-            <Pager
-              basePath={ROUTES.transferNew}
-              params={sp}
-              page={page}
-              pageSize={PAGE}
-              total={result.total}
-              shown={result.items.length}
-            />
+            {!directPick && (
+              <Pager
+                basePath={ROUTES.transferNew}
+                params={sp}
+                page={page}
+                pageSize={PAGE}
+                total={result.total}
+                shown={result.items.length}
+              />
+            )}
           </>
         )}
       </div>
