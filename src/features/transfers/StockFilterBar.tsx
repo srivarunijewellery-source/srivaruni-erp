@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useTransition } from "react";
 import { useState } from "react";
 import { Card, CardBody } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -55,6 +56,18 @@ export function StockFilterBar({
   lockFrom?: boolean;
 }) {
   const router = useRouter();
+  /**
+   * Navigation with a pending state.
+   *
+   * router.push on its own gives no feedback at all: the chip stayed
+   * unlit, nothing moved, and the grid kept showing the old rows until
+   * the server answered — which reads as a broken control, so people
+   * click it again and queue a second navigation.
+   *
+   * A transition marks the whole bar busy while the new page streams,
+   * so the click visibly did something.
+   */
+  const [pending, startNav] = useTransition();
   const [q, setQ] = useState(value.q);
 
   function apply(next: Partial<StockFilterState>) {
@@ -76,12 +89,14 @@ export function StockFilterBar({
     if (!merged.inStock) params.set("inStock", "0");
     // Any filter change invalidates the page number: page 4 of the old
     // result set is meaningless against the new one, and usually empty.
-    router.push(`${basePath}?${params.toString()}`);
+    startNav(() => router.push(`${basePath}?${params.toString()}`, { scroll: false }));
   }
 
   return (
     <Card>
-      <CardBody className="space-y-3">
+      <CardBody
+        className={`space-y-3 transition-opacity ${pending ? "pointer-events-none opacity-60" : ""}`}
+      >
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           {!lockFrom && (
             <div>
@@ -212,7 +227,7 @@ export function StockFilterBar({
             checked={value.freeOnly}
             onChange={(e) => apply({ freeOnly: e.target.checked })}
           />
-          only pieces not already on a transfer
+          only designs with a piece still free
         </label>
 
         <ExcludeControl

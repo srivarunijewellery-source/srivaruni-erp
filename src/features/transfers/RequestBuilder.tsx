@@ -207,6 +207,14 @@ export function RequestBuilder({
                   </p>
                   <p className="font-mono text-2xs text-text-muted">{item.barcode}</p>
                   <p className="text-2xs text-text-subtle">{item.qtyAvailable} on shelf</p>
+                  {item.committed > 0 && (
+                    <p className="text-2xs text-status-pending-fg">
+                      {item.committed} of {item.qtyAvailable} already in a transfer
+                      {item.qtyAvailable > item.committed
+                        ? ` · ${item.qtyAvailable - item.committed} free`
+                        : " · none free"}
+                    </p>
+                  )}
 
                   {/* Same figures as the new-transfer picker, so the two
                       screens do not disagree about what a piece is

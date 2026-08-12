@@ -190,6 +190,21 @@ export function NewRequestBuilder({
                         )}
                       </p>
 
+                      {/* Partly committed pieces are shown, not hidden.
+                          A design with 3 on the shelf and 1 already
+                          picked still has 2 to send — dropping it from
+                          the list loses those two, and showing it
+                          without the warning promises the same piece
+                          twice. */}
+                      {item.committed > 0 && (
+                        <p className="text-2xs text-status-pending-fg">
+                          {item.committed} of {item.qtyAvailable} already in a transfer
+                          {item.qtyAvailable > item.committed
+                            ? ` · ${item.qtyAvailable - item.committed} free`
+                            : " · none free"}
+                        </p>
+                      )}
+
                       {/* What it sells for, what it cost, and who it came
                           from — deciding what to move is a judgement
                           about what is worth moving, and that cannot be
