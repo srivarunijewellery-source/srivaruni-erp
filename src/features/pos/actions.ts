@@ -825,6 +825,10 @@ export async function editBill(
   }>,
   payments: Array<{ method: string; amount_paise: number; reference?: string }>,
   reason: string,
+  /** Bill-level discount in paise. The one thing the correction screen
+   *  could not do, which is why a bill keyed without its discount could
+   *  not be put right. */
+  manualDiscountPaise = 0,
 ): Promise<
   Result<{
     newBillNo: string;
@@ -841,6 +845,7 @@ export async function editBill(
     p_bill: billId,
     p_lines: lines,
     p_payments: payments,
+    p_manual_discount_paise: Math.max(0, Math.round(manualDiscountPaise)),
     p_reason: reason.trim(),
   });
   if (error) return err(toMessage(error));
@@ -973,4 +978,41 @@ export async function refreshCatalog(
   } catch (e) {
     return err(toMessage(e));
   }
+}
+
+/**
+ * Cancels a bill outright, with no replacement.
+ *
+ * editBill always reissues, which is right when the sale was nearly
+ * correct. A bill keyed twice, or rung against the wrong customer, is a
+ * sale that should not exist at all — and reissuing an invoice nobody
+ * wants is not a fix.
+ *
+ * Cancelled, never deleted: the number stays in the series marked
+ * cancelled, with the reason and who did it. A GST invoice that vanishes
+ * leaves a gap, and the gap is the thing an auditor asks about.
+ */
+export async function cancelBill(
+  billId: string,
+  reason: string,
+): Promise<Result<{ billNo: string; totalPaise: number }>> {
+  if (!reason.trim()) {
+    return err("Say why it is being cancelled — it stays on the record.");
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("cancel_bill", {
+    p_bill: billId,
+    p_reason: reason.trim(),
+  });
+  if (error) return err(toMessage(error));
+
+  await pokeDispatchBestEffort();
+
+  const d = (data ?? {}) as Record<string, unknown>;
+  revalidatePath(ROUTES.pos);
+  return ok({
+    billNo: String(d.bill_no ?? ""),
+    totalPaise: Number(d.total_paise ?? 0),
+  });
 }

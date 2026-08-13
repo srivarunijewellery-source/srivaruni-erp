@@ -87,6 +87,8 @@ export interface Permissions {
   canDiscount: boolean;
   canCoupon: boolean;
   canHold: boolean;
+  /** Owner only: cancel a completed bill outright. */
+  canCancelBill: boolean;
 }
 
 const uuid = () =>
@@ -2090,6 +2092,7 @@ export function PosScreen({
           sellers={sellers}
           locationId={locationId}
           canAmend={canCloseRegister}
+          canCancel={permissions.canCancelBill}
           onClose={() => {
             setShowBills(false);
             refocusScan();

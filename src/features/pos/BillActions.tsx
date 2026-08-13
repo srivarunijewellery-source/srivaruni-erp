@@ -7,6 +7,7 @@ import { Modal } from "@/components/ui/Modal";
 import { formatPaise } from "@/lib/money";
 import {
   editBill,
+  cancelBill,
   setBillCustomer,
   setBillPayments,
   setBillSalesman,
@@ -15,7 +16,7 @@ import { searchCustomersAction } from "./customer-actions";
 import { fetchBillForReturn, searchCatalog } from "./actions";
 import type { CustomerHit, PosCatalogItem, Seller, SessionBill } from "./queries";
 
-type Mode = "menu" | "salesman" | "payment" | "customer" | "edit";
+type Mode = "menu" | "salesman" | "payment" | "customer" | "edit" | "cancel";
 
 const METHODS = ["cash", "upi", "card", "bank", "cheque"] as const;
 
@@ -32,6 +33,7 @@ export function BillActions({
   bill,
   sellers,
   locationId,
+  canCancel,
   onDone,
   onClose,
 }: {
@@ -39,6 +41,10 @@ export function BillActions({
   sellers: Seller[];
   /** Needed to search the catalogue when adding a piece to the bill. */
   locationId: string;
+  /** Owner only. Cancelling outright is a different decision from
+   *  correcting, and the database refuses it for anyone else anyway —
+   *  this just avoids offering a button that will be refused. */
+  canCancel?: boolean;
   onDone: (message: string) => void;
   onClose: () => void;
 }) {
@@ -140,7 +146,14 @@ export function BillActions({
     setAddHits([]);
   }
 
-  const newTotal = (lines ?? []).reduce((s, l) => s + l.qty * l.unitPaise, 0);
+  const grossNew = (lines ?? []).reduce((s, l) => s + l.qty * l.unitPaise, 0);
+  /** Bill-level discount, in rupees as typed. */
+  const [editDiscount, setEditDiscount] = useState("");
+  const discountPaise = Math.min(
+    Math.max(0, Math.round(Number(editDiscount || 0) * 100)),
+    grossNew,
+  );
+  const newTotal = grossNew - discountPaise;
 
   return (
     <Modal
@@ -190,9 +203,52 @@ export function BillActions({
             />
             <Action
               label="Edit invoice"
-              hint="Changes the total · owner is emailed"
+              hint="Lines, prices, discount · owner is emailed"
               danger
               onClick={openEdit}
+            />
+            {/* Owner only, and separate from Edit on purpose: a sale that
+                should not exist is a different decision from one that was
+                nearly right, and reissuing an invoice nobody wants is not
+                a correction. */}
+            {canCancel && (
+              <Action
+                label="Cancel this bill"
+                hint="No replacement · stock and books reversed"
+                danger
+                onClick={() => setMode("cancel")}
+              />
+            )}
+          </div>
+        )}
+
+        {mode === "cancel" && (
+          <div className="space-y-3">
+            <p className="rounded-control bg-status-danger-bg px-3 py-2 text-2xs text-status-danger-fg">
+              {bill.billNo} will be marked cancelled. The stock goes back, the
+              books are reversed, and any credit note or coupon spent on it is
+              returned. <strong>The invoice number stays on the record</strong> —
+              a missing number is what an auditor asks about.
+            </p>
+            <div>
+              <Label htmlFor="cancel-why">Why</Label>
+              <Input
+                id="cancel-why"
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder="rung twice by mistake"
+              />
+            </div>
+            <Row
+              onBack={() => setMode("menu")}
+              disabled={pending || !reason.trim()}
+              goLabel={pending ? "Cancelling…" : "Yes, cancel it"}
+              onGo={() =>
+                run(
+                  () => cancelBill(bill.billId, reason),
+                  `${bill.billNo} cancelled.`,
+                )
+              }
             />
           </div>
         )}
@@ -583,6 +639,31 @@ export function BillActions({
                   ))}
                 </div>
 
+                {/* The field that was missing. A manual bill keyed without
+                    its discount could not be put right at all: lines
+                    could be added or removed, but the one number that was
+                    wrong had nowhere to go. */}
+                <div className="flex flex-wrap items-end gap-2">
+                  <div>
+                    <Label htmlFor="edit-disc">Discount on the bill (₹)</Label>
+                    <NarrowInput
+                      widthClass="w-28"
+                      id="edit-disc"
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={editDiscount}
+                      onChange={(e) => setEditDiscount(e.target.value)}
+                      className="text-right"
+                    />
+                  </div>
+                  {discountPaise > 0 && (
+                    <p className="pb-2 text-2xs text-text-muted">
+                      {formatPaise(grossNew)} − {formatPaise(discountPaise)}
+                    </p>
+                  )}
+                </div>
+
                 <div className="flex items-baseline justify-between rounded-control bg-surface-sunken px-3 py-2">
                   <span className="text-sm">
                     New total
@@ -631,6 +712,7 @@ export function BillActions({
                                 })),
                               [{ method: payMethod, amount_paise: newTotal }],
                               reason,
+                              discountPaise,
                             ),
                           `${bill.billNo} corrected. The owner has been emailed.`,
                         )

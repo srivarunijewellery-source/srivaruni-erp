@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { requireUser } from "@/features/auth/session";
-import { can } from "@/config/roles";
+import { can, isOwner } from "@/config/roles";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { AppNav } from "@/components/AppNav";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -166,6 +166,8 @@ export default async function PosPage({
         canDiscount: can(user, "pos.discount"),
         canCoupon: can(user, "pos.coupon"),
         canHold: can(user, "pos.hold"),
+        // Owner only, matching the database guard on cancel_bill.
+        canCancelBill: isOwner(user.role),
       }}
     />
   );

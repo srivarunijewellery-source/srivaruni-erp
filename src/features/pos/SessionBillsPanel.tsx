@@ -44,6 +44,7 @@ export function SessionBillsPanel({
   sellers,
   locationId,
   canAmend,
+  canCancel,
   onClose,
 }: {
   sessionId: string;
@@ -53,6 +54,8 @@ export function SessionBillsPanel({
   sellers: Seller[];
   /** Manager or owner. Amendments are theirs to make. */
   canAmend: boolean;
+  /** Owner only: cancel a bill outright, no replacement. */
+  canCancel?: boolean;
   onClose: () => void;
 }) {
   const [bills, setBills] = useState<SessionBill[] | null>(null);
@@ -229,6 +232,7 @@ export function SessionBillsPanel({
 
       {acting && (
         <BillActions
+          canCancel={canCancel}
           bill={acting}
           sellers={sellers}
           locationId={locationId}
