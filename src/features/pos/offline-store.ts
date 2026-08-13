@@ -53,6 +53,11 @@ export interface QueuedSale {
   sold_by?: string | null;
   coupon_id: string | null;
   manual_discount_paise: number;
+  /** Carried through the queue so an offline sale prices the same as a
+   *  live one. Without these the bill is refused on sync as short-paid,
+   *  and by then the customer left with the goods hours ago. */
+  scheme_paise?: number;
+  credit_paise?: number;
   rung_at: string;
   print_receipt: boolean;
   session_id: string | null;

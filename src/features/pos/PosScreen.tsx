@@ -994,7 +994,13 @@ export function PosScreen({
         // transaction, so a bill part-settled by credit can no longer be
         // rejected for the payments not adding up.
         credit_paise: creditPaise,
+        // The scheme was subtracted from what the cashier collects but
+        // never sent, so the server priced the bill without it and
+        // refused the payment as short. That is the "Payments come to
+        // X but the bill is Y" the counter was hitting.
+        scheme_paise: totals.scheme,
       };
+
 
       /**
        * Bank the sale on this machine and move on.
