@@ -1167,6 +1167,22 @@ export function PosScreen({
         return;
       }
 
+      // Also parked on this machine, even though the server accepted it.
+      //
+      // The server copy is the real one, but a refresh reads it back over
+      // the network — and if that read is slow, fails, or the page is
+      // reloaded on a dropping connection, the parked bills simply are
+      // not there. A customer waiting at the counter should not depend on
+      // that. The local copy is merged on load and de-duplicated by id,
+      // so having both costs nothing.
+      await saveLocalHold({
+        id: res.data,
+        label,
+        lines,
+        customer_id: customer?.id ?? null,
+        at: Date.now(),
+      });
+
       setNotice(`Held: ${label}`);
       addToList(res.data);
       clearCart();
@@ -1250,6 +1266,10 @@ export function PosScreen({
       }
 
       await discardHold(bill.id);
+      // The local copy has to go with it, or the next refresh merges a
+      // hold back in that has already been resumed — the cart would come
+      // back from the dead.
+      await removeLocalHold(bill.id);
       setHolds((h) => h.filter((x) => x.id !== bill.id));
       setNotice("Resumed.");
     });
