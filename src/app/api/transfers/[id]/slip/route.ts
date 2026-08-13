@@ -27,9 +27,25 @@ export async function GET(
   const transfer = await getTransfer(id);
   if (!transfer) return new NextResponse("Not found", { status: 404 });
 
-  const sealed = !["requested", "picking"].includes(transfer.status);
+  // Which number is the truth depends on how far the document has got.
+  //
+  // qty_sent is only written at APPROVAL, so treating everything past
+  // picking as "sealed" meant a transfer sitting at `picked` printed a
+  // slip with every quantity zero — and, since zero lines are filtered
+  // out, a completely blank sheet. That is the one moment someone most
+  // wants the paperwork: the box is packed and waiting to be checked.
+  const sealed = ["approved", "dispatched", "received"].includes(transfer.status);
+  const packing = ["picking", "picked"].includes(transfer.status);
+
   const qtyOf = (l: (typeof transfer.lines)[number]) =>
-    sealed ? l.qtySent : l.qtyRequested;
+    sealed
+      ? // Falls back to what was picked: a line approved at zero is a
+        // line that was dropped, but a null here would silently empty
+        // the sheet.
+        l.qtySent || l.qtyPicked
+      : packing
+        ? l.qtyPicked || l.qtyRequested
+        : l.qtyRequested;
 
   const lines = transfer.lines.filter((l) => qtyOf(l) > 0);
 
@@ -37,10 +53,10 @@ export async function GET(
   // asking for it again is usually that the first one is lost or wet and
   // the rail is half done. The tick column carries what is already
   // scanned, so picking continues from where it stopped.
-  const inProgress = transfer.status === "picking";
+  const inProgress = packing;
 
   const rows: unknown[][] = [
-    [sealed ? "Packing list" : "Picking list", transfer.docNo],
+    [sealed ? "Packing list" : packing ? "Picking list" : "Request", transfer.docNo],
     ["From", transfer.fromName, "To", transfer.toName],
     ["Courier", transfer.courier ?? "", "Docket", transfer.docketNo ?? ""],
     ["Reason", transfer.reason ?? ""],

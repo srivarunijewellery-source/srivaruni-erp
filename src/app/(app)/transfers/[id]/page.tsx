@@ -78,6 +78,24 @@ export default async function TransferDetailPage({
         action={
           <div className="flex items-center gap-2">
             <Badge tone={status.tone}>{status.label}</Badge>
+            {/* The slip, at every stage, in one place.
+                
+                It used to be offered by whichever panel happened to be on
+                screen — picking, approval, shipping — so the moment a
+                transfer moved past that panel the slip disappeared. But
+                the sheet is wanted precisely when something is being
+                checked after the fact: a box opened at the far end, a
+                query about what was sent last week. The document exists
+                the whole time; so should the paperwork for it. */}
+            <a
+              href={ROUTES.transferSlip(transfer.id)}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <Button size="sm" variant="secondary">
+                Pickup slip
+              </Button>
+            </a>
             <Link href={ROUTES.transfers}>
               <Button size="sm" variant="ghost">
                 All transfers

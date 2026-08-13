@@ -209,6 +209,7 @@ export function ReportRunner({
               <span className="font-medium">{def?.label}</span>
               <span className="text-2xs text-text-muted">
                 {rows.length} row{rows.length === 1 ? "" : "s"}
+                {rows.length > 500 && " · 500 shown below, all in the CSV"}
                 {rows.length >= 20000 && " · capped, narrow the window"}
               </span>
             </CardHeader>
@@ -264,8 +265,8 @@ export function ReportRunner({
                   </table>
                   {rows.length > 500 && (
                     <p className="px-3 py-2 text-2xs text-text-subtle">
-                      Showing the first 500 on screen. The download has all{" "}
-                      {rows.length}.
+                      Showing the first 500 here so the page stays quick. The
+                      CSV download contains all {rows.length} rows.
                     </p>
                   )}
                 </div>

@@ -124,16 +124,25 @@ export default async function TransitPage() {
 
                 <ul className="flex flex-wrap gap-3">
                   {contents.map((r) => (
-                    <li
-                      key={`${r.transferId}-${r.itemId}`}
-                      className="flex w-56 items-center gap-2 rounded-control border border-border p-2"
-                    >
-                      <PhotoThumb src={itemPhotoUrl(r.photoPath)} alt={r.itemName} size={40} />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-2xs font-medium">{r.itemName}</p>
-                        <p className="font-mono text-2xs text-text-muted">{r.barcode}</p>
-                      </div>
-                      <span className="tnum font-mono text-sm font-semibold">{r.qty}</span>
+                    <li key={`${r.transferId}-${r.itemId}`}>
+                      {/* The whole card opens the piece. Someone checking a
+                          box against the system wants the item, and a
+                          photo they cannot tap is a dead end. */}
+                      <Link
+                        href={ROUTES.productDetail(r.itemId)}
+                        className="flex w-56 items-center gap-2 rounded-control border border-border p-2 transition-colors hover:border-brand"
+                      >
+                        <PhotoThumb
+                          src={itemPhotoUrl(r.photoPath)}
+                          alt={r.itemName}
+                          size={40}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-2xs font-medium">{r.itemName}</p>
+                          <p className="font-mono text-2xs text-text-muted">{r.barcode}</p>
+                        </div>
+                        <span className="tnum font-mono text-sm font-semibold">{r.qty}</span>
+                      </Link>
                     </li>
                   ))}
                 </ul>

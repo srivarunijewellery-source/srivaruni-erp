@@ -23,15 +23,28 @@ async function photoMap(supabase: Supabase, itemIds: string[]): Promise<Map<stri
   const photos = new Map<string, string>();
   if (itemIds.length === 0) return photos;
 
-  const { data } = await supabase
-    .from("item_photos")
-    .select("item_id, storage_path, is_primary, sort_order")
-    .in("item_id", itemIds)
-    .order("is_primary", { ascending: false })
-    .order("sort_order");
+  // Deduplicated and chunked, because `.in()` becomes a query STRING.
+  //
+  // PostgREST puts the whole list in the URL, and a UUID is 36
+  // characters: the transit page passes 783 item ids, which is a ~28KB
+  // URL. The server rejects it, `data` comes back null, and every
+  // photo silently disappears — no error anywhere, just grey squares.
+  //
+  // 200 ids is roughly 7KB, comfortably inside every proxy's limit.
+  const unique = [...new Set(itemIds)];
+  const CHUNK = 200;
 
-  for (const p of data ?? []) {
-    if (!photos.has(p.item_id)) photos.set(p.item_id, p.storage_path);
+  for (let i = 0; i < unique.length; i += CHUNK) {
+    const { data } = await supabase
+      .from("item_photos")
+      .select("item_id, storage_path, is_primary, sort_order")
+      .in("item_id", unique.slice(i, i + CHUNK))
+      .order("is_primary", { ascending: false })
+      .order("sort_order");
+
+    for (const p of data ?? []) {
+      if (!photos.has(p.item_id)) photos.set(p.item_id, p.storage_path);
+    }
   }
   return photos;
 }
