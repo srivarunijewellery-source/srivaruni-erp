@@ -7,6 +7,7 @@ import { ROUTES } from "@/config/nav";
 import { err, ok, toMessage, type Result } from "@/lib/result";
 import { pokeDispatchBestEffort } from "@/lib/comms/poke";
 import {
+  getPosCatalog,
   listCashMovements,
   listSessionBills,
   toDrawer,
@@ -948,4 +949,28 @@ export async function fetchBillsBehind(opts: {
   discountedOnly?: boolean;
 }): Promise<Result<Awaited<ReturnType<typeof listBillsBehind>>>> {
   return ok(await listBillsBehind(opts));
+}
+
+/**
+ * A fresh copy of what this store can actually sell.
+ *
+ * The counter caches the catalogue in IndexedDB so a scan works with no
+ * network, but that copy is only replaced on a page load. A till left
+ * open all day drifts: pieces sold at the other counter, and pieces
+ * dispatched to the other store, both linger in the local copy and stay
+ * scannable.
+ *
+ * That second case is the dangerous one. A transferred piece is not
+ * merely miscounted, it is in a box on a lorry — selling it puts the
+ * origin store negative while the transit bucket still expects it to
+ * arrive, so the same piece is both sold and in flight.
+ */
+export async function refreshCatalog(
+  locationId: string,
+): Promise<Result<PosCatalogItem[]>> {
+  try {
+    return ok(await getPosCatalog(locationId));
+  } catch (e) {
+    return err(toMessage(e));
+  }
 }

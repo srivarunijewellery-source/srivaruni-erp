@@ -25,6 +25,7 @@ import {
 } from "./offline-store";
 import { attempt, quietly } from "./net";
 import {
+  refreshCatalog,
   finaliseSale,
   pingServer,
   syncOfflineSales,
@@ -399,6 +400,40 @@ export function PosScreen({
   }, [online, drainQueue, queue.length]);
 
   /**
+   * Keep the local catalogue close to the truth.
+   *
+   * It was only replaced on a page load, so a till open since morning
+   * still offered pieces sold at the other counter and — worse — pieces
+   * dispatched to the other store hours ago. A transferred piece is not
+   * a miscount: it is in a box on a lorry, and selling it puts this
+   * store negative while the transit bucket still expects it to land.
+   *
+   * Ten minutes bounds the drift without making the counter chatty. Only
+   * while online, and failures are ignored: a stale catalogue still
+   * sells, which is the whole point of caching it.
+   */
+  useEffect(() => {
+    if (!online) return;
+    let cancelled = false;
+
+    const sync = async () => {
+      const r = await refreshCatalog(locationId);
+      if (cancelled || !r.ok) return;
+      await saveCatalog(r.data);
+      const [items, at] = await Promise.all([readCatalog(), catalogSyncedAt()]);
+      if (cancelled) return;
+      setCatalog(items);
+      setSyncedAt(at);
+    };
+
+    const id = setInterval(sync, 10 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [online, locationId]);
+
+  /**
    * The scan box has to keep the caret, always.
    *
    * A hardware scanner is a keyboard: it types the code and presses
@@ -672,11 +707,12 @@ export function PosScreen({
       }
 
       if (found.qty <= 0) {
-        // Not a refusal. The piece is in the customer's hand; our count
-        // being wrong is our problem, not a reason to lose the sale. The
-        // stock ledger records the discrepancy either way.
+        // Not a refusal. The piece is in the customer's hand, so our
+        // count is what is wrong — and losing a sale to protect a number
+        // is the wrong way round. The ledger records the discrepancy
+        // either way, and the reconciliation screen picks it up.
         setNotice(
-          `Our count says none left of ${found.name} — selling it anyway. Worth a stock check.`,
+          `Our count says none of ${found.name} is here — selling it anyway. It may have been sent to the other store, so worth checking.`,
         );
       }
 
@@ -1276,13 +1312,17 @@ export function PosScreen({
             {queue.length > 0 && (
               <Badge tone="pending">{queue.length} waiting to send</Badge>
             )}
-            {staleMinutes !== null && staleMinutes > 30 && (
-              <span
-                className="text-2xs text-text-muted"
-                title="Stock counts on this machine were last refreshed then."
-              >
-                stock copy {staleMinutes} min old
-              </span>
+            {/* Now that the catalogue re-syncs every ten minutes while
+                online, anything much older means this machine has been
+                cut off — and a stale copy still lists pieces that have
+                since been sold or sent to the other store. Worth a badge
+                rather than grey text nobody reads. */}
+            {staleMinutes !== null && staleMinutes > 25 && (
+              <Badge tone={staleMinutes > 120 ? "danger" : "pending"}>
+                stock copy {staleMinutes < 120
+                  ? `${staleMinutes} min old`
+                  : `${Math.round(staleMinutes / 60)} hr old`}
+              </Badge>
             )}
           </div>
 
@@ -1503,8 +1543,12 @@ export function PosScreen({
                       setSearch("");
                       scanRef.current?.focus();
                     }}
-                    disabled={i.qty <= 0}
-                    className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-55"
+                    // Selectable whatever the count says. A piece the
+                    // system thinks has gone is still sellable when it is
+                    // on the counter, and disabling the row forced the
+                    // cashier to either turn the customer away or find a
+                    // workaround.
+                    className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm hover:bg-surface-sunken"
                   >
                     {/* A picture is what stops "black beads" from being
                         confused with the other three items also called
