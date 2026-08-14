@@ -674,3 +674,50 @@ export async function getTransferPosition(
     };
   });
 }
+
+export interface TransferActivity {
+  transferId: string;
+  docNo: string;
+  status: string;
+  stage: string;
+  happenedAt: string;
+  qty: number;
+  fromCode: string;
+  toCode: string;
+  reason: string;
+  unavailableReason: string | null;
+  actor: string;
+}
+
+/**
+ * Where this piece has been in the transfer flow.
+ *
+ * The movement list reads the stock ledger, and a transfer only writes
+ * there at dispatch — so a piece requested on Monday and picked on
+ * Tuesday showed nothing until it physically left. Anyone asking "why
+ * isn't this on the shelf" got no answer from the page built to answer
+ * exactly that.
+ */
+export async function getTransferActivity(
+  itemId: string,
+): Promise<TransferActivity[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("product_transfer_activity", {
+    p_item: itemId,
+  });
+  if (error || !data) return [];
+
+  return (data as Array<Record<string, unknown>>).map((r) => ({
+    transferId: String(r.transfer_id),
+    docNo: String(r.doc_no),
+    status: String(r.status),
+    stage: String(r.stage),
+    happenedAt: String(r.happened_at),
+    qty: Number(r.qty ?? 0),
+    fromCode: String(r.from_code),
+    toCode: String(r.to_code),
+    reason: String(r.reason ?? ""),
+    unavailableReason: (r.unavailable_reason as string | null) ?? null,
+    actor: String(r.actor ?? ""),
+  }));
+}

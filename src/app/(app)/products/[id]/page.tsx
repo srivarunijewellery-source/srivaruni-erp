@@ -7,6 +7,7 @@ import {
   getProductSource,
   getCostBreakdown,
   getTransferPosition,
+  getTransferActivity,
 } from "@/features/products/queries";
 import {
   listCategories,
@@ -44,7 +45,7 @@ export default async function ProductDetailPage({
   const owner = isOwner(user.role);
 
   const [product, categories, options, stores, movements, source, breakdown,
-         transferPosition] =
+         transferPosition, transferActivity] =
     await Promise.all([
       getProduct(id),
       listCategories(),
@@ -59,6 +60,7 @@ export default async function ProductDetailPage({
       getCostBreakdown(id),
       // What is committed to transfers, per store.
       getTransferPosition(id),
+      getTransferActivity(id),
     ]);
 
   if (!product) notFound();
@@ -317,6 +319,59 @@ export default async function ProductDetailPage({
               )}
             </CardBody>
           </Card>
+
+          {/* Transfers, before the stock ledger.
+              
+              The ledger only records the moment stock physically moved,
+              which for a transfer is dispatch. Everything before that —
+              asked for, picked, approved — happened to this piece and
+              belongs in its history, but cannot go in the ledger without
+              corrupting every balance derived from it. */}
+          {transferActivity.length > 0 && (
+            <Card>
+              <CardHeader>
+                <h2 className="font-medium">Transfers</h2>
+              </CardHeader>
+              <CardBody className="p-0">
+                <ul className="divide-y divide-border">
+                  {transferActivity.map((a) => (
+                    <li
+                      key={`${a.docNo}-${a.happenedAt}`}
+                      className="flex flex-wrap items-center gap-2 px-4 py-2 text-2xs"
+                    >
+                      <Link
+                        href={ROUTES.transferDetail(a.transferId)}
+                        className="font-mono text-brand hover:underline"
+                      >
+                        {a.docNo}
+                      </Link>
+                      <Badge tone={a.status === "received" ? "done" : "pending"}>
+                        {a.stage}
+                      </Badge>
+                      <span className="tnum">{a.qty} pc</span>
+                      <span className="text-text-subtle">
+                        {a.fromCode}→{a.toCode}
+                      </span>
+                      {a.reason && (
+                        <span className="truncate text-text-muted">{a.reason}</span>
+                      )}
+                      {/* The line that closes the loop: this was asked
+                          for and can no longer be filled. */}
+                      {a.unavailableReason && (
+                        <span className="text-status-danger-fg">
+                          {a.unavailableReason}
+                        </span>
+                      )}
+                      <span className="ml-auto text-text-subtle">
+                        {formatDate(a.happenedAt)}
+                        {a.actor && ` · ${a.actor}`}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </CardBody>
+            </Card>
+          )}
 
           <Card>
             <CardHeader>
