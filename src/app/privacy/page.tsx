@@ -1,6 +1,4 @@
-// app/privacy/page.tsx
-// Public privacy policy page — required by Meta for the WhatsApp Cloud API app.
-// No auth, no layout dependencies. Safe to deploy as-is.
+// Save as: src/app/privacy/page.tsx  (delete the old privacy-page.tsx)
 
 export const metadata = {
   title: "Privacy Policy — Sri Varuni Fashion Jewellery",
@@ -16,11 +14,11 @@ export default function PrivacyPage() {
 
       <section className="mt-8 space-y-4 leading-relaxed">
         <p>
-          Sri Varuni Fashion Jewellery ("we", "us") operates retail stores in
-          Boduppal and Zaheerabad, Telangana, India. This policy describes how
-          our internal business application ("the app") handles customer
-          information, including messages sent through the WhatsApp Business
-          Platform.
+          Sri Varuni Fashion Jewellery (&quot;we&quot;, &quot;us&quot;) operates
+          retail stores in Boduppal and Zaheerabad, Telangana, India. This
+          policy describes how our internal business application (&quot;the
+          app&quot;) handles customer information, including messages sent
+          through the WhatsApp Business Platform.
         </p>
 
         <h2 className="pt-4 text-lg font-semibold">Information we collect</h2>
@@ -47,7 +45,7 @@ export default function PrivacyPage() {
           infrastructure used to run our billing system.
         </p>
 
-        <h2 className="pt-4 text-lg font-semibold">Retention &amp; deletion</h2>
+        <h2 className="pt-4 text-lg font-semibold">Retention and deletion</h2>
         <p>
           Billing records are retained as required by Indian tax law. You may
           request deletion of your contact details and message history at any
