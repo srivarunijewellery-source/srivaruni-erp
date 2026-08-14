@@ -1,5 +1,6 @@
 "use client";
 
+import { ItemLink } from "@/components/ui/ItemLink";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -279,7 +280,7 @@ function QtyRow({
       <PhotoThumb src={itemPhotoUrl(line.photoPath)} alt={line.name} size={44} />
       <div className="min-w-0 flex-1">
         <p className="flex items-center gap-1.5 truncate text-sm font-medium">
-          {line.name}
+          <ItemLink itemId={line.itemId} name={line.name} />
           {isExtra && (
             <span className="shrink-0 rounded-full bg-status-pending-bg px-1.5 py-0.5 text-2xs font-medium text-status-pending-fg">
               Extra

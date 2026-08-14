@@ -1,3 +1,4 @@
+import { ItemLink } from "@/components/ui/ItemLink";
 import Link from "next/link";
 import { ROUTES } from "@/config/nav";
 import { Barcode } from "@/components/ui/Barcode";
@@ -97,7 +98,7 @@ export function InwardDocTable({
                       href={ROUTES.productDetail(l.itemId)}
                       className="underline-offset-2 hover:underline"
                     >
-                      {l.name}
+                      <ItemLink itemId={l.itemId} name={l.name} />
                     </Link>
                   </td>
                   <td className="px-2 py-1.5 text-text-muted">{l.category}</td>

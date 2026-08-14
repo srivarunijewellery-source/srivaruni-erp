@@ -1,5 +1,6 @@
 "use client";
 
+import { ItemLink } from "@/components/ui/ItemLink";
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { PhotoThumb } from "@/components/ui/PhotoThumb";
@@ -80,7 +81,7 @@ export function LineProgress({
 
             <div className="min-w-0 flex-1">
               <p className="flex items-center gap-1.5 truncate text-sm font-medium">
-                {l.name}
+                <ItemLink itemId={l.itemId} name={l.name} />
                 {extra && (
                   <span className="shrink-0 rounded-full bg-status-pending-bg px-1.5 py-0.5 text-2xs font-medium text-status-pending-fg">
                     Extra

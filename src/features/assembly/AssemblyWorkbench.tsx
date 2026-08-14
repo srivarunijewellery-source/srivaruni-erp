@@ -1,5 +1,6 @@
 "use client";
 
+import { ItemLink } from "@/components/ui/ItemLink";
 import Link from "next/link";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -493,7 +494,9 @@ function ComponentPicker({
               >
                 <PhotoThumb src={itemPhotoUrl(r.photoPath)} alt={r.name} size={36} />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm">{r.name}</span>
+                  <span className="block truncate text-sm">
+                    <ItemLink itemId={r.id} name={r.name} />
+                  </span>
                   <span className="block font-mono text-2xs text-text-muted">
                     {r.barcode} · {r.onHand} on hand
                   </span>

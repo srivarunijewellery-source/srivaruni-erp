@@ -1,5 +1,6 @@
 "use client";
 
+import { ItemLink } from "@/components/ui/ItemLink";
 import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { ROUTES } from "@/config/nav";
@@ -433,7 +434,7 @@ function Row({
             href={ROUTES.productDetail(line.itemId)}
             className="font-medium rounded-sm underline decoration-border decoration-dotted underline-offset-2 hover:decoration-brand hover:text-brand focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
           >
-            {line.name}
+            <ItemLink itemId={line.itemId} name={line.name} />
           </Link>
           <Barcode code={line.barcode} />
         </div>

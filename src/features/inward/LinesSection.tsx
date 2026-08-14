@@ -1,5 +1,6 @@
 "use client";
 
+import { ItemLink } from "@/components/ui/ItemLink";
 import { Barcode } from "@/components/ui/Barcode";
 import { PhotoThumb } from "@/components/ui/PhotoThumb";
 import { LineQtyEditor } from "./LineQtyEditor";
@@ -94,7 +95,7 @@ export function LinesSection({
                     <Barcode code={l.barcode} />
                   </td>
                   <td className="truncate px-2 py-1.5 font-medium" title={l.name}>
-                    {l.name}
+                    <ItemLink itemId={l.itemId} name={l.name} />
                   </td>
                   <td className="truncate px-2 py-1.5 text-text-muted">{l.category}</td>
                   <td className="px-2 py-1.5 text-right">
