@@ -222,6 +222,7 @@ export interface StockRow {
   barcode: string;
   name: string;
   category: string;
+  style: string | null;
   locationCode: string;
   qty: number;
   sellingPricePaise: Paise | null;

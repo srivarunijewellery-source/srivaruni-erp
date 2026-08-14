@@ -132,11 +132,21 @@ export async function listProducts(
     q = q.eq("stock_balances.location_id", filters.locationId);
   }
 
-  if (filters.categoryId) q = q.eq("category_id", filters.categoryId);
-  if (filters.itemTypeId) q = q.eq("item_type_id", filters.itemTypeId);
-  if (filters.platingId) q = q.eq("plating_id", filters.platingId);
-  if (filters.stoneId) q = q.eq("stone_id", filters.stoneId);
-  if (filters.vendorId) q = q.eq("vendor_id", filters.vendorId);
+  // Comma-separated ids from the URL: one uses eq, several use in. Kept
+  // as a string so a multi-filtered view is still a shareable link.
+  const many = (v?: string) => (v ?? "").split(",").filter(Boolean);
+  const each: Array<[string, string | undefined]> = [
+    ["category_id", filters.categoryId],
+    ["item_type_id", filters.itemTypeId],
+    ["plating_id", filters.platingId],
+    ["stone_id", filters.stoneId],
+    ["vendor_id", filters.vendorId],
+  ];
+  for (const [col, raw] of each) {
+    const list = many(raw);
+    if (list.length === 1) q = q.eq(col, list[0]);
+    else if (list.length > 1) q = q.in(col, list);
+  }
   if (filters.status) q = q.eq("status", filters.status);
 
   // Price bounds ignore unpriced items entirely rather than treating a

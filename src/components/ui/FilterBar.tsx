@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import { Card, CardBody } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select } from "@/components/ui/Field";
+import { MultiSelect } from "@/components/ui/MultiSelect";
 
 export interface FilterSelect {
   key: string;
@@ -12,6 +13,18 @@ export interface FilterSelect {
   /** Shown when nothing is chosen, e.g. "All categories". */
   allLabel: string;
   options: Array<{ value: string; label: string }>;
+  /**
+   * Accept more than one value.
+   *
+   * Category and style are the obvious cases: "Bangles and Chowkers" is
+   * a question people actually ask, and a single select forced them to
+   * filter twice and read both lists. Values travel in the URL
+   * comma-separated, so a multi-filtered view is still a shareable link.
+   *
+   * Left off for things where one answer is the only sensible one — a
+   * store, a status.
+   */
+  multi?: boolean;
 }
 
 /**
@@ -93,19 +106,31 @@ export function FilterBar({
             .map((s) => (
             <div key={s.key}>
               <Label htmlFor={`f-${s.key}`}>{s.label}</Label>
-              <Select
-                id={`f-${s.key}`}
-                value={value[s.key] ?? ""}
-                onChange={(e) => apply({ [s.key]: e.target.value })}
-                disabled={pending}
-              >
-                <option value="">{s.allLabel}</option>
-                {s.options.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </Select>
+              {s.multi ? (
+                <MultiSelect
+                  id={`f-${s.key}`}
+                  label={s.label}
+                  allLabel={s.allLabel}
+                  options={s.options}
+                  chosen={(value[s.key] ?? "").split(",").filter(Boolean)}
+                  onChange={(next) => apply({ [s.key]: next.join(",") })}
+                  disabled={pending}
+                />
+              ) : (
+                <Select
+                  id={`f-${s.key}`}
+                  value={value[s.key] ?? ""}
+                  onChange={(e) => apply({ [s.key]: e.target.value })}
+                  disabled={pending}
+                >
+                  <option value="">{s.allLabel}</option>
+                  {s.options.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </Select>
+              )}
               </div>
             ))}
         </div>

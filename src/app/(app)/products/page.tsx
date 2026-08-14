@@ -164,6 +164,7 @@ export default async function ProductsPage({
             key: "category",
             label: "Category",
             allLabel: "All categories",
+            multi: true,
             options: categories.map((c) => ({ value: c.id, label: c.name })),
           },
           // Omitted when nothing is defined: a filter offering only
@@ -182,18 +183,21 @@ export default async function ProductsPage({
             key: "plating",
             label: "Plating",
             allLabel: "All plating",
+            multi: true,
             options: options.platings.map((p) => ({ value: p.id, label: p.value })),
           },
           {
             key: "stone",
             label: "Style",
             allLabel: "All styles",
+            multi: true,
             options: options.stones.map((o) => ({ value: o.id, label: o.value })),
           },
           {
             key: "vendor",
             label: "Vendor",
             allLabel: "All vendors",
+            multi: true,
             options: vendors.map((v) => ({ value: v.id, label: v.name })),
           },
           {
