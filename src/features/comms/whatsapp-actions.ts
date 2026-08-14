@@ -9,6 +9,7 @@ import {
   draftFromEventBody,
   editTemplate,
   fetchPhoneNumber,
+  fetchTokenScopes,
   fetchTemplates,
   normalisePhone,
   sendTemplateMessage,
@@ -98,11 +99,36 @@ export async function testWhatsappConnection(): Promise<Result<string>> {
     })
     .eq("id", true);
 
+  // Reading the number proves the token exists, not that it can send.
+  //
+  // Those are two different Meta permissions, and the difference is the
+  // whole of error #200: a management-only token reads the quality
+  // rating, lists all 99 templates, reports a healthy green connection,
+  // and is refused the moment it tries to message anyone. Saying
+  // "Connected" on the strength of a read is the app telling a
+  // comfortable lie.
+  const perms = await fetchTokenScopes(loaded.cfg);
+  const who = `${res.data?.verified_name ?? "this number"} (${
+    res.data?.display_phone_number ?? "unknown number"
+  })`;
+
+  if (perms.ok && !perms.data?.canSend) {
+    return err(
+      `Connected as ${who}, but this token cannot send messages — it is missing ` +
+        `whatsapp_business_messaging. In Meta Business Settings, open Users → ` +
+        `System Users → your system user → Assign Assets → WhatsApp Accounts, ` +
+        `give it Full control over the WhatsApp Business Account, then generate ` +
+        `a NEW token with both whatsapp_business_management and ` +
+        `whatsapp_business_messaging ticked. Changing the assignment does not ` +
+        `upgrade a token that already exists.`,
+    );
+  }
+
   revalidatePath(ROUTES.whatsapp);
   return ok(
-    `Connected as ${res.data?.verified_name ?? "this number"} (${
-      res.data?.display_phone_number ?? "unknown number"
-    }).`,
+    `Connected as ${who}${
+      perms.ok ? " · this token can send" : " · could not read the token's permissions"
+    }.`,
   );
 }
 

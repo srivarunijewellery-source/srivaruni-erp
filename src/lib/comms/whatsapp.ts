@@ -90,6 +90,60 @@ export async function fetchPhoneNumber(cfg: MetaConfig): Promise<MetaResult<Phon
   );
 }
 
+/**
+ * What the stored token is actually allowed to do.
+ *
+ * Reading a phone number needs only whatsapp_business_management, and
+ * that is all "Test connection" ever exercised — so a token that could
+ * list templates and read the quality rating reported a healthy green
+ * connection and then failed every send with Meta error #200.
+ *
+ * debug_token names the granted scopes, which turns "you do not have the
+ * necessary permissions" into "this token is missing
+ * whatsapp_business_messaging" — a sentence someone can act on.
+ */
+export interface TokenScopes {
+  scopes: string[];
+  canRead: boolean;
+  canSend: boolean;
+  expiresAt: number | null;
+}
+
+export async function fetchTokenScopes(cfg: MetaConfig): Promise<MetaResult<TokenScopes>> {
+  const res = await call<{
+    data?: {
+      scopes?: string[];
+      granular_scopes?: Array<{ scope: string }>;
+      expires_at?: number;
+    };
+  }>(
+    // The token inspects itself: a System User token is its own app
+    // token for this purpose, so no separate app secret is needed.
+    `${GRAPH}/${cfg.apiVersion}/debug_token?input_token=${encodeURIComponent(cfg.accessToken)}`,
+    cfg.accessToken,
+  );
+  // Narrowed by hand: the failure shape carries no data, and returning
+  // `res` directly would claim it is a TokenScopes result.
+  if (!res.ok) return { ok: false, error: res.error };
+
+  const flat = new Set<string>([
+    ...(res.data?.data?.scopes ?? []),
+    ...(res.data?.data?.granular_scopes ?? []).map((g) => g.scope),
+  ]);
+
+  return {
+    ok: true,
+    data: {
+      scopes: [...flat],
+      canRead: flat.has("whatsapp_business_management"),
+      canSend: flat.has("whatsapp_business_messaging"),
+      // 0 means it never expires, which is what a System User token
+      // normally is — worth showing rather than printing 1 Jan 1970.
+      expiresAt: res.data?.data?.expires_at ? res.data.data.expires_at : null,
+    },
+  };
+}
+
 export interface MetaTemplate {
   id: string;
   name: string;
