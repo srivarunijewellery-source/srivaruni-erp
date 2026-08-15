@@ -136,10 +136,47 @@ export function CameraScanner({
       streamRef.current = stream;
       setOpen(true);
 
+      // The <video> is mounted at all times, hidden until now.
+      //
+      // It used to be rendered only when `open` was true, and this line
+      // ran immediately after setOpen — before React had re-rendered. So
+      // videoRef.current was still null, the function returned early,
+      // and the stream was acquired but never attached: the camera light
+      // came on, permission was granted, and the panel stayed black.
       const video = videoRef.current;
-      if (!video) return;
+      if (!video) {
+        setError("The camera preview could not start. Reload the page and try again.");
+        stop();
+        return;
+      }
       video.srcObject = stream;
+      // iOS needs both of these set on the element itself, not just as
+      // React props, before play() will succeed inside a gesture.
+      video.setAttribute("playsinline", "true");
+      video.muted = true;
       await video.play();
+
+      // play() resolves before the first frame has dimensions, and a
+      // detector handed a 0x0 video reads nothing while looking
+      // perfectly healthy. Wait for real pixels, but not forever — if
+      // they never arrive, say so rather than sitting on a black panel.
+      const gotFrame = await new Promise<boolean>((resolve) => {
+        if (video.videoWidth > 0) return resolve(true);
+        const done = () => {
+          video.removeEventListener("loadeddata", done);
+          resolve(video.videoWidth > 0);
+        };
+        video.addEventListener("loadeddata", done);
+        setTimeout(done, 4000);
+      });
+
+      if (!gotFrame) {
+        setError(
+          "The camera started but sent no picture. Close any other app or tab using it, then try again.",
+        );
+        stop();
+        return;
+      }
 
       const Ctor = detectorCtor();
       const native = Ctor !== null;
@@ -208,7 +245,7 @@ export function CameraScanner({
 
   return (
     <div className="space-y-2">
-      {!open ? (
+      {!open && (
         <Button
           type="button"
           variant="secondary"
@@ -217,13 +254,17 @@ export function CameraScanner({
         >
           Scan with the camera
         </Button>
-      ) : (
-        <div className="space-y-2">
+      )}
+
+      {/* Always in the DOM so the ref is populated before a stream is
+          attached; only the wrapper is hidden. */}
+      <div className={open ? "space-y-2" : "hidden"}>
           <div className="relative overflow-hidden rounded-card border border-border bg-black">
             <video
               ref={videoRef}
               playsInline
               muted
+              autoPlay
               className="h-56 w-full object-cover"
             />
             {/* A window to aim through. People hold the phone much closer
@@ -245,8 +286,7 @@ export function CameraScanner({
               Hold the tag inside the box. It keeps reading until you stop.
             </span>
           </div>
-        </div>
-      )}
+      </div>
 
       {error && <p className="text-2xs text-status-danger-fg">{error}</p>}
     </div>
