@@ -14,6 +14,17 @@ export interface StockFilters {
   itemType?: string;
   /** Comma-separated, like the others. */
   style?: string;
+  plating?: string;
+  vendor?: string;
+  /**
+   * Categories to leave OUT, comma-separated.
+   *
+   * The opposite question from the include filter, and the more common
+   * one on a shelf this size: "everything except raw material" is a
+   * sentence someone says, and ticking sixty-three categories to express
+   * it is not a filter anyone uses twice.
+   */
+  exCategory?: string;
 }
 
 /** What the stock filter bar can offer, built from what is actually held. */
@@ -21,6 +32,8 @@ export interface StockFacets {
   categories: string[];
   itemTypes: string[];
   styles: string[];
+  platings: string[];
+  vendors: string[];
   locations: Array<{ id: string; code: string; name: string }>;
 }
 
@@ -31,52 +44,87 @@ export interface StockFacets {
  * dropdowns never offer a category nothing is held in -- picking one and
  * getting an empty table teaches people the filters are broken.
  */
+/**
+ * The values worth offering in the filters.
+ *
+ * Aggregated in the database, not scraped from a page of rows. It used
+ * to read stock_on_hand with .limit(5000) and build the dropdowns from
+ * whatever came back — but PostgREST caps a response at 1000, so it saw
+ * a thousand Zaheerabad rows and offered ZHB as the only store.
+ * Categories and styles were truncated the same way, which nobody
+ * noticed because a shorter list still looks like a list.
+ */
 export async function getStockFacets(): Promise<StockFacets> {
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("stock_on_hand")
-    .select("category, item_type, style, location_id, location_code, location_name")
-    .limit(5000);
-
-  if (error) return { categories: [], itemTypes: [], styles: [], locations: [] };
-
-  const categories = new Set<string>();
-  const itemTypes = new Set<string>();
-  const styles = new Set<string>();
-  const locations = new Map<string, { id: string; code: string; name: string }>();
-
-  for (const r of data ?? []) {
-    if (r.category) categories.add(r.category);
-    if (r.item_type) itemTypes.add(r.item_type);
-    if (r.style) styles.add(r.style);
-    if (r.location_id && !locations.has(r.location_id)) {
-      locations.set(r.location_id, {
-        id: r.location_id,
-        code: r.location_code,
-        name: r.location_name,
-      });
-    }
+  const { data, error } = await supabase.rpc("stock_facets");
+  if (error || !data) {
+    return { categories: [], itemTypes: [], styles: [], platings: [], vendors: [], locations: [] };
   }
 
+  const d = data as {
+    categories?: string[];
+    itemTypes?: string[];
+    styles?: string[];
+    platings?: string[];
+    vendors?: string[];
+    locations?: Array<{ id: string; code: string; name: string }>;
+  };
+
   return {
-    categories: [...categories].sort(),
-    itemTypes: [...itemTypes].sort(),
-    styles: [...styles].sort(),
-    locations: [...locations.values()].sort((a, b) => a.code.localeCompare(b.code)),
+    categories: d.categories ?? [],
+    itemTypes: d.itemTypes ?? [],
+    styles: d.styles ?? [],
+    platings: d.platings ?? [],
+    vendors: d.vendors ?? [],
+    locations: d.locations ?? [],
   };
 }
 
+export interface CategoryTotal {
+  category: string;
+  designs: number;
+  pieces: number;
+  retailPaise: number;
+  costPaise: number;
+}
+
 /**
- * A page of stock, and how much there is in total.
+ * What the filtered stock is worth, by category.
  *
- * It used to return a flat 200 rows with a note saying "narrow the
- * filters to see more", which is the system telling the person to work
- * around it. With three and a half thousand lines at Boduppal, "show me
- * every bangle" was simply unanswerable.
- *
- * `count: "exact"` gives the size of the whole match set rather than the
- * page, so the pager knows how many pages exist without a second query.
+ * Answers two different questions from one call — where the money sits,
+ * and where the bulk sits. They rarely have the same answer, and
+ * computing them separately is how two screens end up disagreeing.
  */
+export async function getStockByCategory(
+  filters: StockFilters = {},
+  query = "",
+  limit = 15,
+): Promise<CategoryTotal[]> {
+  const supabase = await createClient();
+  const many = (v?: string) => {
+    const list = (v ?? "").split(",").filter(Boolean);
+    return list.length ? list : null;
+  };
+
+  const { data, error } = await supabase.rpc("stock_by_category", {
+    p_location: filters.location || null,
+    p_categories: many(filters.category),
+    p_styles: many(filters.style),
+    p_ex_categories: many(filters.exCategory),
+    p_query: query.trim() || null,
+    p_limit: limit,
+  });
+  if (error || !data) return [];
+
+  return (data as Array<Record<string, unknown>>).map((r) => ({
+    category: String(r.category),
+    designs: Number(r.designs ?? 0),
+    pieces: Number(r.pieces ?? 0),
+    retailPaise: Number(r.retail_paise ?? 0),
+    costPaise: Number(r.cost_paise ?? 0),
+  }));
+}
+
 export async function searchStock(
   query: string,
   filters: StockFilters = {},
@@ -109,9 +157,21 @@ export async function searchStock(
   else if (cats.length > 1) q = q.in("category", cats);
   if (types.length === 1) q = q.eq("item_type", types[0]);
   else if (types.length > 1) q = q.in("item_type", types);
-  const sty = many(filters.style);
-  if (sty.length === 1) q = q.eq("style", sty[0]);
-  else if (sty.length > 1) q = q.in("style", sty);
+  const exCats = many(filters.exCategory);
+  if (exCats.length > 0) {
+    // PostgREST spells NOT IN as a negated in-filter.
+    q = q.not("category", "in", `(${exCats.map((c) => `"${c}"`).join(",")})`);
+  }
+
+  for (const [col, raw] of [
+    ["style", filters.style],
+    ["plating", filters.plating],
+    ["vendor", filters.vendor],
+  ] as Array<[string, string | undefined]>) {
+    const list = many(raw);
+    if (list.length === 1) q = q.eq(col, list[0]);
+    else if (list.length > 1) q = q.in(col, list);
+  }
 
   const term = query.trim();
   if (term) {

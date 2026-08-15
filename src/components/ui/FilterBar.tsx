@@ -25,6 +25,15 @@ export interface FilterSelect {
    * store, a status.
    */
   multi?: boolean;
+  /**
+   * Reverses the meaning: chosen values are the ones LEFT OUT.
+   *
+   * Same control, opposite sense, and worth having beside the include
+   * filter rather than instead of it — "only bangles" and "everything
+   * but raw material" are both things people want, and neither
+   * expresses the other without ticking sixty boxes.
+   */
+  exclude?: boolean;
 }
 
 /**
@@ -111,6 +120,7 @@ export function FilterBar({
                   id={`f-${s.key}`}
                   label={s.label}
                   allLabel={s.allLabel}
+                  tone={s.exclude ? "exclude" : "include"}
                   options={s.options}
                   chosen={(value[s.key] ?? "").split(",").filter(Boolean)}
                   onChange={(next) => apply({ [s.key]: next.join(",") })}

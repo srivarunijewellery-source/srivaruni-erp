@@ -22,6 +22,7 @@ export function MultiSelect({
   chosen,
   onChange,
   disabled,
+  tone = "include",
 }: {
   id: string;
   label: string;
@@ -31,6 +32,10 @@ export function MultiSelect({
   chosen: string[];
   onChange: (next: string[]) => void;
   disabled?: boolean;
+  /** Excluding reads as a warning, not a selection — amber, and the
+   *  summary says so, or the two controls look identical while doing
+   *  opposite things. */
+  tone?: "include" | "exclude";
 }) {
   const [open, setOpen] = useState(false);
   const [find, setFind] = useState("");
@@ -60,10 +65,12 @@ export function MultiSelect({
   const summary =
     chosen.length === 0
       ? allLabel
-      : chosen
+      : (tone === "exclude" ? "not " : "") +
+        chosen
           .slice(0, 2)
           .map((v) => options.find((o) => o.value === v)?.label ?? v)
-          .join(", ") + (chosen.length > 2 ? ` +${chosen.length - 2}` : "");
+          .join(", ") +
+        (chosen.length > 2 ? ` +${chosen.length - 2}` : "");
 
   return (
     <div className="relative" ref={box}>
@@ -73,7 +80,11 @@ export function MultiSelect({
         disabled={disabled}
         onClick={() => setOpen((o) => !o)}
         className={`flex h-[var(--control-height)] w-full items-center justify-between gap-2 rounded-control border px-2 text-left text-sm disabled:opacity-50 ${
-          chosen.length > 0 ? "border-brand bg-brand-subtle" : "border-border bg-surface"
+          chosen.length === 0
+            ? "border-border bg-surface"
+            : tone === "exclude"
+              ? "border-status-pending-fg bg-status-pending-bg"
+              : "border-brand bg-brand-subtle"
         }`}
       >
         <span className="truncate">{summary}</span>

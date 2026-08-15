@@ -1,5 +1,9 @@
 import type { Metadata } from "next";
-import { getStockFacets, searchStock } from "@/features/stock/queries";
+import {
+  getStockFacets,
+  getStockByCategory,
+  searchStock,
+} from "@/features/stock/queries";
 import { PageHeader } from "@/components/ui/PageHeader";
 import Link from "next/link";
 import { Barcode } from "@/components/ui/Barcode";
@@ -10,6 +14,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { FilterBar } from "@/components/ui/FilterBar";
 import { formatPaise } from "@/lib/money";
+import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Pager } from "@/components/ui/Pager";
 import type { StockRow } from "@/types/domain";
 
@@ -24,21 +29,30 @@ export default async function StockPage({
     category?: string;
     itemType?: string;
     style?: string;
+    plating?: string;
+    vendor?: string;
+    exCategory?: string;
     view?: string;
     page?: string;
   }>;
 }) {
   const {
-    q = "", location = "", category = "", itemType = "", style = "", view = "",
+    q = "", location = "", category = "", itemType = "", style = "",
+    plating = "", vendor = "", exCategory = "", view = "",
     page: pageRaw = "0",
   } = await searchParams;
 
   const PAGE = 60;
   const page = Math.max(0, Number(pageRaw) || 0);
 
-  const [result, facets] = await Promise.all([
-    searchStock(q, { location, category, itemType, style }, PAGE, page * PAGE),
+  const filterSet = { location, category, itemType, style, plating, vendor, exCategory };
+
+  const [result, facets, byCategory] = await Promise.all([
+    searchStock(q, filterSet, PAGE, page * PAGE),
     getStockFacets(),
+    // The same filters, so the summary always describes the list below
+    // it rather than the whole catalogue.
+    getStockByCategory(filterSet, q, 15),
   ]);
   const rows = result.rows;
   const total = result.total;
@@ -47,7 +61,7 @@ export default async function StockPage({
   const qs = (over: Record<string, string>) => {
     const p = new URLSearchParams();
     for (const [k, v] of Object.entries({
-      q, location, category, itemType, style, view, ...over,
+      q, location, category, itemType, style, plating, vendor, exCategory, view, ...over,
     })) {
       if (v) p.set(k, v);
     }
@@ -98,7 +112,9 @@ export default async function StockPage({
     },
   ];
 
-  const filtered = Boolean(q || location || category || itemType || style);
+  const filtered = Boolean(
+    q || location || category || itemType || style || plating || vendor || exCategory,
+  );
   // Pieces on THIS page. The row total spans every page, so summing the
   // page and calling it the total would be a quietly wrong number.
   const pieces = rows.reduce((s, r) => s + r.qty, 0);
@@ -112,7 +128,7 @@ export default async function StockPage({
 
       <FilterBar
         basePath={ROUTES.stock}
-        value={{ q, location, category, itemType, style, view }}
+        value={{ q, location, category, itemType, style, plating, vendor, exCategory, view }}
         searchLabel="Search name or tag"
         searchPlaceholder="Scan a tag or type an item name"
         selects={[
@@ -132,6 +148,14 @@ export default async function StockPage({
             multi: true,
             options: facets.categories.map((c) => ({ value: c, label: c })),
           },
+          {
+            key: "exCategory",
+            label: "Leave out",
+            allLabel: "Nothing excluded",
+            multi: true,
+            exclude: true,
+            options: facets.categories.map((c) => ({ value: c, label: c })),
+          },
           ...(facets.styles.length > 0
             ? [
                 {
@@ -140,6 +164,31 @@ export default async function StockPage({
                   allLabel: "All styles",
                   multi: true,
                   options: facets.styles.map((v) => ({ value: v, label: v })),
+                },
+              ]
+            : []),
+          ...(facets.platings.length > 0
+            ? [
+                {
+                  key: "plating" as const,
+                  label: "Plating",
+                  allLabel: "All platings",
+                  multi: true,
+                  options: facets.platings.map((v) => ({ value: v, label: v })),
+                },
+              ]
+            : []),
+          // Empty for a counter session: vendors are manager-and-above,
+          // so the filter simply is not offered rather than showing an
+          // empty dropdown.
+          ...(facets.vendors.length > 0
+            ? [
+                {
+                  key: "vendor" as const,
+                  label: "Vendor",
+                  allLabel: "All vendors",
+                  multi: true,
+                  options: facets.vendors.map((v) => ({ value: v, label: v })),
                 },
               ]
             : []),
@@ -157,6 +206,87 @@ export default async function StockPage({
             : []),
         ]}
       />
+
+      {/* Where the money is, and where the bulk is.
+
+          Two orderings of the same numbers, because they answer
+          different questions and rarely agree. Both come from one query
+          so the lists can never contradict each other, and both respect
+          the filters above — the summary describes the list below it,
+          not the whole catalogue. */}
+      {byCategory.length > 0 && (
+        <div className="mb-4 grid gap-3 lg:grid-cols-2">
+          <Card>
+            <CardHeader className="flex items-baseline justify-between gap-2">
+              <span className="font-medium">Top categories by value</span>
+              <span className="tnum text-2xs text-text-muted">
+                {formatPaise(byCategory.reduce((n, c) => n + c.retailPaise, 0))}
+              </span>
+            </CardHeader>
+            <CardBody className="p-0">
+              <ul className="divide-y divide-border">
+                {byCategory.map((c) => (
+                  <li key={c.category}>
+                    {/* Clicking narrows the cards below to that category
+                        — the summary is a way in, not just a readout.
+                        Clicking the one already chosen clears it, so the
+                        same row is both the way in and the way back. */}
+                    <Link
+                      href={qs({
+                        category: category === c.category ? "" : c.category,
+                        page: "0",
+                      })}
+                      className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-1.5 text-2xs hover:bg-surface-sunken ${
+                        category === c.category ? "bg-brand-subtle font-medium" : ""
+                      }`}
+                    >
+                      <span className="truncate">{c.category}</span>
+                      <span className="tnum text-right">
+                        {formatPaise(c.retailPaise)}
+                        <span className="ml-2 text-text-subtle">{c.pieces} pc</span>
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </CardBody>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex items-baseline justify-between gap-2">
+              <span className="font-medium">Top categories by pieces</span>
+              <span className="tnum text-2xs text-text-muted">
+                {byCategory.reduce((n, c) => n + c.pieces, 0)} pc
+              </span>
+            </CardHeader>
+            <CardBody className="p-0">
+              <ul className="divide-y divide-border">
+                {[...byCategory].sort((a, b) => b.pieces - a.pieces).map((c) => (
+                  <li key={c.category}>
+                    <Link
+                      href={qs({
+                        category: category === c.category ? "" : c.category,
+                        page: "0",
+                      })}
+                      className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-1.5 text-2xs hover:bg-surface-sunken ${
+                        category === c.category ? "bg-brand-subtle font-medium" : ""
+                      }`}
+                    >
+                      <span className="truncate">{c.category}</span>
+                      <span className="tnum text-right">
+                        {c.pieces} pc
+                        <span className="ml-2 text-text-subtle">
+                          {c.designs} design{c.designs === 1 ? "" : "s"}
+                        </span>
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </CardBody>
+          </Card>
+        </div>
+      )}
 
       {rows.length === 0 ? (
         <EmptyState
@@ -199,7 +329,7 @@ export default async function StockPage({
 
           <Pager
             basePath={ROUTES.stock}
-            params={{ q, location, category, itemType, style, view }}
+            params={{ q, location, category, itemType, style, plating, vendor, exCategory, view }}
             page={page}
             pageSize={PAGE}
             total={total}
@@ -248,7 +378,7 @@ export default async function StockPage({
           <div className="mt-4">
             <Pager
               basePath={ROUTES.stock}
-              params={{ q, location, category, itemType, style, view }}
+              params={{ q, location, category, itemType, style, plating, vendor, exCategory, view }}
               page={page}
               pageSize={PAGE}
               total={total}
