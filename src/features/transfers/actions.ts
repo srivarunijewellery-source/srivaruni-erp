@@ -342,6 +342,12 @@ export async function receiveTransfer(formData: FormData): Promise<Result> {
   const supabase = await createClient();
   const { error } = await supabase.rpc("receive_transfer", {
     p_transfer: parsed.data.transferId,
+    // Only ever true when the receiving store has said, in as many
+    // words, that the shipment did not arrive. The database refuses a
+    // blanket write-off otherwise — one stray scan used to convert a
+    // whole document to "nothing arrived" and BOD-TR-000037 lost 119
+    // pieces that way.
+    p_confirm_nothing_arrived: formData.get("confirmNothingArrived") === "1",
   });
   if (error) return err(toMessage(error));
   await pokeDispatchBestEffort();

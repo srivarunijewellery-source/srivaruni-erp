@@ -18,6 +18,7 @@ export const ROUTES = {
   transit: "/transfers/transit",
   stock: "/stock",
   stockReconcile: "/stock/reconcile",
+  priceCheck: "/pricing/check",
   products: "/products",
   vendors: "/vendors",
   customers: "/customers",
@@ -116,6 +117,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { href: ROUTES.transit,     label: "In transit" },
       { href: ROUTES.adjustments, label: "Adjustments" },
       { href: ROUTES.stockReconcile, label: "Reconcile", requires: "cost.view" },
+      { href: ROUTES.priceCheck, label: "Price check", requires: "cost.view" },
     ],
   },
   {
