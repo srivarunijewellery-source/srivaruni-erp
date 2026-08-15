@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Field";
+import { CameraScanner } from "@/components/ui/CameraScanner";
 import { cn } from "@/lib/cn";
 import type { ScanResult } from "./actions";
 import type { Result } from "@/lib/result";
@@ -66,6 +67,12 @@ export function ScanBox({
 
   return (
     <div className="space-y-3">
+      {/* The camera goes through the same submit as the keyboard field,
+          so a scan behaves identically however it arrived — same
+          queueing, same guard against picking more than the shelf holds,
+          same banner. */}
+      <CameraScanner onScan={(code) => submit(code)} disabled={disabled} />
+
       <form
         onSubmit={(e) => {
           e.preventDefault();

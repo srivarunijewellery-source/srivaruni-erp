@@ -13,6 +13,8 @@
   "dependencies": {
     "@supabase/ssr": "^0.12.3",
     "@supabase/supabase-js": "^2.110.9",
+    "@zxing/browser": "^0.1.5",
+    "@zxing/library": "^0.21.3",
     "bwip-js": "^4.11.2",
     "next": "^15.5.22",
     "pdf-lib": "^1.17.1",

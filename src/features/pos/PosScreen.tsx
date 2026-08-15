@@ -44,6 +44,7 @@ import { CloseRegisterPanel } from "./CloseRegisterPanel";
 import { CustomerPanel } from "./CustomerPanel";
 import { DrawerPanel } from "./DrawerPanel";
 import { SessionBillsPanel, type ReceiptHeader } from "./SessionBillsPanel";
+import { CameraScanner } from "@/components/ui/CameraScanner";
 import { ReturnPanel } from "./ReturnPanel";
 import { printReceipt, reprintLast, type ReceiptData } from "./receipt";
 import {
@@ -1540,6 +1541,16 @@ export function PosScreen({
             // Same font as the scan box beside it. Two different
             // typefaces in one control pair reads as an accident.
             className="h-12 min-w-56 flex-1 rounded-control border-2 border-border bg-surface px-3 font-mono text-base leading-none tracking-wide placeholder:text-text-subtle focus:border-brand focus:shadow-[var(--control-ring)] focus:outline-none"
+          />
+          {/* For a counter run off a phone, or when the hardware scanner
+              is charging. Feeds the same handleScan as the wedge, so a
+              camera read and a scanner read are indistinguishable from
+              here on. Renders nothing where the browser cannot decode. */}
+          <CameraScanner
+            onScan={(code) => {
+              handleScan(code);
+              refocusScan();
+            }}
           />
         </div>
 
