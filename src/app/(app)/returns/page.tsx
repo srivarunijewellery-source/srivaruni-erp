@@ -1,3 +1,4 @@
+import { ReturnCustomerPicker } from "@/features/returns/ReturnCustomerPicker";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requireUser } from "@/features/auth/session";
@@ -106,14 +107,24 @@ export default async function ReturnsPage({
                     <span className="block truncate text-2xs text-text-muted">
                       {formatDate(r.returnDate)}
                       
-                      {r.customerName ? ` · ${r.customerName}` : ""} · {r.pieces} piece
+                      {r.customerName ? ` · ${r.customerName}` : " · nobody attached"} ·{" "}
+                      {r.pieces} piece
                       {r.pieces === 1 ? "" : "s"}
                       {r.reason ? ` · ${r.reason}` : ""}
                       {r.staffName ? ` · ${r.staffName}` : ""}
                     </span>
                   </span>
-                  <span className="tnum font-mono text-sm">
-                    {formatPaise(r.totalPaise)}
+                  <span className="flex flex-col items-end gap-1">
+                    <span className="tnum font-mono text-sm">
+                      {formatPaise(r.totalPaise)}
+                    </span>
+                    {/* Fixes the gap that made someone cancel a whole
+                        bill to get a customer onto a return. */}
+                    <ReturnCustomerPicker
+                      returnId={r.id}
+                      returnNo={r.returnNo}
+                      current={r.customerName}
+                    />
                   </span>
                 </li>
               ))}

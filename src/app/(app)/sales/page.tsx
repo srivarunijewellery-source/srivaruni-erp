@@ -48,7 +48,7 @@ export default async function SalesPage({
   };
 
   const [branches, registers, recent, sellers, staffList] = await Promise.all([
-    getSalesSummary(start, end),
+    getSalesSummary(start, end, filters),
     getRegisterStatus(),
     // 500, not 100: this is the invoice register, and "the last hundred"
     // silently hid older bills inside a date range that clearly asked

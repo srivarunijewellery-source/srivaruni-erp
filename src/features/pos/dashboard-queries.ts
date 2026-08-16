@@ -16,9 +16,34 @@ export interface BranchSales {
   otherPaise: number;
 }
 
-export async function getSalesSummary(from: string, to: string): Promise<BranchSales[]> {
+/**
+ * The summary cards above the invoice list.
+ *
+ * Takes the SAME filters as the list, because they sit on one screen and
+ * must answer one question. They used to take only the dates, so
+ * narrowing to a salesman or a branch changed the list underneath while
+ * the cards carried on describing the whole day — two numbers on one
+ * page, disagreeing.
+ */
+export async function getSalesSummary(
+  from: string,
+  to: string,
+  filters: {
+    location?: string;
+    soldBy?: string;
+    status?: string;
+    q?: string;
+  } = {},
+): Promise<BranchSales[]> {
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("sales_summary", { p_from: from, p_to: to });
+  const { data, error } = await supabase.rpc("sales_summary", {
+    p_from: from,
+    p_to: to,
+    p_location: filters.location || null,
+    p_sold_by: filters.soldBy || null,
+    p_status: filters.status || null,
+    p_query: filters.q?.trim() || null,
+  });
   if (error) throw error;
 
   type Row = Record<string, unknown>;

@@ -353,6 +353,9 @@ export interface ProductMovement {
    *  Null everywhere else -- a movement that is not a sale has no price,
    *  and a non-owner must not learn cost from a stock history page. */
   billNo: string | null;
+  billId: string | null;
+  customerId: string | null;
+  customerName: string | null;
   soldPaise: number | null;
   costPaise: number | null;
   marginPaise: number | null;
@@ -405,12 +408,28 @@ export async function getProductMovements(
     ? [...new Set(rows.filter((m) => m.ref_type === "bill" && m.ref_id).map((m) => m.ref_id as string))]
     : [];
 
-  const sale = new Map<string, { billNo: string; sold: number; cost: number }>();
+  // Bill AND customer, because "it sold" is never the end of the
+  // question — who bought it, and on which invoice, is what someone
+  // actually wants next. Both were on screen as plain text with no way
+  // through.
+  const sale = new Map<
+    string,
+    {
+      billNo: string;
+      billId: string;
+      customerId: string | null;
+      customerName: string | null;
+      sold: number;
+      cost: number;
+    }
+  >();
   if (billIds.length > 0) {
     const [{ data: lines }, { data: cost }] = await Promise.all([
       supabase
         .from("bill_lines")
-        .select("bill_id, qty, line_total_paise, bills(bill_no)")
+        .select(
+          "bill_id, qty, line_total_paise, bills(bill_no, customer_id, customers(name))",
+        )
         .eq("item_id", itemId)
         .in("bill_id", billIds),
       supabase
@@ -421,9 +440,19 @@ export async function getProductMovements(
     ]);
     const unitCost = Number(cost?.landed_cost_paise ?? 0);
     for (const l of lines ?? []) {
-      const b = one(l.bills as never) as { bill_no: string } | undefined;
+      const b = one(l.bills as never) as
+        | {
+            bill_no: string;
+            customer_id: string | null;
+            customers?: { name: string } | Array<{ name: string }> | null;
+          }
+        | undefined;
+      const cust = b?.customers ? one(b.customers as never) : null;
       sale.set(l.bill_id as string, {
         billNo: b?.bill_no ?? "—",
+        billId: l.bill_id as string,
+        customerId: b?.customer_id ?? null,
+        customerName: (cust as { name: string } | null)?.name ?? null,
         sold: Number(l.line_total_paise ?? 0),
         cost: unitCost * Number(l.qty ?? 0),
       });
@@ -441,6 +470,11 @@ export async function getProductMovements(
       createdAt: m.created_at,
       by: one(m.staff)?.name ?? null,
       billNo: s?.billNo ?? null,
+      billId: s?.billId ?? null,
+      customerId: s?.customerId ?? null,
+      // Null customer means a walk-in, which is a fact worth showing
+      // rather than an empty cell.
+      customerName: s?.customerName ?? null,
       soldPaise: s?.sold ?? null,
       costPaise: s?.cost ?? null,
       marginPaise: s ? s.sold - s.cost : null,

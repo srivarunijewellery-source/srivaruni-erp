@@ -42,6 +42,7 @@ import type { PrintConfig } from "@/features/print/queries";
 import { getLivePrintConfig } from "@/features/print/actions";
 import { CloseRegisterPanel } from "./CloseRegisterPanel";
 import { CustomerPanel } from "./CustomerPanel";
+import { Modal } from "@/components/ui/Modal";
 import { DrawerPanel } from "./DrawerPanel";
 import { SessionBillsPanel, type ReceiptHeader } from "./SessionBillsPanel";
 import { CameraScanner } from "@/components/ui/CameraScanner";
@@ -186,6 +187,16 @@ export function PosScreen({
   // Which line's salesman picker is open.
   const [sellerFor, setSellerFor] = useState<string | null>(null);
   const [showPay, setShowPay] = useState(false);
+  /**
+   * One deliberate stop before selling to nobody.
+   *
+   * A bill with no customer is often correct — plenty of people walk in,
+   * pay cash and leave. But it is also what happens when the cashier
+   * simply forgot, and by then the sale is gone: no history, no credit
+   * note, nobody to call about a return. Asking once, at the last
+   * moment, costs a tap and catches the forgetful case.
+   */
+  const [confirmWalkIn, setConfirmWalkIn] = useState(false);
   const [printAfter, setPrintAfter] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -2024,7 +2035,10 @@ export function PosScreen({
               size="lg"
               className="w-full"
               disabled={cart.length === 0 || pending || !billSeller}
-              onClick={() => setShowPay(true)}
+              onClick={() => {
+                if (!customer) setConfirmWalkIn(true);
+                else setShowPay(true);
+              }}
             >
               {billSeller ? "Take payment" : "Choose a salesman first"}
             </Button>
@@ -2130,6 +2144,35 @@ export function PosScreen({
             refocusScan();
           }}
         />
+      )}
+
+      {confirmWalkIn && (
+        <Modal title="No customer on this bill" onClose={() => setConfirmWalkIn(false)}>
+          <div className="space-y-3">
+            <p className="text-sm">
+              Nothing will be recorded against a customer — no purchase history,
+              no credit note, and nobody to contact if it comes back.
+            </p>
+            <p className="text-2xs text-text-muted">
+              {formatPaise(totals.net)} · {totals.count} piece
+              {totals.count === 1 ? "" : "s"}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="primary"
+                onClick={() => {
+                  setConfirmWalkIn(false);
+                  setShowPay(true);
+                }}
+              >
+                Yes, it is a walk-in
+              </Button>
+              <Button variant="secondary" onClick={() => setConfirmWalkIn(false)}>
+                Wait — I will add one
+              </Button>
+            </div>
+          </div>
+        </Modal>
       )}
 
       {showPay && (

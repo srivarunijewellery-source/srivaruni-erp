@@ -436,9 +436,32 @@ export default async function ProductDetailPage({
                           {m.note && (
                             <span className="block text-text-subtle">{m.note}</span>
                           )}
+                          {/* The invoice and the buyer, both reachable.
+                              "It sold" is never the end of the question —
+                              who bought it and on which bill is what
+                              someone wants next, and both sat here as
+                              dead text. */}
                           {owner && m.billNo && (
-                            <span className="block font-mono text-text-subtle">
-                              {m.billNo}
+                            <span className="block text-2xs">
+                              <Link
+                                href={`${ROUTES.sales}?q=${encodeURIComponent(m.billNo)}`}
+                                className="font-mono text-brand hover:underline"
+                              >
+                                {m.billNo}
+                              </Link>
+                              {m.customerId ? (
+                                <>
+                                  {" · "}
+                                  <Link
+                                    href={ROUTES.customerDetail(m.customerId)}
+                                    className="text-brand hover:underline"
+                                  >
+                                    {m.customerName ?? "customer"}
+                                  </Link>
+                                </>
+                              ) : (
+                                <span className="text-text-subtle"> · walk-in</span>
+                              )}
                             </span>
                           )}
                         </td>
