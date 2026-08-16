@@ -116,6 +116,15 @@ export async function listRecentBills(
       ? query.eq("status", filters.status)
       : query.in("status", ["final", "cancelled"]);
 
+  // Rehearsal bills stay out of the invoice register.
+  //
+  // Every dashboard already excluded them, but this list did not — so
+  // the Today figures and the sales page disagreed, and the page that
+  // looks most like an invoice book was the one showing sales that never
+  // happened. A bill is flagged only when EVERY line is test stock, so a
+  // real sale is never hidden by this.
+  query = query.eq("is_test", false);
+
   // The list follows the same window as the figures above it. Showing
   // "the last 50 bills ever" beside a one-day revenue total was the
   // reason people thought the numbers disagreed.

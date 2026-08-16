@@ -168,22 +168,31 @@ export interface Seller {
  * person was rostered elsewhere that day is worse than a slightly
  * longer list. Home-branch people sort first.
  */
+/**
+ * Who can be credited with a sale at this counter.
+ *
+ * Only staff based here, plus anyone with no home branch set — an owner
+ * or a floater who genuinely works across both. It used to return every
+ * active person and merely sort the local ones first, so a Zaheerabad
+ * cashier scrolled past nine Boduppal names to reach their own two.
+ * That is how the wrong salesman gets picked, and salesman is what
+ * commission is paid on.
+ */
 export async function listSellers(locationId: string): Promise<Seller[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("staff")
     .select("id, name, home_location_id")
     .eq("active", true)
+    .or(`home_location_id.eq.${locationId},home_location_id.is.null`)
     .order("name");
   if (error) return [];
 
-  return (data ?? [])
-    .map((r) => ({
-      id: r.id,
-      name: r.name,
-      isHere: r.home_location_id === locationId,
-    }))
-    .sort((a, b) => (a.isHere === b.isHere ? 0 : a.isHere ? -1 : 1));
+  return (data ?? []).map((r) => ({
+    id: r.id,
+    name: r.name,
+    isHere: r.home_location_id === locationId,
+  }));
 }
 
 export interface Branch {
