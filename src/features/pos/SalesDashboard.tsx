@@ -403,7 +403,9 @@ export function SalesDashboard({
       <Card>
         <CardHeader className="flex items-center justify-between gap-2">
           <span className="font-medium">Who sold what</span>
-          <span className="text-2xs text-text-muted">credited per line</span>
+          <span className="text-2xs text-text-muted">
+            credited per line · {from} to {to}
+          </span>
         </CardHeader>
         <CardBody className="p-0">
           {sellers.length === 0 ? (
@@ -427,11 +429,32 @@ export function SalesDashboard({
                     >
                       {s.staffName}
                     </button>
+                    {!s.stillHere && (
+                      <span className="ml-1.5 text-2xs text-text-subtle">(left)</span>
+                    )}
                     <p className="text-2xs text-text-muted">
                       {s.pieces} pieces across {s.billsTouched} bill
                       {s.billsTouched === 1 ? "" : "s"}
                       {s.locationCode ? ` · ${s.locationCode}` : ""}
+                      {s.daysActive > 0 && ` · ${s.daysActive} day${s.daysActive === 1 ? "" : "s"} on the floor`}
                     </p>
+                  </div>
+
+                  {/* The figures a bonus tier is actually set against.
+                      Revenue alone rewards whoever wrote the most bills;
+                      average bill and margin say who sold well. */}
+                  <div className="tnum text-right text-2xs">
+                    <p className="text-text-muted">
+                      avg {formatPaise(s.avgBillPaise)}
+                    </p>
+                    <p className="text-text-muted">
+                      margin {formatPaise(s.marginPaise)}
+                    </p>
+                  </div>
+                  <div className="w-16 text-right">
+                    <span className="tnum text-2xs text-text-subtle">
+                      {(s.shareBps / 100).toFixed(1)}%
+                    </span>
                   </div>
                   <span className="font-mono text-sm">{formatPaise(s.soldPaise)}</span>
                 </li>

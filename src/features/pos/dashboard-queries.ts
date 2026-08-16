@@ -195,10 +195,18 @@ export interface SalespersonRow {
   staffId: string;
   staffName: string;
   locationCode: string | null;
+  /** False when they have left. They still sold what they sold. */
+  stillHere: boolean;
   linesSold: number;
   pieces: number;
   soldPaise: number;
   billsTouched: number;
+  avgBillPaise: number;
+  costPaise: number;
+  marginPaise: number;
+  /** Basis points of the period's revenue — 2400 is 24%. */
+  shareBps: number;
+  daysActive: number;
 }
 
 /**
@@ -209,12 +217,13 @@ export interface SalespersonRow {
 export async function getSalespersonReport(
   from: string,
   to: string,
+  locationId?: string,
 ): Promise<SalespersonRow[]> {
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("salesperson_report", {
     p_from: from,
     p_to: to,
-    p_location: null,
+    p_location: locationId || null,
   });
   if (error) return [];
 
@@ -223,10 +232,19 @@ export async function getSalespersonReport(
     staffId: String(r.staff_id),
     staffName: String(r.staff_name ?? ""),
     locationCode: r.location_code ? String(r.location_code) : null,
+    // Someone who has left still sold what they sold. Marking them
+    // rather than hiding them keeps the period honest.
+    stillHere: Boolean(r.still_here),
     linesSold: Number(r.lines_sold ?? 0),
     pieces: Number(r.pieces ?? 0),
     soldPaise: Number(r.sold_paise ?? 0),
     billsTouched: Number(r.bills_touched ?? 0),
+    avgBillPaise: Number(r.avg_bill_paise ?? 0),
+    costPaise: Number(r.cost_paise ?? 0),
+    marginPaise: Number(r.margin_paise ?? 0),
+    /** Basis points of the period's revenue — 2400 is 24%. */
+    shareBps: Number(r.share_bps ?? 0),
+    daysActive: Number(r.days_active ?? 0),
   }));
 }
 

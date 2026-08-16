@@ -54,7 +54,7 @@ export default async function SalesPage({
     // silently hid older bills inside a date range that clearly asked
     // for them.
     listRecentBills(500, { from: start, to: end, ...filters }),
-    getSalespersonReport(start, end),
+    getSalespersonReport(start, end, filters.location),
     listSellers(user.locationId ?? ""),
   ]);
 
