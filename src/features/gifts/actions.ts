@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { ROUTES } from "@/config/nav";
 import { err, ok, toMessage, type Result } from "@/lib/result";
 import { getCurrentUser } from "@/features/auth/session";
+import { searchGiftItems, type GiftItemHit } from "./queries";
 
 const schema = z
   .object({
@@ -75,4 +76,16 @@ export async function setGiftOfferActive(formData: FormData): Promise<Result> {
 
   revalidatePath(ROUTES.gifts);
   return ok(undefined);
+}
+
+/** Item search for the gift picker — see searchGiftItems for why this is
+ *  not the barcode-label search. */
+export async function searchGiftItemsAction(
+  term: string,
+): Promise<Result<GiftItemHit[]>> {
+  try {
+    return ok(await searchGiftItems(term));
+  } catch (e) {
+    return err(toMessage(e));
+  }
 }

@@ -90,3 +90,59 @@ export async function allocateGifts(billPaise: number): Promise<GiftAllocation[]
     itemQty: Number(r.item_qty ?? 0),
   }));
 }
+
+export interface GiftItemHit {
+  itemId: string;
+  name: string;
+  barcode: string;
+  status: string;
+  onHand: number;
+}
+
+/**
+ * Items that can be given away.
+ *
+ * Deliberately NOT the barcode-label search this used to borrow. That
+ * one requires status 'active', which is right for printing a price tag
+ * and wrong here: a giveaway is exactly the kind of thing that is
+ * legitimately unpriced, and a silver coin bought to be handed out never
+ * needs a selling price at all. Requiring 'active' meant the item simply
+ * never appeared in the picker, with no message explaining why.
+ *
+ * Discontinued items are still excluded — offering to give away
+ * something withdrawn from the catalogue is not a case worth serving.
+ */
+export async function searchGiftItems(term: string): Promise<GiftItemHit[]> {
+  const q = term.trim();
+  if (q.length < 2) return [];
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("items")
+    .select("id, name, barcode, status")
+    .neq("status", "discontinued")
+    .or(`name.ilike.%${q}%,barcode.ilike.%${q}%`)
+    .order("name")
+    .limit(20);
+  if (error || !data) return [];
+
+  const ids = data.map((r) => r.id);
+  const held = new Map<string, number>();
+  if (ids.length > 0) {
+    const { data: bal } = await supabase
+      .from("stock_balances")
+      .select("item_id, qty")
+      .in("item_id", ids);
+    for (const b of bal ?? []) {
+      held.set(b.item_id, (held.get(b.item_id) ?? 0) + Number(b.qty ?? 0));
+    }
+  }
+
+  return data.map((r) => ({
+    itemId: r.id,
+    name: r.name,
+    barcode: r.barcode,
+    status: r.status,
+    onHand: held.get(r.id) ?? 0,
+  }));
+}

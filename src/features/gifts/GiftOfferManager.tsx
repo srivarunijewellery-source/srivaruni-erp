@@ -9,8 +9,12 @@ import { Badge } from "@/components/ui/Badge";
 import { itemPhotoUrl } from "@/lib/storage";
 import { formatPaise } from "@/lib/money";
 import { formatDate } from "@/lib/format";
-import { searchItemsForLabels } from "@/features/barcodes/actions";
-import { saveGiftOffer, setGiftOfferActive } from "./actions";
+
+import {
+  saveGiftOffer,
+  setGiftOfferActive,
+  searchGiftItemsAction,
+} from "./actions";
 import type { GiftOffer } from "./queries";
 import { addDays, todayIso } from "@/lib/dates";
 
@@ -33,7 +37,9 @@ export function GiftOfferManager({
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<Array<{ itemId: string; name: string; barcode: string }>>([]);
+  const [results, setResults] = useState<
+    Array<{ itemId: string; name: string; barcode: string; status: string; onHand: number }>
+  >([]);
   const [picked, setPicked] = useState<{ itemId: string; name: string } | null>(null);
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -41,8 +47,17 @@ export function GiftOfferManager({
     if (debounce.current) clearTimeout(debounce.current);
     if (!query.trim()) return setResults([]);
     debounce.current = setTimeout(() => {
-      searchItemsForLabels(query).then((r) => {
-        if (r.ok) setResults(r.data.map((i) => ({ itemId: i.itemId, name: i.name, barcode: i.barcode })));
+      searchGiftItemsAction(query).then((r) => {
+        if (r.ok)
+          setResults(
+            r.data.map((i) => ({
+              itemId: i.itemId,
+              name: i.name,
+              barcode: i.barcode,
+              status: i.status,
+              onHand: i.onHand,
+            })),
+          );
       });
     }, 250);
     return () => {
