@@ -111,6 +111,11 @@ export async function getStockByCategory(
     p_categories: many(filters.category),
     p_styles: many(filters.style),
     p_ex_categories: many(filters.exCategory),
+    // Vendor and plating were missing here, so picking a vendor narrowed
+    // the cards while the category panels above them carried on
+    // describing the whole shelf.
+    p_platings: many(filters.plating),
+    p_vendors: many(filters.vendor),
     p_query: query.trim() || null,
     p_limit: limit,
   });
