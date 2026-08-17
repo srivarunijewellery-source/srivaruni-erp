@@ -344,6 +344,7 @@ export async function listPickableStock(
     vendor: string | null;
     mrp_paise: number | null;
     landed_cost_paise: number | null;
+    variant: string | null;
   };
 
   const rows = (data ?? []) as Row[];
@@ -368,6 +369,9 @@ export async function listPickableStock(
       committed: Number(r.committed ?? 0),
       mrpPaise: r.mrp_paise,
       landedCostPaise: r.landed_cost_paise,
+      // Size or colour. Four bangles of one design differ only by this,
+      // so a card without it is a guess.
+      variant: r.variant,
     })),
   };
 }

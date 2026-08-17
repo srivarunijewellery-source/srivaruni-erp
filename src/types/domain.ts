@@ -206,6 +206,9 @@ export interface PickableItem {
    *  store. Picking on top of this is how one piece gets promised
    *  twice. */
   committed: number;
+  /** Size or colour — the thing that distinguishes four otherwise
+   *  identical bangles. Null when the design has no variants. */
+  variant: string | null;
 }
 
 /** What the filter bar can offer, scoped to what a store actually holds. */

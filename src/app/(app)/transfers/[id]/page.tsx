@@ -13,6 +13,7 @@ import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { RequestBuilder } from "@/features/transfers/RequestBuilder";
 import { TransferHeaderEditor } from "@/features/transfers/TransferHeaderEditor";
 import { StockFilterBar, type StockFilterState } from "@/features/transfers/StockFilterBar";
+import { DiscardTransfer } from "@/features/transfers/DiscardTransfer";
 import { PickPanel } from "@/features/transfers/PickPanel";
 import { ApprovalPanel } from "@/features/transfers/ApprovalPanel";
 import { ShippingPanel } from "@/features/transfers/ShippingPanel";
@@ -114,6 +115,17 @@ export default async function TransferDetailPage({
       <div className="mb-4">
         {transfer.status === "requested" && can(user, "transfer.pick") && (
           <PickPanel transfer={transfer} />
+        )}
+        {/* Only before picking: a request created by mistake had no way
+            out and sat holding stock as committed. */}
+        {transfer.status === "requested" && can(user, "transfer.approve") && (
+          <div className="mt-3">
+            <DiscardTransfer
+              transferId={transfer.id}
+              docNo={transfer.docNo}
+              lines={transfer.lines.length}
+            />
+          </div>
         )}
         {transfer.status === "picking" &&
           (can(user, "transfer.pick") ? (

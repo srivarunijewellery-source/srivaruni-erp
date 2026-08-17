@@ -202,7 +202,17 @@ export function NewRequestBuilder({
                       <p className="mt-2 line-clamp-2 text-2xs font-medium leading-tight">
                         {item.name}
                       </p>
-                      <p className="font-mono text-2xs text-text-muted">{item.barcode}</p>
+                      <p className="font-mono text-2xs text-text-muted">
+                        {item.barcode}
+                        {/* The size, beside the tag. Four bangles of one
+                            design differ only by this, and a card
+                            without it is a guess. */}
+                        {item.variant && (
+                          <span className="ml-1.5 rounded-full bg-brand-subtle px-1.5 py-0.5 font-sans font-medium text-brand">
+                            {item.variant}
+                          </span>
+                        )}
+                      </p>
                       <p className="text-2xs text-text-subtle">
                         {outOfStock ? "None here" : `${item.qtyAvailable} on shelf`}
                         {item.ageDays !== null && item.ageDays >= 30 && (

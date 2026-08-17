@@ -504,3 +504,28 @@ export async function getTransferPipeline(
     })),
   );
 }
+
+/**
+ * Discards a transfer request that was never acted on.
+ *
+ * Only before picking starts — the database refuses after that, since
+ * from then on the document describes something that physically
+ * happened. A request created by mistake previously had no way out and
+ * sat holding stock as committed.
+ */
+export async function deleteTransfer(formData: FormData): Promise<Result<void>> {
+  const parsed = idSchema.safeParse({ transferId: formData.get("transferId") });
+  if (!parsed.success) return err("Missing transfer reference.");
+
+  const reason = String(formData.get("reason") ?? "").trim();
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("delete_transfer", {
+    p_transfer: parsed.data.transferId,
+    p_reason: reason || null,
+  });
+  if (error) return err(toMessage(error));
+
+  revalidatePath(ROUTES.transfers);
+  return ok(undefined);
+}
