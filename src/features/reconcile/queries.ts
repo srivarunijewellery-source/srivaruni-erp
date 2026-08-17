@@ -1,5 +1,6 @@
 import type { ReconRow, ReconIssue, LedgerEntry } from "./types";
 import { createClient } from "@/lib/supabase/server";
+import { byBarcodeDesc } from "@/lib/sort";
 
 // Re-exported so server callers have one import site.
 export type { ReconRow, ReconIssue, LedgerEntry } from "./types";
@@ -20,7 +21,7 @@ export async function listReconciliation(locationId?: string): Promise<ReconRow[
   });
   if (error) return [];
 
-  return ((data ?? []) as Array<Record<string, unknown>>).map((r) => ({
+  const rows = ((data ?? []) as Array<Record<string, unknown>>).map((r) => ({
     issue: r.issue as ReconIssue,
     itemId: String(r.item_id),
     barcode: String(r.barcode),
@@ -32,6 +33,14 @@ export async function listReconciliation(locationId?: string): Promise<ReconRow[
     detail: String(r.detail ?? ""),
     lastMoved: (r.last_moved as string | null) ?? null,
   }));
+
+  // stock_reconciliation unions four fault branches and orders none of
+  // them, so the same query could hand back the same rows in a different
+  // order twice running -- which makes a list someone is working through
+  // impossible to trust. Group by fault, newest barcode first inside each.
+  return rows.sort(
+    (a, b) => a.issue.localeCompare(b.issue) || byBarcodeDesc(a, b),
+  );
 }
 
 /**
@@ -40,6 +49,10 @@ export async function listReconciliation(locationId?: string): Promise<ReconRow[
  * A running balance is computed as we go: the fault is almost always
  * visible as the moment the total first goes wrong, and reading raw
  * deltas means doing that arithmetic in your head down forty rows.
+ *
+ * Oldest first, and it must stay that way — the running total is only
+ * meaningful accumulated forwards, and this is one item, so there is no
+ * barcode ordering to apply.
  */
 export async function getItemLedger(
   itemId: string,

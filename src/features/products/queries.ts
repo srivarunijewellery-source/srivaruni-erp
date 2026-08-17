@@ -85,11 +85,19 @@ export async function listProducts(
   // Two select shapes rather than one built by concatenation: joining
   // strings with + collapses the row type to an error type at compile
   // time, so each variant has to be its own literal.
+  //
+  // Size and colour are NOT embedded here, and must not be. Their
+  // foreign keys are composite -- (size_key, size_id) references
+  // attribute_options(attr_key, id) -- and PostgREST cannot resolve a
+  // composite relationship from a single column hint. `size:size_id(value)`
+  // threw PGRST200 "Could not find a relationship between 'items' and
+  // 'size_id'" on every render, which is what took the whole page down
+  // rather than just blanking a column. They are resolved below in one
+  // extra indexed read, the same way the detail page has always done it.
   const WITH_LOCATION = `id, barcode, name, status, category_id, created_at,
        mrp_paise, selling_price_paise, hsn, gst_rate,
        colour_id, plating_id, stone_id, size_id,
        categories(name), item_types(name),
-       size:size_id(value), colour:colour_id(value),
        item_photos(storage_path, is_primary, sort_order),
        stock_balances!inner(qty, location_id)` as const;
 
@@ -97,7 +105,6 @@ export async function listProducts(
        mrp_paise, selling_price_paise, hsn, gst_rate,
        colour_id, plating_id, stone_id, size_id,
        categories(name), item_types(name),
-       size:size_id(value), colour:colour_id(value),
        item_photos(storage_path, is_primary, sort_order),
        stock_balances(qty, location_id)` as const;
 
@@ -112,24 +119,34 @@ export async function listProducts(
         .from("items")
         .select(WITH_LOCATION, { count: "exact" })
         .gt("stock_balances.qty", 0)
-        // id as a tiebreaker: items created in one inward share a
-        // timestamp to the microsecond, and without a second key their
-        // order is undefined between queries — so a row can appear on
-        // two pages or on none.
-        .order("created_at", { ascending: false })
-        .order("id", { ascending: false })
+        // Barcode descending: newest tag first. Codes run in sequence,
+        // so this is creation order without trusting created_at, which
+        // the migration set to the import date for thousands of pieces.
+        // Unique, so it is also the stable paging key -- no row on two
+        // pages, none lost between them.
+        //
+        // is_test leads only to sink the five UAT pieces: TEST- sorts
+        // above SV in plain text order, so without it every screen
+        // opens on rehearsal stock.
+        .order("is_test")
+        .order("barcode", { ascending: false })
         .range(offset, offset + limit - 1)
     : supabase
         .from("items")
         // count: exact gives the size of the whole match set, not the
         // page, which is what lets the UI say "of 6,547".
         .select(PLAIN, { count: "exact" })
-        // id as a tiebreaker: items created in one inward share a
-        // timestamp to the microsecond, and without a second key their
-        // order is undefined between queries — so a row can appear on
-        // two pages or on none.
-        .order("created_at", { ascending: false })
-        .order("id", { ascending: false })
+        // Barcode descending: newest tag first. Codes run in sequence,
+        // so this is creation order without trusting created_at, which
+        // the migration set to the import date for thousands of pieces.
+        // Unique, so it is also the stable paging key -- no row on two
+        // pages, none lost between them.
+        //
+        // is_test leads only to sink the five UAT pieces: TEST- sorts
+        // above SV in plain text order, so without it every screen
+        // opens on rehearsal stock.
+        .order("is_test")
+        .order("barcode", { ascending: false })
         .range(offset, offset + limit - 1);
 
   if (needsStockJoin && filters.locationId) {
@@ -184,6 +201,27 @@ export async function listProducts(
     }
   }
 
+  // Size and colour names, in one read rather than an embed.
+  //
+  // Two attribute ids per row at most and a page is sixty rows, so this
+  // is a single indexed lookup on at most 120 ids -- cheaper than the
+  // embed it replaces, which PostgREST could not resolve at all.
+  const attrNames = new Map<string, string>();
+  const attrIds = [
+    ...new Set(
+      (data ?? [])
+        .flatMap((r) => [r.size_id, r.colour_id])
+        .filter(Boolean) as string[],
+    ),
+  ];
+  if (attrIds.length > 0) {
+    const { data: attrs } = await supabase
+      .from("attribute_options")
+      .select("id, value")
+      .in("id", attrIds);
+    for (const a of attrs ?? []) attrNames.set(a.id, a.value);
+  }
+
   const mapped = (data ?? []).map((r) => {
     const category = Array.isArray(r.categories) ? r.categories[0] : r.categories;
     const photos = (r.item_photos ?? []) as Array<{
@@ -204,9 +242,11 @@ export async function listProducts(
       colourName: null,
       platingName: null,
       // Size or colour: what tells two identical-looking pieces apart.
+      // Size wins where a piece has both, because two bangles of one
+      // design differ by size far more often than by colour.
       variant:
-        (Array.isArray(r.size) ? r.size[0] : r.size)?.value ??
-        (Array.isArray(r.colour) ? r.colour[0] : r.colour)?.value ??
+        (r.size_id ? attrNames.get(r.size_id) : null) ??
+        (r.colour_id ? attrNames.get(r.colour_id) : null) ??
         null,
       hsn: r.hsn,
       gstRate: r.gst_rate === null ? null : Number(r.gst_rate),
@@ -226,8 +266,7 @@ export async function listProducts(
   });
 
   // On hand is a sum across locations, so it cannot be a database
-  // filter without a second round trip. The page is already capped at
-  // 200 rows, which makes this cheap.
+  // filter without a second round trip.
   // "In stock" was handled by the join above, so it is already exact.
   //
   // "Out of stock" is the awkward one: it means items with NO balance
@@ -392,6 +431,10 @@ export interface ProductSource {
  * "was it worth moving", which needs the price it actually went out at
  * — after whatever discount was given on that particular bill, which is
  * why this reads bill_lines rather than the item's selling price.
+ *
+ * Chronological, not by barcode: this is one item's history, so there
+ * is only ever one barcode on the page and time is the only ordering
+ * that means anything.
  *
  * `forOwner` is passed in rather than looked up here so the caller's
  * single role check governs the whole page. When false the money fields

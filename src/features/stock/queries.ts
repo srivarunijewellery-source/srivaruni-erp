@@ -144,11 +144,18 @@ export async function searchStock(
       "item_id, barcode, name, category, item_type, style, variant, photo_path, location_id, location_code, qty, selling_price_paise",
       { count: "exact" },
     )
-    // item_id as a tiebreaker: two rows can share a name, and without a
-    // stable second key their order is undefined between queries — so a
-    // row can appear on two pages or on none.
-    .order("name")
-    .order("item_id")
+    // Barcode descending -- newest tag first, and unique, so it is the
+    // stable paging key as well: a row cannot appear on two pages or on
+    // none. Name was neither, and two pieces sharing a name put the
+    // pager quietly out of step with itself.
+    //
+    // location_code second so an item held at both stores keeps its two
+    // rows together instead of interleaving with its neighbours.
+    //
+    // No is_test guard needed here: stock_on_hand already excludes test
+    // pieces at the view.
+    .order("barcode", { ascending: false })
+    .order("location_code")
     .range(offset, offset + limit - 1);
 
   if (filters.location) q = q.eq("location_id", filters.location);

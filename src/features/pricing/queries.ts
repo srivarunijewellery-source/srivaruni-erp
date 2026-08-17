@@ -195,7 +195,13 @@ export async function listPricingRows(
        item_photos(storage_path, is_primary, sort_order),
        item_latest_cost(landed_cost_paise)`,
     )
-    .order("created_at", { ascending: false })
+    // Barcode descending, test pieces last: the same order the catalogue
+    // and stock screens use, so a code found on one screen sits in the
+    // same place on the next. created_at was standing in for creation
+    // order, but the migration stamped thousands of pieces with the
+    // import date, so it never really was.
+    .order("is_test")
+    .order("barcode", { ascending: false })
     .limit(opts.limit ?? 200);
 
   if (opts.status === "pending") q = q.is("mrp_paise", null);

@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { byBarcodeDesc } from "@/lib/sort";
 import type {
   PickableItem,
   StockFilterOptions,
@@ -59,6 +60,9 @@ export async function listTransfers(): Promise<TransferSummary[]> {
   const supabase = await createClient();
 
   // transfer_pipeline is a security_invoker view, so RLS still applies.
+  //
+  // Newest document first, and stays that way: this is a list of
+  // documents, not of items, so there is no barcode to sort on.
   const { data, error } = await supabase
     .from("transfer_pipeline")
     .select("*")
@@ -175,7 +179,10 @@ export async function getTransfer(id: string): Promise<TransferDetail | null> {
         qtyAvailable: Number(available.get(l.item_id) ?? 0),
       };
     })
-    .sort((a, b) => a.name.localeCompare(b.name));
+    // Barcode descending. A pick list is walked against the shelf and the
+    // shelf is in code order, so alphabetical by name sent someone up and
+    // down the rack for every line.
+    .sort(byBarcodeDesc);
 
   return {
     id: t.id,
@@ -214,7 +221,10 @@ export async function listTransitStock(): Promise<TransitRow[]> {
   const { data, error } = await supabase
     .from("stock_in_transit")
     .select("*")
-    .order("dispatched_at", { ascending: true });
+    // Oldest box first -- the one overdue is the one being chased -- then
+    // barcode descending within it, matching every other item list.
+    .order("dispatched_at", { ascending: true })
+    .order("barcode", { ascending: false });
 
   if (error) throw error;
 
@@ -245,6 +255,8 @@ export async function listTransitStock(): Promise<TransitRow[]> {
 export async function listTransitBoxes(): Promise<TransitBox[]> {
   const supabase = await createClient();
 
+  // Boxes, not items: oldest dispatch first, because the overdue one is
+  // the one being chased. No barcode to sort on at this level.
   const { data, error } = await supabase
     .from("transit_summary")
     .select("*")
@@ -277,6 +289,11 @@ export async function listTransitBoxes(): Promise<TransitBox[]> {
  * a client-side join would mean pulling every ledger row for every item.
  * The function runs security invoker, so RLS applies exactly as it would
  * to a hand-written query; nothing is bypassed by moving it into SQL.
+ *
+ * Ordering lives in the function (barcode descending, test pieces last)
+ * because the page is taken with LIMIT/OFFSET inside it -- sorting the
+ * page after it arrives would only shuffle sixty rows that were already
+ * the wrong sixty.
  */
 export async function listPickableStock(
   locationId: string,
@@ -354,14 +371,14 @@ export async function listPickableStock(
     // carries it. Zero rows means zero matches.
     total: Number(rows[0]?.total_count ?? 0),
     items: rows.map((r) => ({
-    itemId: r.item_id,
-    barcode: r.barcode,
-    name: r.name,
-    category: r.category,
-    itemType: r.item_type,
-    plating: r.plating,
-    photoPath: r.photo_path,
-    qtyAvailable: Number(r.qty_available ?? 0),
+      itemId: r.item_id,
+      barcode: r.barcode,
+      name: r.name,
+      category: r.category,
+      itemType: r.item_type,
+      plating: r.plating,
+      photoPath: r.photo_path,
+      qtyAvailable: Number(r.qty_available ?? 0),
       ageDays: r.age_days === null ? null : Number(r.age_days),
       sellingPricePaise: r.selling_price_paise,
       stone: r.stone,
