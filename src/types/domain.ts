@@ -226,6 +226,8 @@ export interface StockRow {
   name: string;
   category: string;
   style: string | null;
+  /** Size or colour — what distinguishes two identical-looking pieces. */
+  variant: string | null;
   locationCode: string;
   qty: number;
   sellingPricePaise: Paise | null;

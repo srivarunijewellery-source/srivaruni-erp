@@ -10,6 +10,8 @@ export interface ProductRow {
   itemTypeName: string | null;
   colourName: string | null;
   platingName: string | null;
+  /** Size or colour — what tells two identical-looking pieces apart. */
+  variant: string | null;
   hsn: string | null;
   gstRate: number | null;
   status: ItemStatus;
@@ -87,6 +89,7 @@ export async function listProducts(
        mrp_paise, selling_price_paise, hsn, gst_rate,
        colour_id, plating_id, stone_id, size_id,
        categories(name), item_types(name),
+       size:size_id(value), colour:colour_id(value),
        item_photos(storage_path, is_primary, sort_order),
        stock_balances!inner(qty, location_id)` as const;
 
@@ -94,6 +97,7 @@ export async function listProducts(
        mrp_paise, selling_price_paise, hsn, gst_rate,
        colour_id, plating_id, stone_id, size_id,
        categories(name), item_types(name),
+       size:size_id(value), colour:colour_id(value),
        item_photos(storage_path, is_primary, sort_order),
        stock_balances(qty, location_id)` as const;
 
@@ -199,6 +203,11 @@ export async function listProducts(
       itemTypeName: (Array.isArray(r.item_types) ? r.item_types[0] : r.item_types)?.name ?? null,
       colourName: null,
       platingName: null,
+      // Size or colour: what tells two identical-looking pieces apart.
+      variant:
+        (Array.isArray(r.size) ? r.size[0] : r.size)?.value ??
+        (Array.isArray(r.colour) ? r.colour[0] : r.colour)?.value ??
+        null,
       hsn: r.hsn,
       gstRate: r.gst_rate === null ? null : Number(r.gst_rate),
       status: r.status,
@@ -326,6 +335,11 @@ export async function getProduct(id: string): Promise<ProductDetail | null> {
     platingId: data.plating_id,
     stoneId: data.stone_id,
     sizeId: data.size_id,
+    // The name behind size_id or colour_id, already resolved above.
+    variant:
+      (data.size_id ? attrNames.get(data.size_id) : null) ??
+      (data.colour_id ? attrNames.get(data.colour_id) : null) ??
+      null,
     colourName: data.colour_id ? attrNames.get(data.colour_id) ?? null : null,
     platingName: data.plating_id ? attrNames.get(data.plating_id) ?? null : null,
     stoneName: data.stone_id ? attrNames.get(data.stone_id) ?? null : null,

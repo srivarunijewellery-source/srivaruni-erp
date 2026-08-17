@@ -69,6 +69,7 @@ export async function listSalesLines(
     style: String(r.style ?? ""),
     plating: String(r.plating ?? ""),
     vendor: (r.vendor as string | null) ?? null,
+    variant: (r.variant as string | null) ?? null,
     qty: Number(r.qty ?? 0),
     unitPricePaise: Number(r.unit_price_paise ?? 0),
     lineTotalPaise: Number(r.line_total_paise ?? 0),

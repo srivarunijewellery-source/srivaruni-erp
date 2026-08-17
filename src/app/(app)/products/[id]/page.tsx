@@ -76,7 +76,9 @@ export default async function ProductDetailPage({
           { label: product.name },
         ]}
         title={product.name}
-        description={`${product.barcode} · ${product.categoryName}`}
+        description={[product.barcode, product.categoryName, product.variant]
+          .filter(Boolean)
+          .join(" · ")}
         action={
           <div className="flex items-center gap-3">
             <Badge tone={STATUS_TONE[product.status]}>{product.status}</Badge>

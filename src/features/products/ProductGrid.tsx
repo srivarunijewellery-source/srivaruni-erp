@@ -1,3 +1,4 @@
+import { VariantBadge } from "@/components/ui/VariantBadge";
 import Link from "next/link";
 import { PhotoThumb } from "@/components/ui/PhotoThumb";
 import { Badge } from "@/components/ui/Badge";
@@ -48,6 +49,7 @@ export function ProductGrid({ rows }: { rows: ProductRow[] }) {
               <p className="truncate text-sm font-medium">{p.name}</p>
               <p className="truncate font-mono text-2xs text-text-muted">
                 {p.barcode} · {p.categoryName}
+                <VariantBadge variant={p.variant} />
               </p>
 
               <p className="tnum mt-1 text-sm">

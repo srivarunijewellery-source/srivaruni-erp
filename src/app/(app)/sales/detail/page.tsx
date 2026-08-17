@@ -9,6 +9,7 @@ import { FilterBar } from "@/components/ui/FilterBar";
 import { DateRangePicker } from "@/components/ui/DateRangePicker";
 import { Pager } from "@/components/ui/Pager";
 import { ItemLink } from "@/components/ui/ItemLink";
+import { VariantBadge } from "@/components/ui/VariantBadge";
 import { formatPaise } from "@/lib/money";
 import { formatDate } from "@/lib/format";
 import { parseDateRange, defaultMonthRange } from "@/lib/dates";
@@ -287,6 +288,7 @@ export default async function SalesDetailPage({
                       </td>
                       <td className="max-w-56 truncate px-2 py-1.5">
                         <ItemLink itemId={r.itemId} name={r.itemName} />
+                        <VariantBadge variant={r.variant} />
                         <span className="ml-1 font-mono text-text-subtle">
                           {r.barcode}
                         </span>

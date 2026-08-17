@@ -141,7 +141,7 @@ export async function searchStock(
   let q = supabase
     .from("stock_on_hand")
     .select(
-      "item_id, barcode, name, category, item_type, style, photo_path, location_id, location_code, qty, selling_price_paise",
+      "item_id, barcode, name, category, item_type, style, variant, photo_path, location_id, location_code, qty, selling_price_paise",
       { count: "exact" },
     )
     // item_id as a tiebreaker: two rows can share a name, and without a
@@ -195,6 +195,7 @@ export async function searchStock(
     itemId: r.item_id,
     photoPath: r.photo_path ?? null,
     style: r.style ?? null,
+    variant: r.variant ?? null,
     barcode: r.barcode,
     name: r.name,
     category: r.category,

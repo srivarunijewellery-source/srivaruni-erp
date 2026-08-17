@@ -14,6 +14,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { FilterBar } from "@/components/ui/FilterBar";
 import { formatPaise } from "@/lib/money";
+import { VariantBadge } from "@/components/ui/VariantBadge";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Pager } from "@/components/ui/Pager";
 import type { StockRow } from "@/types/domain";
@@ -98,6 +99,11 @@ export default async function StockPage({
       ),
     },
     { key: "category", header: "Category", render: (r) => r.category },
+    {
+      key: "variant",
+      header: "Size",
+      render: (r) => r.variant ?? <span className="text-text-subtle">—</span>,
+    },
     {
       key: "store",
       header: "Store",
@@ -357,6 +363,7 @@ export default async function StockPage({
                     <p className="truncate text-sm font-medium">{r.name}</p>
                     <p className="truncate font-mono text-2xs text-text-muted">
                       {r.barcode} · {r.category}
+                      <VariantBadge variant={r.variant} />
                     </p>
                     {r.style && r.style !== "Not set" && (
                       <p className="truncate text-2xs text-text-subtle">{r.style}</p>

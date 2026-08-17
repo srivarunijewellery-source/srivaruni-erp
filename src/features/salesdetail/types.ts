@@ -15,6 +15,8 @@ export interface SalesLine {
   style: string;
   plating: string;
   vendor: string | null;
+  /** Size or colour — "which size sold" is the question this list answers. */
+  variant: string | null;
   qty: number;
   unitPricePaise: number;
   lineTotalPaise: number;

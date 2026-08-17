@@ -1,5 +1,6 @@
 "use client";
 
+import { VariantBadge } from "@/components/ui/VariantBadge";
 import { useOptimistic, useState, useTransition } from "react";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -208,13 +209,8 @@ export function RequestBuilder({
                   <p className="font-mono text-2xs text-text-muted">
                         {item.barcode}
                         {/* The size, beside the tag. Four bangles of one
-                            design differ only by this, and a card
-                            without it is a guess. */}
-                        {item.variant && (
-                          <span className="ml-1.5 rounded-full bg-brand-subtle px-1.5 py-0.5 font-sans font-medium text-brand">
-                            {item.variant}
-                          </span>
-                        )}
+                            design differ only by this. */}
+                        <VariantBadge variant={item.variant} />
                       </p>
                   <p className="text-2xs text-text-subtle">{item.qtyAvailable} on shelf</p>
                   {item.committed > 0 && (

@@ -1,5 +1,6 @@
 "use client";
 
+import { VariantBadge } from "@/components/ui/VariantBadge";
 import { useState } from "react";
 import Link from "next/link";
 import { PhotoThumb } from "@/components/ui/PhotoThumb";
@@ -90,6 +91,7 @@ export function SoldItemsGrid({ items }: { items: SoldItem[] }) {
               </p>
               <p className="truncate font-mono text-2xs text-text-subtle">
                 {i.barcode ?? "no tag"}
+                <VariantBadge variant={i.variant} />
                 {i.category ? ` · ${i.category}` : ""}
               </p>
 

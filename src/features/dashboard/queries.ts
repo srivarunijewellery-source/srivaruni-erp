@@ -253,6 +253,8 @@ export interface SoldItem {
   stone: string | null;
   vendor: string | null;
   qtySold: number;
+  /** Size or colour, so two identical-looking pieces read apart. */
+  variant: string | null;
   bills: number;
   customers: number;
   revenuePaise: number;
@@ -335,6 +337,7 @@ export async function getItemsSold(
       stone: r.stone ? String(r.stone) : null,
       vendor: r.vendor ? String(r.vendor) : null,
       qtySold: Number(r.qty_sold ?? 0),
+      variant: r.variant ? String(r.variant) : null,
       bills: Number(r.bills ?? 0),
       customers: Number(r.customers ?? 0),
       revenuePaise: Number(r.revenue_paise ?? 0),
