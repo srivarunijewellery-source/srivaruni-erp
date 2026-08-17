@@ -1,4 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/features/auth/session";
+import { isOwner } from "@/config/roles";
 
 export interface PosCatalogItem {
   item_id: string;
@@ -202,15 +204,35 @@ export interface Branch {
   hasOpenRegister: boolean;
 }
 
+/**
+ * The branches this person may open a counter at.
+ *
+ * This is the list behind the counter's branch switcher — NOT
+ * listStores, which is what I restricted first and which the counter
+ * never calls. Everyone was offered both stores, so a Zaheerabad manager
+ * could pick Boduppal and the app would open a till there.
+ *
+ * The database refuses that now regardless, but an option that always
+ * ends in an error should not be on screen at all.
+ */
 export async function listBranches(): Promise<Branch[]> {
   const supabase = await createClient();
+  const user = await getCurrentUser();
+
+  let locQuery = supabase
+    .from("locations")
+    .select("id, code, name")
+    .eq("active", true)
+    .eq("kind", "store")
+    .order("code");
+
+  // A null home branch is a genuine floater and keeps the full list.
+  if (user && !isOwner(user.role) && user.locationId) {
+    locQuery = locQuery.eq("id", user.locationId);
+  }
+
   const [locRes, sesRes] = await Promise.all([
-    supabase
-      .from("locations")
-      .select("id, code, name")
-      .eq("active", true)
-      .eq("kind", "store")
-      .order("code"),
+    locQuery,
     supabase.from("register_sessions").select("location_id").eq("status", "open"),
   ]);
 
