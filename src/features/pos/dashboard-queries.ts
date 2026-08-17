@@ -202,8 +202,9 @@ export interface SalespersonRow {
   soldPaise: number;
   billsTouched: number;
   avgBillPaise: number;
-  costPaise: number;
-  marginPaise: number;
+  /** Null when the viewer may not see cost. */
+  costPaise: number | null;
+  marginPaise: number | null;
   /** Basis points of the period's revenue — 2400 is 24%. */
   shareBps: number;
   daysActive: number;
@@ -240,8 +241,10 @@ export async function getSalespersonReport(
     soldPaise: Number(r.sold_paise ?? 0),
     billsTouched: Number(r.bills_touched ?? 0),
     avgBillPaise: Number(r.avg_bill_paise ?? 0),
-    costPaise: Number(r.cost_paise ?? 0),
-    marginPaise: Number(r.margin_paise ?? 0),
+    // Null rather than zero when withheld: zero margin is a claim,
+    // "not shown to you" is the truth.
+    costPaise: r.cost_paise === null ? null : Number(r.cost_paise),
+    marginPaise: r.margin_paise === null ? null : Number(r.margin_paise),
     /** Basis points of the period's revenue — 2400 is 24%. */
     shareBps: Number(r.share_bps ?? 0),
     daysActive: Number(r.days_active ?? 0),

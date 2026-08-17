@@ -72,8 +72,8 @@ export async function listSalesLines(
     qty: Number(r.qty ?? 0),
     unitPricePaise: Number(r.unit_price_paise ?? 0),
     lineTotalPaise: Number(r.line_total_paise ?? 0),
-    costPaise: Number(r.cost_paise ?? 0),
-    marginPaise: Number(r.margin_paise ?? 0),
+    costPaise: r.cost_paise === null ? null : Number(r.cost_paise),
+    marginPaise: r.margin_paise === null ? null : Number(r.margin_paise),
     marginBps: r.margin_bps === null ? null : Number(r.margin_bps),
     totalRows: Number(r.total_rows ?? 0),
   }));
@@ -101,8 +101,8 @@ export async function summariseSalesLines(
     lines: Number(r.lines ?? 0),
     pieces: Number(r.pieces ?? 0),
     soldPaise: Number(r.sold_paise ?? 0),
-    costPaise: Number(r.cost_paise ?? 0),
-    marginPaise: Number(r.margin_paise ?? 0),
+    costPaise: r.cost_paise === null ? null : Number(r.cost_paise),
+    marginPaise: r.margin_paise === null ? null : Number(r.margin_paise),
     marginBps: r.margin_bps === null ? null : Number(r.margin_bps),
     shareBps: Number(r.share_bps ?? 0),
   }));

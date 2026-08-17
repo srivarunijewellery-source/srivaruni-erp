@@ -1,4 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/features/auth/session";
+import { isOwner } from "@/config/roles";
 import { byItemCode } from "@/lib/itemOrder";
 import type {
   InwardSummary, InwardDetail, VendorOption, Category, StoreLocation,
@@ -79,15 +81,33 @@ export async function listCategories(): Promise<Category[]> {
   }));
 }
 
+/**
+ * The stores this person may act on.
+ *
+ * Everyone used to get both, so a Zaheerabad manager could pick Boduppal
+ * in a branch switcher and the app would try to open a counter there —
+ * offering a door that should not exist rather than refusing at the
+ * threshold.
+ *
+ * The owner gets all of them; a staff member gets their own. Someone
+ * with no home branch is a genuine floater and keeps the full list.
+ */
 export async function listStores(): Promise<StoreLocation[]> {
   const supabase = await createClient();
-  const { data, error } = await supabase
+  const user = await getCurrentUser();
+
+  let q = supabase
     .from("locations")
     .select("id, code, name, kind")
     .eq("active", true)
     .eq("kind", "store")
     .order("code");
 
+  if (user && !isOwner(user.role) && user.locationId) {
+    q = q.eq("id", user.locationId);
+  }
+
+  const { data, error } = await q;
   if (error) throw error;
   return data ?? [];
 }

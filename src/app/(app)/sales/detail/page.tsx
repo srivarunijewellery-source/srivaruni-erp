@@ -63,7 +63,9 @@ export default async function SalesDetailPage({
 
   const rows = result.rows;
   const sold = buckets.reduce((n, b) => n + b.soldPaise, 0);
-  const margin = buckets.reduce((n, b) => n + b.marginPaise, 0);
+  // Null for anyone but the owner; the page simply omits margin then.
+  const showCost = buckets.some((b) => b.marginPaise !== null);
+  const margin = buckets.reduce((n, b) => n + (b.marginPaise ?? 0), 0);
   const pieces = buckets.reduce((n, b) => n + b.pieces, 0);
 
   const qs = (over: Record<string, string>) => {
@@ -157,6 +159,7 @@ export default async function SalesDetailPage({
             </p>
           </CardBody>
         </Card>
+        {showCost && (
         <Card>
           <CardBody>
             <p className="text-2xs text-text-muted">Margin</p>
@@ -166,6 +169,7 @@ export default async function SalesDetailPage({
             </p>
           </CardBody>
         </Card>
+        )}
         <Card>
           <CardBody>
             <p className="text-2xs text-text-muted">Average line</p>
@@ -216,12 +220,16 @@ export default async function SalesDetailPage({
                   <td className="tnum px-2 py-1.5 text-right">
                     {formatPaise(b.soldPaise)}
                   </td>
-                  <td className="tnum px-2 py-1.5 text-right">
-                    {formatPaise(b.marginPaise)}
-                  </td>
-                  <td className="tnum px-2 py-1.5 text-right text-text-muted">
-                    {b.marginBps === null ? "—" : `${(b.marginBps / 100).toFixed(1)}%`}
-                  </td>
+                  {showCost && (
+                    <td className="tnum px-2 py-1.5 text-right">
+                      {formatPaise(b.marginPaise ?? 0)}
+                    </td>
+                  )}
+                  {showCost && (
+                    <td className="tnum px-2 py-1.5 text-right text-text-muted">
+                      {b.marginBps === null ? "—" : `${(b.marginBps / 100).toFixed(1)}%`}
+                    </td>
+                  )}
                   <td className="tnum px-4 py-1.5 text-right text-text-subtle">
                     {(b.shareBps / 100).toFixed(1)}%
                   </td>
@@ -258,8 +266,8 @@ export default async function SalesDetailPage({
                     <th className="px-2 py-2">Customer</th>
                     <th className="px-2 py-2 text-right">Qty</th>
                     <th className="px-2 py-2 text-right">Sold</th>
-                    <th className="px-2 py-2 text-right">Margin</th>
-                    <th className="px-3 py-2 text-right">%</th>
+                    {showCost && <th className="px-2 py-2 text-right">Margin</th>}
+                    {showCost && <th className="px-3 py-2 text-right">%</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -294,12 +302,16 @@ export default async function SalesDetailPage({
                       <td className="tnum px-2 py-1.5 text-right">
                         {formatPaise(r.lineTotalPaise)}
                       </td>
-                      <td className="tnum px-2 py-1.5 text-right">
-                        {formatPaise(r.marginPaise)}
-                      </td>
-                      <td className="tnum px-3 py-1.5 text-right text-text-muted">
-                        {r.marginBps === null ? "—" : (r.marginBps / 100).toFixed(0)}
-                      </td>
+                      {showCost && (
+                        <td className="tnum px-2 py-1.5 text-right">
+                          {formatPaise(r.marginPaise ?? 0)}
+                        </td>
+                      )}
+                      {showCost && (
+                        <td className="tnum px-3 py-1.5 text-right text-text-muted">
+                          {r.marginBps === null ? "—" : (r.marginBps / 100).toFixed(0)}
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>

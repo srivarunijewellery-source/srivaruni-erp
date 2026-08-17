@@ -396,3 +396,35 @@ export async function listStockFilterOptions(locationId: string): Promise<StockF
     stones: row?.stones ?? [],
   };
 }
+
+export interface TransferHistoryRow {
+  stage: string;
+  happenedAt: string;
+  actor: string;
+  actorRole: string;
+}
+
+/**
+ * Who did what to this transfer, and when.
+ *
+ * Every stage was already stamped in the document — requested_by,
+ * picked_by, approved_by and the rest — but none of it was shown, so
+ * "who approved this" meant asking someone about a record that had held
+ * the answer all along.
+ */
+export async function getTransferHistory(
+  transferId: string,
+): Promise<TransferHistoryRow[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("transfer_history", {
+    p_transfer: transferId,
+  });
+  if (error || !data) return [];
+
+  return (data as Array<Record<string, unknown>>).map((r) => ({
+    stage: String(r.stage),
+    happenedAt: String(r.happened_at),
+    actor: String(r.actor ?? "—"),
+    actorRole: String(r.actor_role ?? ""),
+  }));
+}

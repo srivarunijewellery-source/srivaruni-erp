@@ -18,8 +18,9 @@ export interface SalesLine {
   qty: number;
   unitPricePaise: number;
   lineTotalPaise: number;
-  costPaise: number;
-  marginPaise: number;
+  /** Null when the viewer may not see cost. */
+  costPaise: number | null;
+  marginPaise: number | null;
   marginBps: number | null;
   totalRows: number;
 }
@@ -29,8 +30,8 @@ export interface SalesBucket {
   lines: number;
   pieces: number;
   soldPaise: number;
-  costPaise: number;
-  marginPaise: number;
+  costPaise: number | null;
+  marginPaise: number | null;
   marginBps: number | null;
   shareBps: number;
 }

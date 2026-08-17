@@ -447,9 +447,13 @@ export function SalesDashboard({
                     <p className="text-text-muted">
                       avg {formatPaise(s.avgBillPaise)}
                     </p>
-                    <p className="text-text-muted">
-                      margin {formatPaise(s.marginPaise)}
-                    </p>
+                    {/* Null for anyone but the owner — the database
+                        withholds it, so there is nothing to print. */}
+                    {s.marginPaise !== null && (
+                      <p className="text-text-muted">
+                        margin {formatPaise(s.marginPaise)}
+                      </p>
+                    )}
                   </div>
                   <div className="w-16 text-right">
                     <span className="tnum text-2xs text-text-subtle">

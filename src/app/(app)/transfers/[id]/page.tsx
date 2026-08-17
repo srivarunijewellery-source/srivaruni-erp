@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/features/auth/session";
-import { getTransfer, listPickableStock, listStockFilterOptions } from "@/features/transfers/queries";
+import { getTransfer, getTransferHistory, listPickableStock, listStockFilterOptions } from "@/features/transfers/queries";
 import { can } from "@/config/roles";
 import { ROUTES } from "@/config/nav";
 import { TRANSFER_STATUS } from "@/config/status";
@@ -33,7 +33,11 @@ export default async function TransferDetailPage({
   const { id } = await params;
   const { q = "", category = "" } = await searchParams;
 
-  const [user, transfer] = await Promise.all([requireUser(), getTransfer(id)]);
+  const [user, transfer, history] = await Promise.all([
+    requireUser(),
+    getTransfer(id),
+    getTransferHistory(id),
+  ]);
   if (!transfer) notFound();
 
   const status = TRANSFER_STATUS[transfer.status];
@@ -205,6 +209,40 @@ export default async function TransferDetailPage({
           </CardBody>
         </Card>
       </div>
+
+      {/* Who moved this document, and when.
+      
+          The stamps were always there — requested_by, picked_by,
+          approved_by — but never shown, so "who approved this" meant
+          asking someone about a record that already held the answer. */}
+      {history.length > 0 && (
+        <Card className="mb-4">
+          <CardHeader>
+            <h2 className="font-medium">History</h2>
+          </CardHeader>
+          <CardBody className="p-0">
+            <ul className="divide-y divide-border">
+              {history.map((h, i) => (
+                <li
+                  key={`${h.stage}-${i}`}
+                  className="flex flex-wrap items-baseline gap-2 px-4 py-1.5 text-2xs"
+                >
+                  <span className="w-40 shrink-0 font-medium">{h.stage}</span>
+                  <span className="text-text-muted">
+                    {h.actor}
+                    {h.actorRole && (
+                      <span className="text-text-subtle"> · {h.actorRole}</span>
+                    )}
+                  </span>
+                  <span className="ml-auto text-text-subtle">
+                    {formatDateTime(h.happenedAt)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </CardBody>
+        </Card>
+      )}
 
       {canAddMore && (
         <div className="space-y-4">
