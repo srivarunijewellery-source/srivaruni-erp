@@ -8,6 +8,8 @@ import { err, ok, toMessage, type Result } from "@/lib/result";
 import { pokeDispatchBestEffort } from "@/lib/comms/poke";
 import {
   getPosCatalog,
+  getSessionPayments,
+  type SessionPayment,
   listCashMovements,
   listSessionBills,
   toDrawer,
@@ -1020,4 +1022,16 @@ export async function cancelBill(
     billNo: String(d.bill_no ?? ""),
     totalPaise: Number(d.total_paise ?? 0),
   });
+}
+
+/** The non-cash payments in a session, for checking against the app. */
+export async function fetchSessionPayments(
+  sessionId: string,
+  method?: string,
+): Promise<Result<SessionPayment[]>> {
+  try {
+    return ok(await getSessionPayments(sessionId, method));
+  } catch (e) {
+    return err(toMessage(e));
+  }
 }

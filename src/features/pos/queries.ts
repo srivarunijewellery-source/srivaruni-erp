@@ -401,3 +401,49 @@ export async function listExpenseAccounts(): Promise<ExpenseAccount[]> {
     .filter((r) => !r.system_key || !hidden.has(String(r.system_key)))
     .map((r) => ({ id: r.id, code: r.code, name: r.name }));
 }
+
+export interface SessionPayment {
+  seq: number;
+  billId: string;
+  billNo: string;
+  rungAt: string;
+  method: string;
+  amountPaise: number;
+  reference: string | null;
+  customerName: string | null;
+  customerPhone: string | null;
+  salesman: string;
+}
+
+/**
+ * Every non-cash payment in the session, numbered.
+ *
+ * Cash gets counted at close; UPI does not, so the only way to verify it
+ * is to sit with the payment app and tick the list off one by one. That
+ * list did not exist, which meant the UPI total was believed rather than
+ * checked.
+ */
+export async function getSessionPayments(
+  sessionId: string,
+  method?: string,
+): Promise<SessionPayment[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("session_payments", {
+    p_session: sessionId,
+    p_method: method ?? null,
+  });
+  if (error || !data) return [];
+
+  return (data as Array<Record<string, unknown>>).map((r) => ({
+    seq: Number(r.seq ?? 0),
+    billId: String(r.bill_id),
+    billNo: String(r.bill_no),
+    rungAt: String(r.rung_at),
+    method: String(r.method),
+    amountPaise: Number(r.amount_paise ?? 0),
+    reference: (r.reference as string | null) ?? null,
+    customerName: (r.customer_name as string | null) ?? null,
+    customerPhone: (r.customer_phone as string | null) ?? null,
+    salesman: String(r.salesman ?? "—"),
+  }));
+}

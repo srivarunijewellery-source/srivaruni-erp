@@ -7,13 +7,13 @@ import { Input, Label, FieldError } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { Badge } from "@/components/ui/Badge";
 import { formatPaise } from "@/lib/money";
-import { closeRegister, fetchDrawer } from "./actions";
+import { closeRegister, fetchDrawer, fetchSessionPayments } from "./actions";
 import {
   DenominationCounter,
   denominationTotalPaise,
   type Denominations,
 } from "./DenominationCounter";
-import type { Drawer } from "./queries";
+import type { Drawer, SessionPayment } from "./queries";
 
 export function CloseRegisterPanel({
   sessionId,
@@ -33,6 +33,9 @@ export function CloseRegisterPanel({
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
   const [drawer, setDrawer] = useState<Drawer | null>(null);
+  /** Non-cash payments, listed separately: the drawer can be counted,
+   *  these can only be checked against the app that took them. */
+  const [payments, setPayments] = useState<SessionPayment[]>([]);
   const [confirming, setConfirming] = useState(false);
 
   // Read the drawer fresh rather than trusting a figure rendered when the
@@ -40,8 +43,13 @@ export function CloseRegisterPanel({
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const r = await fetchDrawer(sessionId);
-      if (!cancelled && r.ok) setDrawer(r.data);
+      const [r, p] = await Promise.all([
+        fetchDrawer(sessionId),
+        fetchSessionPayments(sessionId),
+      ]);
+      if (cancelled) return;
+      if (r.ok) setDrawer(r.data);
+      if (p.ok) setPayments(p.data.filter((x) => x.method !== "cash"));
     })();
     return () => {
       cancelled = true;
@@ -103,9 +111,17 @@ export function CloseRegisterPanel({
             </div>
           </div>
 
-          <Button variant="primary" onClick={() => (window.location.href = "/pos")}>
-            Done
-          </Button>
+          {/* Printed before leaving, because the figures are gone from
+              the screen the moment the counter closes and a paper copy
+              is what gets signed and handed over. */}
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" onClick={() => printClosing(result, payments, terminal)}>
+              Print the counter slip
+            </Button>
+            <Button variant="primary" onClick={() => (window.location.href = "/pos")}>
+              Done
+            </Button>
+          </div>
         </div>
       </Modal>
     );
@@ -185,6 +201,49 @@ export function CloseRegisterPanel({
           </div>
         )}
 
+        {/* Non-cash, listed rather than totalled.
+        
+            The drawer variance only ever describes CASH. A UPI figure
+            can be wrong without the drawer being a rupee out, so the
+            payments are shown one by one to be checked against the app
+            before the counter is signed off. */}
+        {payments.length > 0 && (
+          <div className="space-y-1.5">
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="text-2xs font-medium uppercase tracking-wide text-text-subtle">
+                Paid by phone and card
+              </p>
+              <p className="tnum text-2xs">
+                {payments.length} payment{payments.length === 1 ? "" : "s"} ·{" "}
+                {formatPaise(payments.reduce((n, p) => n + p.amountPaise, 0))}
+              </p>
+            </div>
+            <ul className="max-h-44 divide-y divide-border overflow-auto rounded-control border border-border">
+              {payments.map((p) => (
+                <li
+                  key={`${p.billId}-${p.seq}`}
+                  className="flex items-center gap-2 px-2 py-1 text-2xs"
+                >
+                  <span className="tnum w-5 shrink-0 text-text-subtle">{p.seq}</span>
+                  <span className="min-w-0 flex-1 truncate">
+                    <span className="font-mono">{p.billNo}</span>
+                    <span className="ml-1 text-text-muted">
+                      {p.method.toUpperCase()}
+                      {p.customerName ? ` · ${p.customerName}` : ""}
+                    </span>
+                  </span>
+                  <span className="tnum shrink-0 font-mono">
+                    {formatPaise(p.amountPaise)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <p className="text-2xs text-text-subtle">
+              The variance above is cash only. Check these against the payment app.
+            </p>
+          </div>
+        )}
+
         <div>
           <Label htmlFor="note">Note</Label>
           <Input
@@ -260,4 +319,80 @@ function Row({
       </span>
     </div>
   );
+}
+
+/**
+ * A paper record of the counter closing.
+ *
+ * Everything on the screen disappears the moment the register closes,
+ * and a slip is what gets signed and handed over with the cash bag. It
+ * lists the non-cash payments individually rather than as a total: a
+ * disputed UPI figure is settled by finding the bill, and a single
+ * number cannot do that.
+ */
+function printClosing(
+  result: Record<string, unknown>,
+  payments: SessionPayment[],
+  terminal: string,
+) {
+  const rupees = (p: number) =>
+    `₹${(p / 100).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`;
+  const v = Number(result.variance_paise ?? 0);
+
+  const rows = payments
+    .map(
+      (p) =>
+        `<tr><td>${p.seq}</td><td>${p.billNo}</td><td>${p.method.toUpperCase()}</td>` +
+        `<td class="r">${rupees(p.amountPaise)}</td></tr>`,
+    )
+    .join("");
+
+  const html = `<!doctype html><html><head><meta charset="utf-8">
+<title>Counter closing — ${terminal}</title>
+<style>
+  body{font:12px/1.45 ui-monospace,monospace;margin:0;padding:8mm}
+  h1{font-size:14px;margin:0 0 2mm}
+  table{width:100%;border-collapse:collapse;margin:2mm 0}
+  td,th{padding:1mm 0;text-align:left;vertical-align:top}
+  .r{text-align:right}
+  .line{border-top:1px dashed #000;margin:2mm 0}
+  .big{font-size:13px;font-weight:600}
+</style></head><body>
+<h1>Counter closing — ${terminal}</h1>
+<div>${new Date().toLocaleString("en-IN")}</div>
+<div class="line"></div>
+<table>
+  <tr><td>Opening float</td><td class="r">${rupees(Number(result.opening_paise ?? 0))}</td></tr>
+  <tr><td>Expected in drawer</td><td class="r">${rupees(Number(result.expected_paise ?? 0))}</td></tr>
+  <tr><td>Counted</td><td class="r">${rupees(Number(result.counted_paise ?? 0))}</td></tr>
+  <tr class="big"><td>${v === 0 ? "Balanced" : v > 0 ? "Over by" : "Short by"}</td>
+      <td class="r">${v === 0 ? "—" : rupees(Math.abs(v))}</td></tr>
+</table>
+<div class="line"></div>
+<table>
+  <tr><td>Bills</td><td class="r">${Number(result.bills ?? 0)}</td></tr>
+  <tr class="big"><td>Sales</td><td class="r">${rupees(Number(result.sales_paise ?? 0))}</td></tr>
+</table>
+${
+  payments.length > 0
+    ? `<div class="line"></div>
+<div class="big">Paid by phone and card</div>
+<table><thead><tr><th>#</th><th>Bill</th><th>How</th><th class="r">Amount</th></tr></thead>
+<tbody>${rows}</tbody>
+<tfoot><tr class="big"><td colspan="3">Total</td>
+<td class="r">${rupees(payments.reduce((n, p) => n + p.amountPaise, 0))}</td></tr></tfoot></table>
+<div style="font-size:11px">The variance above is cash only.</div>`
+    : ""
+}
+<div class="line"></div>
+<div style="margin-top:8mm">Counted by ______________________</div>
+<div style="margin-top:6mm">Received by _____________________</div>
+</body></html>`;
+
+  const w = window.open("", "_blank", "width=420,height=640");
+  if (!w) return;
+  w.document.write(html);
+  w.document.close();
+  w.focus();
+  w.print();
 }
