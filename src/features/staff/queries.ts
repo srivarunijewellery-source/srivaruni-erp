@@ -243,6 +243,11 @@ export interface MonthReportRow {
   name: string;
   role: Role;
   locationCode: string | null;
+  /** False when they have left; their sales still count for the period. */
+  stillHere: boolean;
+  /** Flat 0.5% of sales — separate from the target-gated incentive. */
+  commHalfPaise: number;
+  commQuarterPaise: number;
   daysPresent: number;
   daysHalf: number;
   daysAbsent: number;
@@ -259,16 +264,34 @@ export interface MonthReportRow {
   ctcPaise: number | null;
 }
 
-export async function getMonthReport(month: string): Promise<MonthReportRow[]> {
+/**
+ * Attendance and sales over any date range.
+ *
+ * A month was the only period it could answer, which covers none of the
+ * questions actually asked of it — how today went, what last week looked
+ * like, what six months of commission comes to.
+ */
+export async function getMonthReport(
+  from: string,
+  to?: string,
+  locationId?: string,
+): Promise<MonthReportRow[]> {
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("staff_month_report", { p_month: month });
+  const { data, error } = await supabase.rpc("staff_period_report", {
+    p_from: from,
+    p_to: to ?? from,
+    p_location: locationId || null,
+  });
   if (error) throw error;
 
   type Row = {
     staff_id: string; name: string; role: Role; location_code: string | null;
+    still_here: boolean;
     days_present: number; days_half: number; days_absent: number;
     days_leave: number; days_off: number; days_marked: number;
-    bills_count: number; sold_paise: number; target_paise: number | null;
+    bills_count: number; sold_paise: number;
+    comm_half_paise: number; comm_quarter_paise: number;
+    target_paise: number | null;
     achievement_bps: number | null; incentive_bps: number | null;
     incentive_paise: number; ctc_paise: number | null;
   };
@@ -278,6 +301,10 @@ export async function getMonthReport(month: string): Promise<MonthReportRow[]> {
     name: r.name,
     role: r.role,
     locationCode: r.location_code,
+    stillHere: Boolean(r.still_here),
+    /** Flat 0.5% of sales — not the incentive, which needs a target met. */
+    commHalfPaise: Number(r.comm_half_paise ?? 0),
+    commQuarterPaise: Number(r.comm_quarter_paise ?? 0),
     daysPresent: Number(r.days_present ?? 0),
     daysHalf: Number(r.days_half ?? 0),
     daysAbsent: Number(r.days_absent ?? 0),

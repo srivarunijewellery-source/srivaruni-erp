@@ -34,6 +34,10 @@ export function PerformanceTable({
         <Link href={ROUTES.staffDetail(r.staffId)} className="font-medium hover:text-brand">
           {r.name}
           <span className="ml-2 text-2xs text-text-muted">{r.locationCode}</span>
+          {/* A leaver still earned what they earned in the period. */}
+          {!r.stillHere && (
+            <span className="ml-1.5 text-2xs text-text-subtle">(left)</span>
+          )}
         </Link>
       ),
     },
@@ -54,6 +58,29 @@ export function PerformanceTable({
       header: "Sold",
       numeric: true,
       render: (r) => <span className="font-mono">{formatPaise(r.soldPaise)}</span>,
+    },
+    // Flat commission on sales, independent of the target-gated
+    // incentive beside it. Two rates so a tier can be applied without
+    // exporting and recalculating outside the system.
+    {
+      key: "comm05",
+      header: "0.5%",
+      numeric: true,
+      render: (r) => (
+        <span className="font-mono text-text-muted">
+          {formatPaise(r.commHalfPaise)}
+        </span>
+      ),
+    },
+    {
+      key: "comm025",
+      header: "0.25% · 6M comm",
+      numeric: true,
+      render: (r) => (
+        <span className="font-mono text-text-muted">
+          {formatPaise(r.commQuarterPaise)}
+        </span>
+      ),
     },
     {
       key: "target",
