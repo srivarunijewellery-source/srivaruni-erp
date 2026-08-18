@@ -193,6 +193,69 @@ export async function rejectAssembly(
   return ok(undefined);
 }
 
+export interface SendBackOutcome {
+  /** The new document the ticked products were moved into. */
+  assemblyId: string;
+  docNo: string;
+  moved: number;
+}
+
+/**
+ * Send SOME products back, not the whole document.
+ *
+ * Rejecting is all-or-nothing, and a batch of forty rarely fails as a
+ * batch: three pieces have the wrong photo or a missing component and
+ * the other thirty-seven are ready to post. The only way to act on that
+ * was to send the whole thing back and re-check every good piece
+ * afterwards, so in practice nobody did — the bad ones got approved
+ * with the rest and the wrong cost stuck to them forever.
+ *
+ * The ticked products move to a NEW draft document carrying the reason,
+ * which the bench can open and fix. Their materials travel with them,
+ * because components hang off the product rather than the document.
+ * What is left behind stays submitted and can be approved immediately.
+ *
+ * The split is one statement in the database rather than a delete and
+ * re-insert here: a half-finished move would leave a product on no
+ * document at all, and its materials with it.
+ */
+export async function sendBackAssemblyProducts(
+  assemblyId: string,
+  productIds: string[],
+  reason: string,
+): Promise<Result<SendBackOutcome>> {
+  const ids = [...new Set(productIds.filter(Boolean))];
+  if (ids.length === 0) return err("Tick the products that need fixing.");
+
+  const note = reason.trim();
+  if (!note) {
+    return err("Say what needs fixing — this note is the only thing the bench sees.");
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("split_assembly_products", {
+    p_assembly: assemblyId,
+    p_products: ids,
+    p_reason: note,
+  });
+  if (error) return err(toMessage(error));
+
+  const row = (Array.isArray(data) ? data[0] : data) as
+    | { new_assembly_id: string; new_doc_no: string }
+    | null
+    | undefined;
+  if (!row) return err("Nothing was sent back. Reload the page and try again.");
+
+  revalidatePath(`${PATH}/${assemblyId}`);
+  revalidatePath(`${PATH}/${row.new_assembly_id}`);
+  revalidatePath(PATH);
+  return ok({
+    assemblyId: row.new_assembly_id,
+    docNo: row.new_doc_no,
+    moved: ids.length,
+  });
+}
+
 export async function findComponents(term: string): Promise<Result<ComponentSearchResult[]>> {
   try {
     return ok(await searchComponents(term));
@@ -657,7 +720,9 @@ export async function searchAssemblyParents(
     .from("items")
     .select("id, barcode, name, categories(name)")
     .in("status", ["active", "pending_pricing"])
-    .order("created_at", { ascending: false })
+    // Barcode descending, matching every other item list in the app.
+    .order("is_test")
+    .order("barcode", { ascending: false })
     .limit(25);
 
   if (t) q = q.or(`barcode.ilike.%${t}%,name.ilike.%${t}%`);
