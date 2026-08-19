@@ -100,9 +100,13 @@ async function readText(file: File): Promise<string> {
       transform: number[];
     }>) {
       if (!item.str.trim()) continue;
-      const y = Math.round(item.transform[5]);
+      // transform[] is number | undefined under noUncheckedIndexedAccess.
+      // Defaulting to 0 is right rather than merely quiet: a fragment with
+      // no coordinate belongs at the origin, and it is a header artefact
+      // that no line pattern will match anyway.
+      const y = Math.round(item.transform[5] ?? 0);
       const bucket = lines.get(y) ?? [];
-      bucket.push({ x: item.transform[4], s: item.str });
+      bucket.push({ x: item.transform[4] ?? 0, s: item.str });
       lines.set(y, bucket);
     }
 
@@ -129,17 +133,27 @@ export async function parseSelvaPdf(file: File): Promise<SelvaParse> {
     const m = LINE.exec(raw);
     if (!m) continue;
 
-    const [, , description, , , qtyStr, rateStr, totalStr] = m;
+    // Every group is string | undefined to the compiler even though the
+    // pattern cannot match without them. Rather than assert non-null, the
+    // row is skipped if any are missing -- an assertion here would turn a
+    // future pattern change into a NaN price instead of a dropped line,
+    // and a NaN price is the one failure this whole tool exists to avoid.
+    const description = m[2];
+    const qtyStr = m[5];
+    const rateStr = m[6];
+    const totalStr = m[7];
+    if (!description || !qtyStr || !rateStr || !totalStr) continue;
+
     const desc = description.trim();
 
     readQty += Number(qtyStr);
     readTotalPaise += rupeesToPaise(totalStr);
 
     const d = DESC.exec(desc);
-    if (d) {
+    if (d?.[2]) {
       rows.push({
         code: d[2],
-        variant: d[4],
+        variant: d[4] ?? null,
         paise: rupeesToPaise(rateStr),
         qty: Number(qtyStr),
         desc,
@@ -148,7 +162,7 @@ export async function parseSelvaPdf(file: File): Promise<SelvaParse> {
     }
 
     const plain = DESC_PLAIN.exec(desc);
-    if (plain) {
+    if (plain?.[2]) {
       // A code with no size printed. Still priceable, as long as that
       // code carries only one price on the document -- which the
       // database checks, so it is not decided here.
@@ -172,8 +186,8 @@ export async function parseSelvaPdf(file: File): Promise<SelvaParse> {
   return {
     rows,
     quotationNo: quote?.[1] ?? null,
-    statedQty: qtyStated ? Number(qtyStated[1].replace(/,/g, "")) : null,
-    statedTotalPaise: totStated ? rupeesToPaise(totStated[1]) : null,
+    statedQty: qtyStated?.[1] ? Number(qtyStated[1].replace(/,/g, "")) : null,
+    statedTotalPaise: totStated?.[1] ? rupeesToPaise(totStated[1]) : null,
     readQty,
     readTotalPaise,
     unreadable,
