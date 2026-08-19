@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Select, Label, FieldError } from "@/components/ui/Field";
 import { formatPaise } from "@/lib/money";
 import { applyPriceSheet, type SheetOutcome } from "./priceSheetActions";
+import { SelvaPricingTool } from "./SelvaPricingTool";
 
 interface Parsed {
   headers: string[];
@@ -27,6 +28,13 @@ interface Parsed {
  * Parsed in the browser rather than uploaded: the file never leaves the
  * machine, there is nothing to store or clean up, and the person can see
  * what was read before anything is written.
+ *
+ * The Selva tool is mounted underneath rather than folded into this one.
+ * A spreadsheet arrives as named columns a person picks from; a Selva
+ * quotation arrives as a fixed printed grid with its own totals to
+ * reconcile against and its own sizes to settle. Sharing a card would
+ * mean a column picker that vanishes for one vendor and a reconciliation
+ * banner that never appears for the other.
  */
 export function PriceSheetUpload({
   inwardId,
@@ -91,153 +99,161 @@ export function PriceSheetUpload({
     : [];
 
   return (
-    <Card>
-      <CardHeader className="font-medium">Price from the vendor&apos;s sheet</CardHeader>
-      <CardBody className="space-y-3">
-        <p className="text-2xs text-text-muted">
-          The SKU column is matched against the design code in each item&apos;s
-          name — <span className="font-mono">cz studs 2290060826</span> matches
-          SKU <span className="font-mono">2290</span>. A prefix like{" "}
-          <span className="font-mono">SV-2290</span> matches too.
-        </p>
+    <div className="space-y-3">
+      <Card>
+        <CardHeader className="font-medium">Price from the vendor&apos;s sheet</CardHeader>
+        <CardBody className="space-y-3">
+          <p className="text-2xs text-text-muted">
+            The SKU column is matched against the design code in each item&apos;s
+            name — <span className="font-mono">cz studs 2290060826</span> matches
+            SKU <span className="font-mono">2290</span>. A prefix like{" "}
+            <span className="font-mono">SV-2290</span> matches too.
+          </p>
 
-        <input
-          type="file"
-          accept=".xlsx,.xls,.csv"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) void read(f);
-          }}
-          className="block w-full text-sm file:mr-3 file:rounded-control file:border file:border-border file:bg-surface file:px-3 file:py-1.5 file:text-2xs"
-        />
+          <input
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void read(f);
+            }}
+            className="block w-full text-sm file:mr-3 file:rounded-control file:border file:border-border file:bg-surface file:px-3 file:py-1.5 file:text-2xs"
+          />
 
-        {error && <FieldError>{error}</FieldError>}
+          {error && <FieldError>{error}</FieldError>}
 
-        {parsed && (
-          <>
-            <div className="flex flex-wrap gap-3">
-              <div>
-                <Label htmlFor="sku-col">SKU column</Label>
-                <Select
-                  id="sku-col"
-                  value={skuCol}
-                  onChange={(e) => setSkuCol(e.target.value)}
-                >
-                  <option value="">Choose…</option>
-                  {parsed.headers.map((h) => (
-                    <option key={h} value={h}>
-                      {h}
-                    </option>
-                  ))}
-                </Select>
+          {parsed && (
+            <>
+              <div className="flex flex-wrap gap-3">
+                <div>
+                  <Label htmlFor="sku-col">SKU column</Label>
+                  <Select
+                    id="sku-col"
+                    value={skuCol}
+                    onChange={(e) => setSkuCol(e.target.value)}
+                  >
+                    <option value="">Choose…</option>
+                    {parsed.headers.map((h) => (
+                      <option key={h} value={h}>
+                        {h}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="price-col">Price column</Label>
+                  <Select
+                    id="price-col"
+                    value={priceCol}
+                    onChange={(e) => setPriceCol(e.target.value)}
+                  >
+                    <option value="">Choose…</option>
+                    {parsed.headers.map((h) => (
+                      <option key={h} value={h}>
+                        {h}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
               </div>
-              <div>
-                <Label htmlFor="price-col">Price column</Label>
-                <Select
-                  id="price-col"
-                  value={priceCol}
-                  onChange={(e) => setPriceCol(e.target.value)}
-                >
-                  <option value="">Choose…</option>
-                  {parsed.headers.map((h) => (
-                    <option key={h} value={h}>
-                      {h}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-            </div>
 
-            <div className="flex flex-wrap items-center gap-2 rounded-control border border-border p-2">
-              <label className="flex items-center gap-1.5 text-2xs">
-                <input
-                  type="checkbox"
-                  checked={inclusive}
-                  onChange={(e) => setInclusive(e.target.checked)}
-                />
-                these prices include GST
-              </label>
-              {vendorPriceMode && (
-                <span className="text-2xs text-text-muted">
-                  · this vendor is set to{" "}
-                  <span className="text-text-primary">
-                    {vendorPriceMode.replace(/_/g, " ")}
+              <div className="flex flex-wrap items-center gap-2 rounded-control border border-border p-2">
+                <label className="flex items-center gap-1.5 text-2xs">
+                  <input
+                    type="checkbox"
+                    checked={inclusive}
+                    onChange={(e) => setInclusive(e.target.checked)}
+                  />
+                  these prices include GST
+                </label>
+                {vendorPriceMode && (
+                  <span className="text-2xs text-text-muted">
+                    · this vendor is set to{" "}
+                    <span className="text-text-primary">
+                      {vendorPriceMode.replace(/_/g, " ")}
+                    </span>
+                    {mismatch(inclusive, vendorPriceMode) &&
+                      " — the figures will be converted to match"}
                   </span>
-                  {mismatch(inclusive, vendorPriceMode) &&
-                    " — the figures will be converted to match"}
-                </span>
-              )}
-            </div>
-
-            <p className="text-2xs text-text-muted">
-              {parsed.rows.length} rows in the file · {preview.length} usable
-              {parsed.sheetNames.length > 1 &&
-                ` · only the first sheet (${parsed.sheetNames[0]}) is read`}
-            </p>
-
-            {preview.length > 0 && (
-              <ul className="max-h-32 overflow-auto rounded-control border border-border p-2 text-2xs">
-                {preview.slice(0, 6).map((r, i) => (
-                  <li key={i} className="flex justify-between gap-3">
-                    <span className="font-mono">{r.sku}</span>
-                    <span className="tnum">{formatPaise(r.paise ?? 0)}</span>
-                  </li>
-                ))}
-                {preview.length > 6 && (
-                  <li className="pt-1 text-text-subtle">
-                    …and {preview.length - 6} more
-                  </li>
                 )}
-              </ul>
-            )}
+              </div>
 
-            <Button
-              disabled={busy || preview.length === 0}
-              onClick={() => {
-                setError(null);
-                start(async () => {
-                  const r = await applyPriceSheet(
-                    inwardId,
-                    preview.map((p) => ({ sku: p.sku, paise: p.paise as number })),
-                    inclusive,
-                  );
-                  if (r.ok) {
-                    setOutcome(r.data);
-                    router.refresh();
-                  } else setError(r.error);
-                });
-              }}
-            >
-              {busy ? "Matching…" : `Apply ${preview.length} prices`}
-            </Button>
-          </>
-        )}
+              <p className="text-2xs text-text-muted">
+                {parsed.rows.length} rows in the file · {preview.length} usable
+                {parsed.sheetNames.length > 1 &&
+                  ` · only the first sheet (${parsed.sheetNames[0]}) is read`}
+              </p>
 
-        {outcome && (
-          <div className="space-y-1 border-t border-border pt-2 text-2xs">
-            <p>
-              <span className="text-status-done-fg">{outcome.matched} priced</span> ·{" "}
-              {outcome.unmatched} could not be matched
-            </p>
-            {/* The misses are the point. A price sheet that quietly
-                covered half the carton is worse than one that covered
-                none, because nobody would go looking. */}
-            {outcome.lines.filter((l) => !l.matched).length > 0 && (
-              <ul className="max-h-40 space-y-0.5 overflow-auto">
-                {outcome.lines
-                  .filter((l) => !l.matched)
-                  .map((l) => (
-                    <li key={l.lineId} className="text-text-muted">
-                      <span className="text-text-primary">{l.itemName}</span> —{" "}
-                      {l.reason}
+              {preview.length > 0 && (
+                <ul className="max-h-32 overflow-auto rounded-control border border-border p-2 text-2xs">
+                  {preview.slice(0, 6).map((r, i) => (
+                    <li key={i} className="flex justify-between gap-3">
+                      <span className="font-mono">{r.sku}</span>
+                      <span className="tnum">{formatPaise(r.paise ?? 0)}</span>
                     </li>
                   ))}
-              </ul>
-            )}
-          </div>
-        )}
-      </CardBody>
-    </Card>
+                  {preview.length > 6 && (
+                    <li className="pt-1 text-text-subtle">
+                      …and {preview.length - 6} more
+                    </li>
+                  )}
+                </ul>
+              )}
+
+              <Button
+                disabled={busy || preview.length === 0}
+                onClick={() => {
+                  setError(null);
+                  start(async () => {
+                    const r = await applyPriceSheet(
+                      inwardId,
+                      preview.map((p) => ({ sku: p.sku, paise: p.paise as number })),
+                      inclusive,
+                    );
+                    if (r.ok) {
+                      setOutcome(r.data);
+                      router.refresh();
+                    } else setError(r.error);
+                  });
+                }}
+              >
+                {busy ? "Matching…" : `Apply ${preview.length} prices`}
+              </Button>
+            </>
+          )}
+
+          {outcome && (
+            <div className="space-y-1 border-t border-border pt-2 text-2xs">
+              <p>
+                <span className="text-status-done-fg">{outcome.matched} priced</span> ·{" "}
+                {outcome.unmatched} could not be matched
+              </p>
+              {/* The misses are the point. A price sheet that quietly
+                  covered half the carton is worse than one that covered
+                  none, because nobody would go looking. */}
+              {outcome.lines.filter((l) => !l.matched).length > 0 && (
+                <ul className="max-h-40 space-y-0.5 overflow-auto">
+                  {outcome.lines
+                    .filter((l) => !l.matched)
+                    .map((l) => (
+                      <li key={l.lineId} className="text-text-muted">
+                        <span className="text-text-primary">{l.itemName}</span> —{" "}
+                        {l.reason}
+                      </li>
+                    ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </CardBody>
+      </Card>
+
+      {/* Mounted here rather than in PricingPanel so the pricing screen
+          itself needs no change. It shows its own card and stays quiet
+          until a PDF is chosen, so it costs nothing on the vendors it
+          does not apply to. */}
+      <SelvaPricingTool inwardId={inwardId} />
+    </div>
   );
 }
 

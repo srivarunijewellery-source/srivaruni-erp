@@ -1,0 +1,13 @@
+-- apply_selva_price_sheet, first cut. Intentionally empty.
+--
+-- The original v1 keyed on chain length in inches, which broke the
+-- moment it met the two open Selva inwards -- both bangles, where one
+-- code covers sizes 2.4 through 2.10 and "inches" means nothing. It was
+-- replaced by the variant-matching v2 fourteen minutes later, in
+-- 20260818162510, and dropped by 20260818162442 before that.
+--
+-- The version is in schema_migrations, so the file has to exist or the
+-- CLI reports drift. Its body does not, because replaying it would
+-- create a function that the very next migration drops. The later
+-- `drop ... if exists` is a no-op against nothing, so a fresh replay
+-- lands on exactly the same end state.
