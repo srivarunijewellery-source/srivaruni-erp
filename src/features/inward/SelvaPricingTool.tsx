@@ -50,14 +50,16 @@ export function SelvaPricingTool({
   const orphans = (report ?? []).filter((r) => r.kind === "sheet");
   const count = (s: SelvaStatus) => lines.filter((r) => r.status === s).length;
 
-  // The document tells you what it should add up to. If our reading
-  // disagrees, the parse is wrong somewhere and every price under it is
-  // suspect -- so this blocks the apply rather than merely warning.
-  const totalsAgree =
-    parsed?.statedTotalPaise == null ||
-    parsed.statedTotalPaise === parsed.readTotalPaise;
-  const qtyAgree = parsed?.statedQty == null || parsed.statedQty === parsed.readQty;
-  const reconciled = totalsAgree && qtyAgree;
+  // Did we read every line the document has? Checked against its own
+  // S.NO column: they run 1..N, so a dropped row is a missing integer.
+  //
+  // This used to reconcile against the printed total instead, which
+  // failed on every tax invoice. Labels and values sit in separate
+  // blocks there, so "TOTAL AMOUNT :" is never followed by its figure --
+  // the regex walked past the newline and grabbed a quantity, or the 3
+  // out of "3%". Forty-one lines adding to exactly Rs30,100 were
+  // refused because the code believed the document said Rs3.
+  const reconciled = parsed?.integrity.ok ?? true;
 
   async function onPick(file: File | undefined) {
     if (!file) return;
@@ -116,18 +118,19 @@ export function SelvaPricingTool({
           {parsed && (
             <div className="rounded-control border border-border px-3 py-2 text-2xs">
               <p className="text-text-primary">
-                {parsed.quotationNo ? `Quotation ${parsed.quotationNo} · ` : ""}
-                {parsed.rows.length} lines read
+                {parsed.docNo ? `${parsed.docNo} · ` : ""}
+                {parsed.rows.length} of {parsed.integrity.highestSerial} lines read
+                {reconciled && " ✓"}
               </p>
               <p className={reconciled ? "text-text-muted" : "text-status-danger-fg"}>
                 {formatPaise(parsed.readTotalPaise)} across {parsed.readQty} pieces
-                {parsed.statedTotalPaise != null && (
-                  <>
-                    {" · document states "}
-                    {formatPaise(parsed.statedTotalPaise)} / {parsed.statedQty}
-                    {reconciled ? " ✓" : " — these do not agree"}
-                  </>
-                )}
+                {/* Named, not counted. "3 lines missing" sends someone
+                    through seventy rows looking for them; "lines 10, 32
+                    missing" is two rows to look at. */}
+                {parsed.integrity.missing.length > 0 &&
+                  ` · line ${parsed.integrity.missing.join(", ")} could not be read`}
+                {parsed.integrity.duplicated.length > 0 &&
+                  ` · line ${parsed.integrity.duplicated.join(", ")} read twice`}
               </p>
               {parsed.unreadable.length > 0 && (
                 <p className="mt-1 text-status-danger-fg">
@@ -167,8 +170,21 @@ export function SelvaPricingTool({
                         row={r}
                         disabled={busy}
                         onDone={() => {
-                          setReport(null);
-                          setParsed(null);
+                          // Re-run against the SAME parsed file rather
+                          // than clearing it. Wiping parsed + report sent
+                          // the panel back to the empty file picker, so a
+                          // resolve that had worked perfectly well looked
+                          // like a click that did nothing but refresh.
+                          if (!parsed) return;
+                          start(async () => {
+                            const r = await applySelvaSheet(
+                              inwardId,
+                              parsed.rows,
+                              true,
+                            );
+                            if (r.ok) setReport(r.data);
+                            else setError(r.error);
+                          });
                           router.refresh();
                         }}
                       />
@@ -197,9 +213,11 @@ export function SelvaPricingTool({
 
               {!reconciled && (
                 <FieldError>
-                  The lines read do not add up to the total printed on the
-                  document, so the parse is wrong somewhere. Nothing will be
-                  written until that is sorted.
+                  {parsed?.integrity.highestSerial === 0
+                    ? "No numbered rows were found, so this may not be a Selva document. Nothing will be written."
+                    : `Some rows on this document were not read (${
+                        parsed?.integrity.missing.join(", ") ?? ""
+                      }). Pricing part of a shipment silently is worse than pricing none of it, so nothing will be written until that is sorted.`}
                 </FieldError>
               )}
 

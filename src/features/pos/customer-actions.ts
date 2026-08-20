@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { err, ok, toMessage, type Result } from "@/lib/result";
 import { searchCustomers, type CustomerHit } from "./queries";
@@ -70,6 +71,41 @@ export async function quickAddCustomer(input: QuickCustomer): Promise<Result<Cus
     city: input.city?.trim() || null,
     state: input.state?.trim() || null,
   });
+}
+
+/**
+ * Puts a name on a finalised bill that was rung as a walk-in.
+ *
+ * A return becomes a credit note, and a credit note has to sit against
+ * somebody — so a walk-in bill could not be returned against at all.
+ * That is the correct rule and the database still enforces it; what was
+ * missing was any way to satisfy it. The counter's only option was to
+ * turn the customer away over a detail nobody captured at the till.
+ *
+ * Deliberately fills a blank only. Moving a bill from one named customer
+ * to another takes its purchase history and any credit raised against it
+ * with it, and that is an owner's decision made deliberately, not
+ * something that should happen while someone waits with a receipt.
+ *
+ * The audit note is written inside the database function rather than
+ * here, so it cannot be skipped by a future caller.
+ */
+export async function attachCustomerToBill(
+  billId: string,
+  customerId: string,
+): Promise<Result<void>> {
+  if (!billId || !customerId) return err("Pick a customer first.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("set_bill_customer", {
+    p_bill: billId,
+    p_customer: customerId,
+  });
+  if (error) return err(toMessage(error));
+
+  revalidatePath("/pos");
+  revalidatePath("/sales");
+  return ok(undefined);
 }
 
 /**

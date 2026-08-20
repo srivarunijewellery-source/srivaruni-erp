@@ -38,15 +38,37 @@ export interface SelvaRow {
 
 export interface SelvaParse {
   rows: SelvaRow[];
-  quotationNo: string | null;
-  /** Totals the document states about itself, for reconciliation. */
-  statedQty: number | null;
-  statedTotalPaise: number | null;
-  /** Line totals actually summed, so a silent mis-parse is visible. */
+  docNo: string | null;
   readQty: number;
   readTotalPaise: number;
   /** Table rows the line pattern matched but the description did not. */
   unreadable: string[];
+  /**
+   * Whether every line on the document was read.
+   *
+   * Checked against the document's own S.NO column, NOT against its
+   * printed total. Reconciling to the total looked obvious and was
+   * wrong: on an invoice the labels sit in one block and their values in
+   * another, so `TOTAL AMOUNT :` is never followed by its own figure.
+   * The regex walked past the newline and took the first number it
+   * found -- a quantity, or the 3 out of "3%" -- then reported a
+   * perfectly good parse as broken. Forty-one lines summing to exactly
+   * Rs30,100 were refused because the code thought the document said
+   * Rs3.
+   *
+   * Serial numbers cannot lie in that way. They start at 1 and run to N
+   * with no gaps, so a missing row is a missing integer, and a repeated
+   * row is a duplicate. It needs nothing from the layout, and works the
+   * same on a quotation with no totals block at all.
+   */
+  integrity: {
+    ok: boolean;
+    /** Highest S.NO seen: how many lines the document claims to have. */
+    highestSerial: number;
+    /** Serial numbers between 1 and the highest that never appeared. */
+    missing: number[];
+    duplicated: number[];
+  };
 }
 
 /** `79 CHN... 71179010 PCS 1 720 720.00` — anchored on the 8-digit HSN. */
@@ -126,6 +148,8 @@ export async function parseSelvaPdf(file: File): Promise<SelvaParse> {
 
   const rows: SelvaRow[] = [];
   const unreadable: string[] = [];
+  /** The S.NO of every grid row read, for the integrity check below. */
+  const serials: number[] = [];
   let readQty = 0;
   let readTotalPaise = 0;
 
@@ -138,12 +162,14 @@ export async function parseSelvaPdf(file: File): Promise<SelvaParse> {
     // row is skipped if any are missing -- an assertion here would turn a
     // future pattern change into a NaN price instead of a dropped line,
     // and a NaN price is the one failure this whole tool exists to avoid.
+    const serial = m[1];
     const description = m[2];
     const qtyStr = m[5];
     const rateStr = m[6];
     const totalStr = m[7];
-    if (!description || !qtyStr || !rateStr || !totalStr) continue;
+    if (!serial || !description || !qtyStr || !rateStr || !totalStr) continue;
 
+    serials.push(Number(serial));
     const desc = description.trim();
 
     readQty += Number(qtyStr);
@@ -179,17 +205,32 @@ export async function parseSelvaPdf(file: File): Promise<SelvaParse> {
     unreadable.push(desc);
   }
 
-  const qtyStated = /Total no of Quantity\s*:?\s*([\d,]+(?:\.\d+)?)/i.exec(text);
-  const totStated = /Total Amount\s*:?\s*([\d,]+(?:\.\d+)?)/i.exec(text);
-  const quote = /Quotation No\s*:?\s*(\S+)/i.exec(text);
+  // Quotation or tax invoice -- Selva's portal prints both, and the two
+  // label their number differently.
+  const doc =
+    /Quotation No\s*:?\s*(\S+)/i.exec(text) ??
+    /Invoice No\s*:?\s*(\S+)/i.exec(text);
+
+  const highestSerial = serials.length > 0 ? Math.max(...serials) : 0;
+  const seen = new Set(serials);
+  const missing: number[] = [];
+  for (let n = 1; n <= highestSerial; n++) if (!seen.has(n)) missing.push(n);
+
+  const counts = new Map<number, number>();
+  for (const n of serials) counts.set(n, (counts.get(n) ?? 0) + 1);
+  const duplicated = [...counts.entries()].filter(([, c]) => c > 1).map(([n]) => n);
 
   return {
     rows,
-    quotationNo: quote?.[1] ?? null,
-    statedQty: qtyStated?.[1] ? Number(qtyStated[1].replace(/,/g, "")) : null,
-    statedTotalPaise: totStated?.[1] ? rupeesToPaise(totStated[1]) : null,
+    docNo: doc?.[1] ?? null,
     readQty,
     readTotalPaise,
     unreadable,
+    integrity: {
+      ok: highestSerial > 0 && missing.length === 0 && duplicated.length === 0,
+      highestSerial,
+      missing,
+      duplicated,
+    },
   };
 }

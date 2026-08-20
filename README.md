@@ -1,133 +1,92 @@
-# Sri Varuni ERP
+# Full build — everything outstanding
 
-Inward and stock control for two jewellery stores, run remotely.
+    unzip -o srivaruni-full-build.zip -d /path/to/srivaruni-erp
+    npx tsc --noEmit
+    git add -A && git commit -m "Selva integrity + conflict fix, walk-in returns, sales detail popup" && git push
 
-Next.js 15 (App Router) · TypeScript · Tailwind v4 · Supabase (Postgres, ap-south-1)
+Six source files, three migrations. Complete files — overwrite, don't
+merge. No scripts to run.
 
----
+I checked every one of these against what is actually on main rather
+than assuming. Files already correct in the repo are NOT included, so
+nothing here is a no-op.
 
-## Run it
+## What is in here and why
 
-```bash
-npm install
-cp .env.example .env.local     # fill in NEXT_PUBLIC_SUPABASE_ANON_KEY
-npm run dev
-```
+### Never applied at all — the walk-in return work
 
-Anon key: Supabase dashboard → Project Settings → API → `anon` `public`.
+    src/features/pos/ReturnPanel.tsx        repo 15,706 -> 22,681
+    src/features/pos/customer-actions.ts    repo  3,124 ->  4,474
 
-### Test accounts
+This whole drop is still missing from main. A walk-in bill still shows
+"A return cannot be taken against it" with a dead button. With these,
+the counter can find or add the customer inline and carry on.
 
-| Email | Password | Role |
-|---|---|---|
-| `admin@srivaruni.com` | `SV@2026` | owner |
-| `staff_test@srivaruni.com` | `12345` | staff, Boduppal |
+The two migrations behind it (set_bill_customer) ARE already live.
 
-**Rotate both before real data.** They have been shared in plain text, and
-`12345` is below Supabase's six-character API minimum, so it works for
-sign-in but cannot be changed through the app's own password flow.
+### Stale — the Selva fixes from the screenshot
 
-### Deploy
+    src/features/inward/selvaPdf.ts         repo  6,818 ->  8,365
+    src/features/inward/SelvaPricingTool.tsx repo 11,694 -> 13,053
 
-1. Push to GitHub.
-2. Import the repo in Vercel. Next.js is auto-detected; no build settings
-   to change.
-3. Add two environment variables (values are in `.env.example`):
-   `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
-4. Deploy.
+selvaPdf.ts: the checksum no longer reconciles against the printed
+total. On a tax invoice the labels sit in one block and the values in
+another, so "TOTAL AMOUNT :" is never followed by its figure and the
+regex grabbed the 3 out of "3%". It now checks the document's own S.NO
+column — serials run 1..N, so a dropped row is a missing integer.
 
-**Never** add the `service_role` key. It bypasses every RLS policy,
-including the ones that keep cost away from staff.
+Verified on both real documents through the browser's own line
+assembly: neckset invoice 41/41 lines Rs30,100.00, chain quotation
+79/79 lines Rs48,883.00.
 
-Nothing needs configuring on the Supabase side: all fifteen migrations
-are already applied to `pkubyiwednioztrrkssx`, and email/password sign-in
-is on by default. Storage buckets are only needed once photo upload is
-built.
+SelvaPricingTool.tsx: clicking a conflict no longer wipes the parsed
+file and the report. It re-runs the dry run in place, so the line
+visibly moves from conflict to priced.
 
----
+### Stale — the sales detail popup
 
-## Architecture
+    src/app/(app)/sales/detail/page.tsx     repo 12,359 -> 12,569
 
-```
-src/
-  config/     app constants, routes, roles, status presentation
-  types/      domain types (hand-curated) + generated database types
-  lib/        supabase clients, money, formatting, env validation
-  features/   one folder per domain: queries.ts, actions.ts, components
-  components/ ui/ primitives + app shell
-  app/        routes only, thin
-supabase/
-  migrations/ the schema, in order
-```
+BillPeek.tsx reached the repo but nothing imported it — the page still
+linked to /sales?q=<bill no>. That is why a build ran and nothing
+changed: dead code compiles fine. This file wires it in.
 
-### The rules this codebase follows
+BillPeek.tsx itself is byte-identical to what is on main, so it is
+included only so the folder is complete.
 
-**No hardcoded values.** Every colour, radius, shadow and font is a token
-in `src/app/globals.css`. Every route is in `config/nav.ts`, every
-constant in `config/app.ts`. If you find a hex code in a component, that
-is a bug.
+## Migrations — ALREADY LIVE, do not re-run
 
-**Tokens are named for their job, not their appearance.**
-`--color-status-transit-fg`, not `--color-purple-600`. Appearance
-changes; jobs don't.
+    20260819160645  set_bill_customer_for_returns
+    20260819160655  set_bill_customer_revoke_public
+    20260820012901  selva_price_sheet_distinct_price_ambiguity
 
-**Authorization lives in the database, not in TypeScript.** `config/roles.ts`
-decides what the UI *offers*. Every rule is independently enforced by RLS
-and by explicit checks inside each `SECURITY DEFINER` function. There is
-no role check inside a server action, deliberately: two sources of truth
-drift, and the one that drifts silently is the dangerous one.
+Recorded in schema_migrations. Files are here so the repo matches the
+ledger.
 
-**The app never uses the service_role key.** Server components talk to
-Postgres as the signed-in user, so RLS applies to every query. This is
-what makes "staff cannot see cost" true rather than aspirational.
+The last one is the same-price conflict fix. Re-run against
+BOD-IN-000084 with the real invoice rows, all six lines from the
+screenshot resolve and nothing is flagged:
 
-**Money is BIGINT paise, always.** Rupees exist only at display or input,
-in `lib/money.ts`. Nowhere else.
+    SV17781  8311126  ->  unchanged Rs430
+    SV17783  8311105  ->  priced    Rs340
+    SV17784  8311126  ->  priced    Rs430
+    SV17791  8311105  ->  priced    Rs340
+    SV17800  8311121  ->  priced    Rs430
+    SV17809  8311121  ->  unchanged Rs430
 
-**Reads are server components; writes are server actions.** Actions return
-`Result<T>` rather than throwing, because most failures are authorization
-messages written for the person reading them.
+## Still open — not in this build
 
-### Design
+**Selva invoice discounts.** The neckset invoice runs 30,100.00 less
+875.93 less 2,045.68 = 27,178.41 taxable, plus 3% IGST = 27,994.00. The
+printed Rs430 is before both discounts and before tax, so pricing at
+face value overstates landed cost by about 7.5% per piece. It also means
+price_mode should be gst_exclusive, not the gst_inclusive currently on
+the vendor record.
 
-One brand accent, oxblood `#6b1d2b`, taken from the burgundy velvet the
-products are photographed on. It appears only on primary actions and
-active navigation. Everything else is a warm neutral ramp or a workflow
-status colour, because in an operations tool the states *are* the palette.
+I need to know whether both discount lines appear on every Selva
+invoice before wiring this to the inward header, where
+compute_inward_costs already knows how to prorate one.
 
-Two type roles: Instrument Sans for the interface, IBM Plex Mono for
-anything read character-by-character or compared down a column, which is
-barcodes, money, quantities and document numbers. The `SV#####` tag is
-treated as a serial number on an instrument. That is the one piece of
-deliberate visual identity, and everything else stays quiet.
-
----
-
-## What works
-
-Sign in · dashboard with approval queue · inward list, create, detail,
-submit, approve, send back · transfers with the full request → approve →
-dispatch → receive lifecycle · stock search.
-
-## What is next
-
-1. **Add-item modal** on the inward detail page: search-or-create,
-   category and attributes, camera capture, quantity. Mobile-first, since
-   staff run this standing over open cartons.
-2. **Owner pricing screen**: photo grid, MRP suggested from the category
-   multiplier, bulk apply, one tap to approve the whole document.
-3. **Photo upload** to Supabase Storage with client-side compression
-   (`INWARD.photoMaxEdgePx`).
-4. **Transfer line editing** — the lifecycle works, but lines are added
-   directly for now.
-5. **Vasy catalog load** via `staging_vasy_products` and
-   `legacy_category_map`.
-
-## Database
-
-Fifteen migrations in `supabase/migrations/`. See the schema notes in
-`supabase/SCHEMA.md`. Tests are plain psql scripts:
-
-```bash
-psql "$DATABASE_URL" -f supabase/test_e2e.sql
-```
+**SV17813** is named with eight digits (83111137) where every neighbour
+has seven. Almost certainly a typo for 8311137, which is why that line
+reports as not on the document.

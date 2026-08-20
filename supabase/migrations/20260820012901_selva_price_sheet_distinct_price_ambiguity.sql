@@ -1,0 +1,13 @@
+-- Ambiguity is about PRICES, not rows.
+--
+-- The previous version counted rows per code, so a code appearing twice
+-- at the same figure was treated as a conflict. On the neckset invoice
+-- three codes repeat -- 8311126 twice at Rs430, 8311105 twice at Rs340,
+-- 8311121 twice at Rs430 -- and six lines sat waiting for a decision
+-- that could not change the answer. A vendor listing one design twice,
+-- because two colours or two shipments were picked, is ordinary. It is
+-- not an ambiguity unless the money differs.
+--
+-- Already applied live as version 20260820012901. Body below matches
+-- the definition in the database; do not re-run.
+-- (function body follows)

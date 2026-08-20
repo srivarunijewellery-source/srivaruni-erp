@@ -13,6 +13,11 @@ import {
 } from "./actions";
 import type { SessionBill } from "./queries";
 import { findBillsForReturn, type ReturnableBill } from "./actions";
+import {
+  attachCustomerToBill,
+  quickAddCustomer,
+  searchCustomersAction,
+} from "./customer-actions";
 import { formatDate } from "@/lib/format";
 
 interface Picked {
@@ -277,11 +282,19 @@ export function ReturnPanel({
           <p className="py-6 text-center text-sm text-text-muted">Reading the bill…</p>
         ) : (
           <>
+            {/* A walk-in bill used to be a dead end here: the credit has
+                to sit against somebody, so the return was simply refused
+                and the customer sent away over a detail the till never
+                captured. The rule is right; what was missing was a way
+                to satisfy it without leaving the counter. */}
             {!bill.customerName && (
-              <p className="rounded-control bg-status-danger-bg px-3 py-2 text-2xs text-status-danger-fg">
-                This bill has no customer on it, so there is nobody to hold the credit.
-                A return cannot be taken against it.
-              </p>
+              <AttachCustomer
+                billNo={bill.billNo}
+                onAttached={(name, phone) =>
+                  setBill({ ...bill, customerName: name, customerPhone: phone })
+                }
+                attach={(customerId) => attachCustomerToBill(bill.billId, customerId)}
+              />
             )}
 
             <ul className="divide-y divide-border rounded-card border border-border">
@@ -406,5 +419,198 @@ export function ReturnPanel({
         )}
       </div>
     </Modal>
+  );
+}
+
+/**
+ * Names a walk-in bill so the return can proceed.
+ *
+ * Search first, add second, in that order and on one screen. The person
+ * is standing there: half of them have bought before and typing their
+ * number finds them, and making that a separate trip to the Customers
+ * page is how a counter learns to say "we can't take returns without a
+ * bill in your name".
+ *
+ * Search runs on name OR phone, because the customer will offer whichever
+ * comes to mind first.
+ */
+function AttachCustomer({
+  billNo,
+  attach,
+  onAttached,
+}: {
+  billNo: string;
+  attach: (customerId: string) => Promise<{ ok: boolean; error?: string }>;
+  onAttached: (name: string, phone: string) => void;
+}) {
+  const [term, setTerm] = useState("");
+  const [hits, setHits] = useState<
+    Array<{ id: string; name: string | null; phone: string }>
+  >([]);
+  const [adding, setAdding] = useState(false);
+  const [newPhone, setNewPhone] = useState("");
+  const [newName, setNewName] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, start] = useTransition();
+
+  useEffect(() => {
+    if (adding || term.trim().length < 3) {
+      setHits([]);
+      return;
+    }
+    // Debounced: a search per keystroke on a counter's connection is
+    // slower than no search at all.
+    const id = setTimeout(() => {
+      void searchCustomersAction(term).then((r) => {
+        if (r.ok) {
+          setHits(r.data.map((c) => ({ id: c.id, name: c.name, phone: c.phone })));
+        }
+      });
+    }, 250);
+    return () => clearTimeout(id);
+  }, [term, adding]);
+
+  function choose(customerId: string, name: string | null, phone: string) {
+    start(async () => {
+      setError(null);
+      const r = await attach(customerId);
+      if (!r.ok) {
+        setError(r.error ?? "That customer could not be attached.");
+        return;
+      }
+      // The name is what unlocks the rest of this screen, so a customer
+      // saved with only a number falls back to the number rather than
+      // leaving the panel looking like nothing happened.
+      onAttached(name ?? phone, phone);
+    });
+  }
+
+  function addAndChoose() {
+    start(async () => {
+      setError(null);
+      const made = await quickAddCustomer({ phone: newPhone, name: newName });
+      if (!made.ok) {
+        setError(made.error);
+        return;
+      }
+      const r = await attach(made.data.id);
+      if (!r.ok) {
+        setError(r.error ?? "That customer could not be attached.");
+        return;
+      }
+      onAttached(made.data.name ?? made.data.phone, made.data.phone);
+    });
+  }
+
+  return (
+    <div className="space-y-2 rounded-control border border-status-pending-fg/40 bg-status-pending-bg px-3 py-2.5">
+      <p className="text-2xs text-status-pending-fg">
+        <span className="font-medium">No customer on {billNo}.</span> It was rung as a
+        walk-in. A credit note has to sit against somebody, so add who this is and the
+        return carries on as normal.
+      </p>
+
+      {!adding ? (
+        <>
+          <Input
+            autoFocus
+            value={term}
+            onChange={(e) => setTerm(e.target.value)}
+            placeholder="Search by name or phone"
+          />
+
+          {hits.length > 0 && (
+            <ul className="max-h-40 divide-y divide-border overflow-auto rounded-control border border-border bg-surface">
+              {hits.map((c) => (
+                <li key={c.id} className="flex items-center justify-between gap-2 p-2">
+                  <span className="min-w-0 text-2xs">
+                    <span className="block truncate">{c.name ?? "No name"}</span>
+                    <span className="font-mono text-text-muted">{c.phone}</span>
+                  </span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    disabled={busy}
+                    onClick={() => choose(c.id, c.name, c.phone)}
+                  >
+                    Use
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {term.trim().length >= 3 && hits.length === 0 && (
+            <p className="text-2xs text-text-muted">Nobody matches that.</p>
+          )}
+
+          <button
+            type="button"
+            onClick={() => {
+              // Carry whatever was typed across rather than making them
+              // type it twice: a number searched and not found is very
+              // often the number about to be added.
+              const digits = term.replace(/\D/g, "");
+              if (digits.length >= 10) setNewPhone(digits);
+              else if (term.trim()) setNewName(term.trim());
+              setAdding(true);
+            }}
+            className="text-2xs text-brand hover:underline"
+          >
+            New customer
+          </button>
+        </>
+      ) : (
+        <>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="ac-phone">Phone</Label>
+              <Input
+                id="ac-phone"
+                autoFocus
+                inputMode="tel"
+                value={newPhone}
+                onChange={(e) => setNewPhone(e.target.value)}
+                placeholder="98765 43210"
+              />
+            </div>
+            <div>
+              <Label htmlFor="ac-name">Name</Label>
+              <Input
+                id="ac-name"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="Ravinder"
+              />
+            </div>
+          </div>
+          <p className="text-2xs text-text-muted">
+            The number is the one that matters — it is how they are found next time. An
+            existing number updates that customer rather than making a second one.
+          </p>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              size="sm"
+              disabled={busy || newPhone.replace(/\D/g, "").length < 10}
+              onClick={addAndChoose}
+            >
+              {busy ? "Saving…" : "Add and continue"}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => setAdding(false)}
+            >
+              Back to search
+            </Button>
+          </div>
+        </>
+      )}
+
+      {error && <FieldError>{error}</FieldError>}
+    </div>
   );
 }

@@ -9,6 +9,7 @@ import { FilterBar } from "@/components/ui/FilterBar";
 import { DateRangePicker } from "@/components/ui/DateRangePicker";
 import { Pager } from "@/components/ui/Pager";
 import { ItemLink } from "@/components/ui/ItemLink";
+import { BillPeek } from "@/features/salesdetail/BillPeek";
 import { VariantBadge } from "@/components/ui/VariantBadge";
 import { formatPaise } from "@/lib/money";
 import { formatDate } from "@/lib/format";
@@ -278,12 +279,12 @@ export default async function SalesDetailPage({
                         {formatDate(r.billDate)}
                       </td>
                       <td className="px-2 py-1.5">
-                        <Link
-                          href={`${ROUTES.sales}?q=${encodeURIComponent(r.billNo)}`}
-                          className="font-mono text-brand hover:underline"
-                        >
-                          {r.billNo}
-                        </Link>
+                        {/* Opens the invoice over this page rather than
+                            navigating to the sales list filtered to a
+                            single row. A list of one was never what
+                            anyone wanted, and coming back cost the date
+                            range, the filters and the scroll position. */}
+                        <BillPeek billId={r.billId} billNo={r.billNo} />
                         <span className="ml-1 text-text-subtle">{r.locationCode}</span>
                       </td>
                       <td className="max-w-56 truncate px-2 py-1.5">
