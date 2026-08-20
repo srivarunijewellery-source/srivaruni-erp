@@ -88,9 +88,14 @@ export function BillPeek({ billId, billNo }: { billId: string; billNo: string })
                   <li key={i} className="flex items-baseline gap-3 px-3 py-2">
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm">{l.name}</span>
+                      {/* ReceiptLine carries no per-line discount --
+                          the bill's discount is apportioned and lives on
+                          the header, so a line here shows unit price and
+                          line total only. Reading a discount off the line
+                          would mean inventing a figure the receipt itself
+                          does not print. */}
                       <span className="text-2xs text-text-muted">
                         {l.qty} × {formatPaise(l.unitPaise)}
-                        {l.discountPaise > 0 && ` · less ${formatPaise(l.discountPaise)}`}
                       </span>
                     </span>
                     <span className="tnum font-mono text-sm">
@@ -103,9 +108,9 @@ export function BillPeek({ billId, billNo }: { billId: string; billNo: string })
               {/* Gifts are on the bill but are not a line with a price,
                   so they would otherwise vanish from this view entirely
                   and the piece count would not reconcile. */}
-              {data.gifts.length > 0 && (
+              {(data.gifts?.length ?? 0) > 0 && (
                 <ul className="text-2xs text-text-muted">
-                  {data.gifts.map((g, i) => (
+                  {(data.gifts ?? []).map((g, i) => (
                     <li key={i}>
                       Gift · {g.itemName} × {g.qty} ({g.name})
                     </li>
@@ -118,12 +123,12 @@ export function BillPeek({ billId, billNo }: { billId: string; billNo: string })
                 {data.discountPaise > 0 && (
                   <Row label="Discount" paise={-data.discountPaise} />
                 )}
-                <Row label="Taxable" paise={data.taxablePaise} />
-                {data.cgstPaise > 0 && <Row label="CGST" paise={data.cgstPaise} />}
-                {data.sgstPaise > 0 && <Row label="SGST" paise={data.sgstPaise} />}
-                {data.igstPaise > 0 && <Row label="IGST" paise={data.igstPaise} />}
-                {data.roundOffPaise !== 0 && (
-                  <Row label="Round off" paise={data.roundOffPaise} />
+                <Row label="Taxable" paise={data.taxablePaise ?? 0} />
+                {(data.cgstPaise ?? 0) > 0 && <Row label="CGST" paise={data.cgstPaise ?? 0} />}
+                {(data.sgstPaise ?? 0) > 0 && <Row label="SGST" paise={data.sgstPaise ?? 0} />}
+                {(data.igstPaise ?? 0) > 0 && <Row label="IGST" paise={data.igstPaise ?? 0} />}
+                {(data.roundOffPaise ?? 0) !== 0 && (
+                  <Row label="Round off" paise={data.roundOffPaise ?? 0} />
                 )}
                 <div className="flex justify-between pt-1 text-sm font-medium">
                   <dt>Total</dt>
