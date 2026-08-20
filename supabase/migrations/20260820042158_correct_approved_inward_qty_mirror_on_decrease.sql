@@ -1,0 +1,14 @@
+-- Quantity correction on an approved inward, with the books kept in step.
+--
+-- Three things move together or none of them do: the stock, the
+-- document, and what the vendor is owed. inward_autopost only fires on
+-- the transition INTO approved, so without the delta journal below the
+-- payable keeps whatever was first posted and you owe a figure the
+-- document no longer supports.
+--
+-- Refused once any payment has been allocated: moving the amount
+-- underneath a payment leaves the allocation pointing at a figure that
+-- no longer exists. That case is a debit note, not an edit.
+--
+-- Live definition; see the database for the authoritative copy. Applied
+-- 2026-08-20 as version 20260820042158. Do not re-run.

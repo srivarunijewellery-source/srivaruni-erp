@@ -1,0 +1,3 @@
+-- Superseded within the same batch by 20260820024916, which fixes the
+-- column name (inwards.notes, not inwards.note). Recorded here because
+-- the ledger records it; the live definition is the later one.

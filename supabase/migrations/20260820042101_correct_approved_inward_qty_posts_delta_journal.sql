@@ -1,0 +1,6 @@
+-- Superseded minutes later by 20260820042158, which places each amount
+-- on the side its own sign calls for. This version assumed post_journal
+-- would treat a negative debit as a credit; journal_lines forbids a
+-- negative figure outright (jl_non_negative), so a reduction did not
+-- post at all. Recorded because the ledger records it; the live
+-- definition is the later one.
