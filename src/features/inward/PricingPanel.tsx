@@ -27,6 +27,7 @@ import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { downscale } from "@/lib/photos";
 import { STORAGE_BUCKETS } from "@/config/app";
 import { updateInwardLineQty } from "./actions";
+import { correctApprovedLineQty } from "./qtyCorrectionActions";
 import { PhotoThumb } from "@/components/ui/PhotoThumb";
 import { Barcode } from "@/components/ui/Barcode";
 import { Tag } from "@/components/ui/Tag";
@@ -299,6 +300,11 @@ function Row({
   const rupees = (p: number | null) => (p === null ? "" : (p / 100).toFixed(2));
 
   const [qty, setQty] = useState(String(line.qty));
+  /** Set when the document is approved: the quantity being asked for,
+   *  held while a reason is collected. */
+  const [needsReason, setNeedsReason] = useState<number | null>(null);
+  const [reason, setReason] = useState("");
+  const [corrected, setCorrected] = useState<string | null>(null);
   const [rate, setRate] = useState(rupees(line.ratePaise));
   const [mrp, setMrp] = useState(rupees(line.mrpPaise));
   const [selling, setSelling] = useState(rupees(line.sellingPricePaise));
@@ -366,10 +372,45 @@ function Row({
       fd.set("inwardId", inwardId);
       fd.set("qty", String(n));
       const r = await updateInwardLineQty(fd);
+      if (r.ok) return;
+
+      // The document is approved, so the plain edit is refused: those
+      // pieces are already in stock and on the vendor's bill. Rather
+      // than snapping the field back and printing a refusal -- which
+      // reads as a broken input -- ask for the one thing needed to do it
+      // properly, and correct all three together.
+      //
+      // This panel is where a wrong count is actually noticed, invoice
+      // in hand. Sending someone to another tab to fix what they are
+      // looking at is how a feature comes to feel absent.
+      if (/approved/i.test(r.error)) {
+        setNeedsReason(n);
+        return;
+      }
+      onError(r.error);
+      setQty(String(line.qty));
+    });
+  };
+
+  const confirmCorrection = () => {
+    const next = needsReason;
+    if (next === null) return;
+    start(async () => {
+      onError(null);
+      const r = await correctApprovedLineQty(line.lineId, inwardId, next, reason);
       if (!r.ok) {
         onError(r.error);
-        setQty(String(line.qty));
+        return;
       }
+      setNeedsReason(null);
+      setReason("");
+      // The payable is the half nobody expects to move, so it is named
+      // rather than left to surface on a vendor statement later.
+      setCorrected(
+        r.data
+          ? `${r.data.was} → ${r.data.now}. Stock ${r.data.stockBefore} → ${r.data.stockAfter}. Owed ${formatPaise(r.data.payableBefore)} → ${formatPaise(r.data.payableAfter)}, posted today.`
+          : null,
+      );
     });
   };
 
@@ -481,9 +522,65 @@ function Row({
           value={qty}
           onChange={(e) => setQty(e.target.value)}
           onBlur={commitQty}
-          className="tnum text-right"
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              setQty(String(line.qty));
+              setNeedsReason(null);
+            }
+          }}
+          className={`tnum text-right ${
+            needsReason !== null ? "border-status-pending-fg" : ""
+          }`}
           aria-label="Quantity"
         />
+
+        {needsReason !== null && (
+          <div className="mt-1 w-60 space-y-1 rounded-control border border-status-pending-fg/40 bg-status-pending-bg p-2 text-left">
+            <p className="text-2xs text-status-pending-fg">
+              Approved: {line.qty}{" "}
+              {line.qty === 1 ? "piece is" : "pieces are"} already in stock and
+              on the bill. Changing to {needsReason} adjusts stock by{" "}
+              {needsReason - line.qty > 0 ? "+" : ""}
+              {needsReason - line.qty} and posts the difference to what you owe,
+              dated today.
+            </p>
+            <textarea
+              autoFocus
+              rows={2}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Invoice bills 5; six were entered."
+              className="w-full rounded-control border border-border bg-surface px-2 py-1 text-2xs"
+            />
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={reason.trim().length === 0}
+                onClick={confirmCorrection}
+                className="rounded-control bg-brand px-2 py-1 text-2xs text-brand-fg disabled:opacity-50"
+              >
+                Correct quantity and stock
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setNeedsReason(null);
+                  setReason("");
+                  setQty(String(line.qty));
+                }}
+                className="text-2xs text-text-muted hover:underline"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {corrected && (
+          <p className="mt-1 w-60 text-left text-2xs text-status-done-fg">
+            {corrected}
+          </p>
+        )}
       </td>
       <td className="px-2 py-1.5 text-right">
         <NarrowInput

@@ -47,6 +47,7 @@ import { DrawerPanel } from "./DrawerPanel";
 import { SessionBillsPanel, type ReceiptHeader } from "./SessionBillsPanel";
 import { CameraScanner } from "@/components/ui/CameraScanner";
 import { ReturnPanel } from "./ReturnPanel";
+import { CounterNoteButton } from "./CounterNoteButton";
 import { printReceipt, reprintLast, type ReceiptData } from "./receipt";
 import {
   fetchBillBenefits,
@@ -1426,6 +1427,12 @@ export function PosScreen({
               Return
             </Button>
 
+            {/* Logged from here, not only at close. A customer asks for
+                something we do not have and walks out -- that is the
+                moment worth writing down, not four hours later when
+                nobody remembers the size. */}
+            <CounterNoteButton locationId={locationId} />
+
             <Button size="sm" variant="secondary" onClick={() => setShowBills(true)}>
               Bills
               {drawer && drawer.bills > 0 && (
@@ -2099,6 +2106,7 @@ export function PosScreen({
           sessionId={sessionId}
           terminal={terminal}
           unsent={queue.length}
+          locationId={locationId}
           onClose={() => setShowClose(false)}
         />
       )}

@@ -3,6 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
+import { CounterNoteButton } from "./CounterNoteButton";
 import { Input, Label, FieldError } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { Badge } from "@/components/ui/Badge";
@@ -19,11 +20,14 @@ export function CloseRegisterPanel({
   sessionId,
   terminal,
   unsent,
+  locationId,
   onClose,
 }: {
   sessionId: string;
   terminal: string;
   unsent: number;
+  /** For the note prompt below: which branch a note defaults to. */
+  locationId: string;
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -256,6 +260,25 @@ export function CloseRegisterPanel({
             The difference is recorded either way, so there is nothing to be gained by
             adjusting the count to match.
           </p>
+        </div>
+
+        {/* The prompt, not the record.
+            A note logged here belongs to the branch and the day, not to
+            this till session: one manager covers both stores by phone at
+            closing time, and ZHB's counter shuts at a different hour
+            from BOD's. Tying the note to the session would file half of
+            them against the wrong branch.
+            So this asks, and CounterNoteButton stores. Skippable on
+            purpose -- a required field on the way out of the door gets
+            answered with a full stop. */}
+        <div className="rounded-control border border-dashed border-border px-3 py-2.5">
+          <p className="text-2xs text-text-muted">
+            Anything to log before closing? Stock someone asked for and we did
+            not have, a customer detail missed, an order still pending.
+          </p>
+          <div className="mt-1.5">
+            <CounterNoteButton locationId={locationId} />
+          </div>
         </div>
 
         <FieldError>{error}</FieldError>
