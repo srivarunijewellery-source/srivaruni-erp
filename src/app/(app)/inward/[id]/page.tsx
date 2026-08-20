@@ -26,6 +26,7 @@ import { InwardDocTable } from "@/features/inward/InwardDocTable";
 import { DocModeSwitch } from "@/features/inward/DocModeSwitch";
 import { InvoiceUpload } from "@/features/inward/InvoiceUpload";
 import { BillDetails } from "@/features/inward/BillDetails";
+import { getBooksGap } from "@/features/inward/booksActions";
 import { PricingPanel } from "@/features/inward/PricingPanel";
 import {
   listBands, getInwardVendorPricing, getInwardDiscount, getInwardCostTotals,
@@ -56,6 +57,7 @@ export default async function InwardDetailPage({
   const [
     attachments, vendors, formOptions, pricingLines,
     additionalCosts, taxSummary, priceBands, vendorPricing, inwardDiscount, costTotals,
+    booksGap,
   ] = await Promise.all([
     listInwardAttachments(id),
     listVendors(),
@@ -69,6 +71,12 @@ export default async function InwardDetailPage({
       ? getInwardDiscount(id)
       : Promise.resolve({ kind: "none" as const, bps: null, paise: null }),
     showPricing ? getInwardCostTotals(id) : Promise.resolve(null),
+    // Only an approved document can have drifted, and only the owner can
+    // see or fix it. The view is security_invoker, so a staff session
+    // gets nothing back and the banner renders nothing.
+    isOwner && inward.status === "approved"
+      ? getBooksGap(id)
+      : Promise.resolve(null),
   ]);
 
   const totalQty = inward.lines.reduce((s, l) => s + l.qty, 0);
@@ -130,6 +138,7 @@ export default async function InwardDetailPage({
           approvedAt={inward.approvedAt}
           rejectedReason={inward.rejectedReason}
           vendors={vendors}
+          booksGap={booksGap}
         />
 
         <InvoiceUpload
@@ -169,6 +178,8 @@ export default async function InwardDetailPage({
               additionalCosts={additionalCosts}
               tax={taxSummary}
               showCost={isOwner}
+              inwardId={inward.id}
+              canCorrectQty={isOwner && inward.status === "approved"}
             />
           }
           editor={

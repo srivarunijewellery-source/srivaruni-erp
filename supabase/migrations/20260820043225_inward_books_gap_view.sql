@@ -1,0 +1,5 @@
+-- Superseded 65 seconds later by 20260820043330, which casts the money
+-- columns to bigint. The sums come back numeric, and fmt_paise takes
+-- bigint, so the first version failed with "function fmt_paise(numeric)
+-- does not exist" at the far end of a call chain. Recorded because the
+-- ledger records it; the live definition is the later one.

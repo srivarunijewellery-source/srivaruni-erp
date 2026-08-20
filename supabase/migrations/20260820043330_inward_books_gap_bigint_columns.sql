@@ -1,0 +1,13 @@
+-- inward_books_gap: what an approved inward is POSTED at, against what
+-- its own costs now say it SHOULD be.
+--
+-- These drift because inward_autopost fires ONLY on the transition into
+-- approved. Anything recomputing costs afterwards -- a vendor changed,
+-- freight added, a quantity corrected -- moves the document without
+-- moving the journal, and nothing else in the system notices.
+--
+-- Money columns cast to bigint: the sums come back numeric and every
+-- paise routine in this schema takes bigint.
+--
+-- Live definition; see the database for the authoritative copy. Applied
+-- 2026-08-20 as version 20260820043330. Do not re-run.

@@ -1,0 +1,16 @@
+-- post_inward_payable_correction(p_inward, p_reason)
+--
+-- Posts the DIFFERENCE between what the books say and what the document
+-- says, dated today, leaving the original entry exactly where it is.
+-- Reversing and re-posting would look tidier and audit worse: the
+-- purchase happened on its date, the correction happened on today's, and
+-- a ledger that rewrites the first to match the second cannot be checked
+-- against anything.
+--
+-- Refuses once any payment is allocated -- that difference is a debit or
+-- credit note with the vendor, not a repost. Refuses a blank narration.
+-- Second run on the same document is a no-op, because the view nets
+-- credits against debits and the gap is then zero.
+--
+-- Live definition; see the database for the authoritative copy. Applied
+-- 2026-08-20 as version 20260820043247. Do not re-run.

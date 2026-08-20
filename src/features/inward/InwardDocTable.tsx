@@ -1,3 +1,5 @@
+"use client";
+
 import { ItemLink } from "@/components/ui/ItemLink";
 import Link from "next/link";
 import { ROUTES } from "@/config/nav";
@@ -5,6 +7,7 @@ import { Barcode } from "@/components/ui/Barcode";
 import { PhotoThumb } from "@/components/ui/PhotoThumb";
 import { itemPhotoUrl } from "@/lib/storage";
 import { formatPaise } from "@/lib/money";
+import { LineQtyEditor } from "./LineQtyEditor";
 import type { PricingLine, AdditionalCost, InwardTaxSummary } from "./pricing";
 import type { InwardLine } from "@/types/domain";
 
@@ -25,12 +28,19 @@ export function InwardDocTable({
   additionalCosts,
   tax,
   showCost,
+  inwardId,
+  canCorrectQty = false,
 }: {
   lines: InwardLine[];
   pricing: PricingLine[];
   additionalCosts: AdditionalCost[];
   tax: InwardTaxSummary | null;
   showCost: boolean;
+  /** Owner, on an approved document. The editor then offers the
+   *  correcting path -- which adjusts stock and posts the difference to
+   *  the vendor -- rather than a plain edit the trigger would refuse. */
+  inwardId?: string;
+  canCorrectQty?: boolean;
 }) {
   const byLine = new Map(pricing.map((p) => [p.lineId, p]));
   const withCost = showCost && pricing.length > 0;
@@ -103,7 +113,22 @@ export function InwardDocTable({
                   </td>
                   <td className="px-2 py-1.5 text-text-muted">{l.category}</td>
                   <td className="tnum px-2 py-1.5 text-right">
-                    {l.qty}
+                    {/* Editable in place on an approved document, for the
+                        owner only. A miscount is noticed while reading
+                        the document, so this is where it should be
+                        fixable -- and the editor routes an approved
+                        change through the correction that moves stock
+                        and payable with it. */}
+                    {canCorrectQty && inwardId ? (
+                      <LineQtyEditor
+                        lineId={l.id}
+                        inwardId={inwardId}
+                        qty={l.qty}
+                        editable
+                      />
+                    ) : (
+                      l.qty
+                    )}
                     {l.qtyShort > 0 && (
                       <span className="block text-2xs text-status-danger-fg">
                         {l.qtyShort} short

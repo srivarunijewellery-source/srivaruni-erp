@@ -2,6 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { updateInwardHeader } from "./actions";
+import { BooksGapBanner } from "./BooksGapBanner";
+import type { BooksGap } from "./booksActions";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select, FieldError } from "@/components/ui/Field";
@@ -13,6 +15,11 @@ import type { VendorOption } from "@/types/domain";
  *
  * A record document should look like a record. Fields that are always
  * live invite accidental edits on a document someone is only reading.
+ *
+ * The books-gap banner sits here rather than at the top of the page
+ * because this is the card people open when they are questioning what a
+ * document says — and because editing the vendor from this very form is
+ * one of the things that opens the gap in the first place.
  */
 export function BillDetails({
   inwardId,
@@ -25,6 +32,7 @@ export function BillDetails({
   approvedAt,
   rejectedReason,
   vendors,
+  booksGap = null,
 }: {
   inwardId: string;
   vendorId: string;
@@ -36,6 +44,9 @@ export function BillDetails({
   approvedAt: string | null;
   rejectedReason: string | null;
   vendors: VendorOption[];
+  /** From getBooksGap on the server. Null when the books agree, which is
+   *  almost always — the banner then renders nothing. */
+  booksGap?: BooksGap | null;
 }) {
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,6 +65,8 @@ export function BillDetails({
         </div>
       </CardHeader>
       <CardBody className="space-y-2 text-sm">
+        <BooksGapBanner inwardId={inwardId} gap={booksGap} />
+
         {editing ? (
           <form
             action={(fd) =>
@@ -78,7 +91,9 @@ export function BillDetails({
                 ))}
               </Select>
               <p className="mt-1 text-2xs text-text-muted">
-                Changing the vendor recalculates tax from their setup.
+                Changing the vendor recalculates tax from their setup. On an
+                approved document that moves the cost without moving the books —
+                the banner above will offer to post the difference.
               </p>
             </div>
             <div>
