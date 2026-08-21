@@ -34,6 +34,13 @@ export interface SelvaMatch {
   wasPaise: number | null;
   candidates: SelvaCandidate[] | null;
   note: string | null;
+  /** Pieces the document bills for this line, and pieces entered at
+   *  inward. Reported, never enforced: a wrong count does not make the
+   *  rate wrong, and refusing to price over a miscount would leave the
+   *  whole document unpriced. */
+  sheetQty: number | null;
+  lineQty: number | null;
+  qtyStatus: "ok" | "short" | "over" | "not_on_sheet";
 }
 
 export interface SelvaRowInput {
@@ -41,6 +48,8 @@ export interface SelvaRowInput {
   variant: string | null;
   paise: number;
   desc: string;
+  /** Pieces billed on this document line. */
+  qty?: number;
 }
 
 /**
@@ -61,7 +70,12 @@ export async function applySelvaSheet(
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("apply_selva_price_sheet", {
     p_inward: inwardId,
-    p_rows: rows,
+    // qty goes over as a string beside paise: the function validates
+    // digits, and a float arriving from JSON would fail that quietly.
+    p_rows: rows.map((r) => ({
+      ...r,
+      qty: r.qty === undefined ? null : String(Math.round(r.qty)),
+    })),
     p_dry_run: dryRun,
   });
   if (error) return err(toMessage(error));
@@ -80,6 +94,9 @@ export async function applySelvaSheet(
       wasPaise: r.was_paise === null ? null : Number(r.was_paise),
       candidates: (r.candidates as SelvaCandidate[] | null) ?? null,
       note: (r.note as string | null) ?? null,
+      sheetQty: r.sheet_qty === null ? null : Number(r.sheet_qty),
+      lineQty: r.line_qty === null ? null : Number(r.line_qty),
+      qtyStatus: (r.qty_status as SelvaMatch["qtyStatus"]) ?? "not_on_sheet",
     }),
   );
 

@@ -6,6 +6,11 @@ import { err, ok, toMessage, type Result } from "@/lib/result";
 import { revalidateInwardCosts } from "./costCache";
 
 export interface SheetLine {
+  /** Pieces the sheet bills, and pieces entered at inward. Reported,
+   *  never enforced: a wrong count does not make the rate wrong. */
+  sheetQty: number | null;
+  lineQty: number | null;
+  qtyStatus: "ok" | "short" | "over" | "not_on_sheet";
   lineId: string;
   itemName: string;
   code: string | null;
@@ -17,6 +22,8 @@ export interface SheetLine {
 export interface SheetOutcome {
   matched: number;
   unmatched: number;
+  /** Lines priced, but whose count disagrees with the sheet. */
+  qtyOff: number;
   lines: SheetLine[];
 }
 
@@ -30,7 +37,7 @@ export interface SheetOutcome {
  */
 export async function applyPriceSheet(
   inwardId: string,
-  rows: Array<{ sku: string; paise: number }>,
+  rows: Array<{ sku: string; paise: number; qty?: number }>,
   pricesIncludeGst: boolean,
 ): Promise<Result<SheetOutcome>> {
   if (rows.length === 0) return err("There is nothing usable in that sheet.");
@@ -51,6 +58,9 @@ export async function applyPriceSheet(
     matched: Boolean(r.matched),
     ratePaise: r.rate_paise === null ? null : Number(r.rate_paise),
     reason: (r.reason as string | null) ?? null,
+    sheetQty: r.sheet_qty === null ? null : Number(r.sheet_qty),
+    lineQty: r.line_qty === null ? null : Number(r.line_qty),
+    qtyStatus: (r.qty_status as SheetLine["qtyStatus"]) ?? "not_on_sheet",
   }));
 
   await revalidateInwardCosts(inwardId);
@@ -59,6 +69,9 @@ export async function applyPriceSheet(
   return ok({
     matched: lines.filter((l) => l.matched).length,
     unmatched: lines.filter((l) => !l.matched).length,
+    qtyOff: lines.filter(
+      (l) => l.qtyStatus === "short" || l.qtyStatus === "over",
+    ).length,
     lines,
   });
 }

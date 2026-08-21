@@ -48,6 +48,10 @@ export function SelvaPricingTool({
 
   const lines = (report ?? []).filter((r) => r.kind === "line");
   const orphans = (report ?? []).filter((r) => r.kind === "sheet");
+  /** Lines whose entered count does not match what the document bills. */
+  const qtyOff = (report ?? []).filter(
+    (r) => r.kind === "line" && (r.qtyStatus === "short" || r.qtyStatus === "over"),
+  );
   const count = (s: SelvaStatus) => lines.filter((r) => r.status === s).length;
 
   // Did we read every line the document has? Checked against its own
@@ -151,7 +155,50 @@ export function SelvaPricingTool({
                 <Tally label="not on the quotation" n={count("not_in_sheet")} />
                 <Tally label="no code in the title" n={count("no_code")} tone="warn" />
                 <Tally label="quoted, never entered" n={orphans.length} tone="warn" />
+                {/* The quantity verdict, line against line. Separate
+                    from the pricing tallies because it is a different
+                    question: those say whether we know the RATE, this
+                    says whether the COUNT agrees with the bill. */}
+                <Tally
+                  label="quantity differs"
+                  n={qtyOff.length}
+                  tone={qtyOff.length > 0 ? "warn" : undefined}
+                />
               </div>
+
+              {qtyOff.length > 0 && (
+                <div className="mt-3 space-y-1">
+                  <p className="text-2xs font-medium text-status-pending-fg">
+                    Counts that do not match the document
+                  </p>
+                  <p className="text-2xs text-text-muted">
+                    Priced either way — a wrong count does not make the rate
+                    wrong. Correct the quantity on the line and the stock and
+                    payable move with it.
+                  </p>
+                  <ul className="space-y-0.5">
+                    {qtyOff.map((r) => (
+                      <li key={r.lineId} className="text-2xs">
+                        <span className="font-mono">{r.barcode}</span>{" "}
+                        <span className="text-text-muted">{r.itemName}</span> —
+                        entered{" "}
+                        <span className="tnum text-text-primary">{r.lineQty}</span>,
+                        document bills{" "}
+                        <span className="tnum text-text-primary">{r.sheetQty}</span>{" "}
+                        <span
+                          className={
+                            r.qtyStatus === "over"
+                              ? "text-status-danger-fg"
+                              : "text-status-pending-fg"
+                          }
+                        >
+                          ({r.qtyStatus})
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               {count("ambiguous") > 0 && (
                 <div className="space-y-2">

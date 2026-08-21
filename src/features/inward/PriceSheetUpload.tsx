@@ -49,6 +49,9 @@ export function PriceSheetUpload({
   const [parsed, setParsed] = useState<Parsed | null>(null);
   const [skuCol, setSkuCol] = useState("");
   const [priceCol, setPriceCol] = useState("");
+  /** Optional. A sheet without a quantity column prices exactly as
+   *  before; with one, every line's count is checked against the bill. */
+  const [qtyCol, setQtyCol] = useState("");
   // Defaults to inclusive: the vendor who actually sends a sheet heads
   // that column "MRP", and an MRP includes tax.
   const [inclusive, setInclusive] = useState(true);
@@ -84,6 +87,7 @@ export function PriceSheetUpload({
         guess(headers, ["landing", "landed", "mrp", "price", "rate", "cost", "amount"]) ??
           "",
       );
+      setQtyCol(guess(headers, ["qty", "quantity", "pcs", "pieces", "nos"]) ?? "");
     } catch {
       setError("That file could not be read. XLSX, XLS and CSV all work.");
     }
@@ -94,6 +98,7 @@ export function PriceSheetUpload({
         .map((r) => ({
           sku: String(r[skuCol] ?? "").trim(),
           paise: toPaise(r[priceCol]),
+          qty: qtyCol ? toQty(r[qtyCol]) : undefined,
         }))
         .filter((r) => r.sku && r.paise !== null)
     : [];
@@ -133,6 +138,21 @@ export function PriceSheetUpload({
                     onChange={(e) => setSkuCol(e.target.value)}
                   >
                     <option value="">Choose…</option>
+                    {parsed.headers.map((h) => (
+                      <option key={h} value={h}>
+                        {h}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="qty-col">Quantity column</Label>
+                  <Select
+                    id="qty-col"
+                    value={qtyCol}
+                    onChange={(e) => setQtyCol(e.target.value)}
+                  >
+                    <option value="">Not on this sheet</option>
                     {parsed.headers.map((h) => (
                       <option key={h} value={h}>
                         {h}
@@ -207,7 +227,11 @@ export function PriceSheetUpload({
                   start(async () => {
                     const r = await applyPriceSheet(
                       inwardId,
-                      preview.map((p) => ({ sku: p.sku, paise: p.paise as number })),
+                      preview.map((p) => ({
+                        sku: p.sku,
+                        paise: p.paise as number,
+                        qty: p.qty ?? undefined,
+                      })),
                       inclusive,
                     );
                     if (r.ok) {
@@ -227,7 +251,33 @@ export function PriceSheetUpload({
               <p>
                 <span className="text-status-done-fg">{outcome.matched} priced</span> ·{" "}
                 {outcome.unmatched} could not be matched
+                {outcome.qtyOff > 0 && (
+                  <>
+                    {" · "}
+                    <span className="text-status-pending-fg">
+                      {outcome.qtyOff} count{outcome.qtyOff === 1 ? "" : "s"} differ
+                    </span>
+                  </>
+                )}
               </p>
+              {/* Counts, listed separately from the pricing misses: this
+                  says the RATE is right and the COUNT is not, which is a
+                  different job for a different person. */}
+              {outcome.lines.filter(
+                (l) => l.qtyStatus === "short" || l.qtyStatus === "over",
+              ).length > 0 && (
+                <ul className="max-h-32 space-y-0.5 overflow-auto border-t border-border pt-1">
+                  {outcome.lines
+                    .filter((l) => l.qtyStatus === "short" || l.qtyStatus === "over")
+                    .map((l) => (
+                      <li key={l.lineId} className="text-text-muted">
+                        <span className="text-text-primary">{l.itemName}</span> —
+                        entered <span className="tnum">{l.lineQty}</span>, sheet says{" "}
+                        <span className="tnum">{l.sheetQty}</span> ({l.qtyStatus})
+                      </li>
+                    ))}
+                </ul>
+              )}
               {/* The misses are the point. A price sheet that quietly
                   covered half the carton is worse than one that covered
                   none, because nobody would go looking. */}
@@ -286,6 +336,16 @@ function guess(headers: string[], words: string[]): string | undefined {
  * is not a positive number is dropped rather than treated as zero: a
  * zero price would silently mark a line as costed at nothing.
  */
+/** A count from a spreadsheet cell: a number, "4", or " 4 ". Anything
+ *  that is not a whole positive number is treated as absent rather than
+ *  as zero, because a blank cell is not a claim that nothing arrived. */
+function toQty(v: unknown): number | undefined {
+  if (v === null || v === undefined) return undefined;
+  const n = typeof v === "number" ? v : Number(String(v).replace(/[,\s]/g, ""));
+  if (!Number.isFinite(n) || n <= 0) return undefined;
+  return Math.round(n);
+}
+
 function toPaise(v: unknown): number | null {
   if (v === null || v === undefined) return null;
   const n =
