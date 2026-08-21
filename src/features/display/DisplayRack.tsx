@@ -6,7 +6,7 @@ import { FieldError } from "@/components/ui/Field";
 import { PhotoZoom } from "@/components/ui/PhotoZoom";
 import { itemPhotoUrl } from "@/lib/storage";
 import { formatPaise } from "@/lib/money";
-import { clearDisplaySlot, renameDisplaySection } from "./actions";
+import { clearDisplaySlot, renameDisplaySection, moveDisplayPiece } from "./actions";
 import { Input } from "@/components/ui/Field";
 import { DisplayPicker } from "./DisplayPicker";
 import type { DisplaySection, DisplayBlock } from "./queries";
@@ -48,6 +48,15 @@ export function DisplayRack({
   const router = useRouter();
   const [active, setActive] = useState(0);
   const [picking, setPicking] = useState<DisplayBlock | null>(null);
+  /**
+   * The piece currently being moved.
+   *
+   * Held in state rather than relying on the drag event alone, because
+   * HTML5 drag and drop does not exist on a touch screen. Tapping a
+   * piece picks it up and tapping a niche puts it down -- the same two
+   * gestures a drag is made of, available on a tablet at the counter.
+   */
+  const [held, setHeld] = useState<{ placementId: string; from: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, start] = useTransition();
 
@@ -65,6 +74,21 @@ export function DisplayRack({
   );
   const mannequin = section.blocks.find((b) => b.kind === "mannequin");
 
+  function moveTo(blockCode: string, blockId: string) {
+    if (!held) return;
+    const carrying = held;
+    setHeld(null);
+    start(async () => {
+      setError(null);
+      const r = await moveDisplayPiece(carrying.placementId, blockId);
+      if (!r.ok) {
+        setError(r.error);
+        return;
+      }
+      router.refresh();
+    });
+  }
+
   function remove(placementId: string) {
     start(async () => {
       setError(null);
@@ -78,22 +102,52 @@ export function DisplayRack({
     const filled = block.pieces.length > 0;
     return (
       <div
-        className={`rounded-control border p-1 ${
-          filled ? "border-border-strong bg-surface" : "border-dashed border-border-strong"
+        onDragOver={(e) => {
+          if (canEdit && held) e.preventDefault();
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          moveTo(block.code, block.blockId);
+        }}
+        onClick={() => {
+          // Tap a niche while carrying: put it down here.
+          if (held) moveTo(block.code, block.blockId);
+        }}
+        className={`rounded-control border p-1 transition-colors ${
+          held && held.from !== block.code
+            ? "border-brand bg-status-approved-bg"
+            : filled
+              ? "border-border-strong bg-surface"
+              : "border-dashed border-border-strong"
         }`}
       >
         <div className="flex h-[86px] items-center justify-center gap-0.5 overflow-hidden rounded-control bg-surface-sunken">
           {filled ? (
             block.pieces.map((p) => (
-              <PhotoZoom
+              <span
                 key={p.placementId}
-                src={itemPhotoUrl(p.photoPath)}
-                alt={p.name}
-                size={block.pieces.length > 1 ? 44 : 88}
-                caption={`${p.barcode} · ${p.name}${
-                  p.sellingPricePaise ? ` · ${formatPaise(p.sellingPricePaise)}` : ""
-                }`}
-              />
+                draggable={canEdit}
+                onDragStart={() =>
+                  setHeld({ placementId: p.placementId, from: block.code })
+                }
+                onDragEnd={() => setHeld(null)}
+                className={
+                  held?.placementId === p.placementId
+                    ? "opacity-40"
+                    : canEdit
+                      ? "cursor-grab"
+                      : undefined
+                }
+              >
+                <PhotoZoom
+                  src={itemPhotoUrl(p.photoPath)}
+                  alt={p.name}
+                  size={block.pieces.length > 1 ? 44 : 88}
+                  caption={`${p.barcode} · ${p.name}${
+                    p.sellingPricePaise ? ` · ${formatPaise(p.sellingPricePaise)}` : ""
+                  }`}
+                />
+              </span>
             ))
           ) : canEdit ? (
             <button
@@ -130,6 +184,25 @@ export function DisplayRack({
           <span className="font-mono text-2xs text-text-subtle">{block.code}</span>
           {canEdit && filled && (
             <span className="flex gap-1">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const last = block.pieces[block.pieces.length - 1]!;
+                  setHeld(
+                    held?.placementId === last.placementId
+                      ? null
+                      : { placementId: last.placementId, from: block.code },
+                  );
+                }}
+                className={`text-2xs ${
+                  held?.from === block.code ? "text-brand" : "text-text-muted"
+                }`}
+                aria-label={`Move the piece on ${block.code}`}
+                title="Pick up, then tap where it should go"
+              >
+                ⇄
+              </button>
               {block.pieces.length < block.capacity && (
                 <button
                   type="button"
@@ -208,6 +281,20 @@ export function DisplayRack({
         />
       </div>
 
+      {held && (
+        <p className="print-hide rounded-control border border-brand bg-status-approved-bg px-3 py-2 text-sm">
+          Carrying the piece from {held.from}. Tap the neck it should go to —
+          onto an empty one it moves, onto a full one the two swap.{" "}
+          <button
+            type="button"
+            onClick={() => setHeld(null)}
+            className="text-brand underline"
+          >
+            put it back
+          </button>
+        </p>
+      )}
+
       {error && <FieldError>{error}</FieldError>}
 
       <div className="print-hide rounded-card border border-border-strong bg-surface-sunken p-2">
@@ -243,6 +330,7 @@ export function DisplayRack({
       {picking && (
         <DisplayPicker
           block={picking}
+          sectionId={section.sectionId}
           locationId={locationId}
           facets={facets}
           onClose={() => setPicking(null)}

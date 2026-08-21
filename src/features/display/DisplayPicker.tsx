@@ -7,7 +7,9 @@ import { Input, Select, Label, FieldError } from "@/components/ui/Field";
 import { PhotoThumb } from "@/components/ui/PhotoThumb";
 import { itemPhotoUrl } from "@/lib/storage";
 import { formatPaise } from "@/lib/money";
-import { placeOnDisplay, searchForDisplay, type PickableItem } from "./actions";
+import {
+  placeOnDisplay, placeManyOnDisplay, searchForDisplay, type PickableItem,
+} from "./actions";
 import type { DisplayBlock } from "./queries";
 
 /**
@@ -24,12 +26,15 @@ import type { DisplayBlock } from "./queries";
  */
 export function DisplayPicker({
   block,
+  sectionId,
   locationId,
   facets,
   onClose,
   onPlaced,
 }: {
   block: DisplayBlock;
+  /** Bulk placement fills this section's empty necks in reading order. */
+  sectionId: string;
   locationId: string;
   /** The same lists the products and stock pages filter on, so the
    *  vocabulary is one someone already knows. */
@@ -53,6 +58,17 @@ export function DisplayPicker({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, start] = useTransition();
+  /**
+   * Pieces ticked for a bulk placement.
+   *
+   * One at a time is right when you know exactly which neck a piece
+   * belongs on. It is the wrong shape entirely for filling a bare
+   * section: thirty pieces meant thirty round trips through this dialog.
+   * Tick a handful, drop them in, then drag them into the order you
+   * want -- choosing the pieces and choosing the positions are two
+   * different jobs.
+   */
+  const [bulk, setBulk] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     // Debounced: a query per keystroke on a shop connection is slower
@@ -187,9 +203,41 @@ export function DisplayPicker({
                 key={r.itemId}
                 type="button"
                 disabled={busy}
-                onClick={() => place(r.barcode)}
-                className="flex gap-2 rounded-card border border-border bg-surface p-2 text-left transition-colors hover:border-brand disabled:opacity-50"
+                onClick={() => {
+                  // Ticking builds a batch; with nothing ticked, a tap
+                  // still means "this one, on this neck, now".
+                  if (bulk.size > 0) {
+                    setBulk((b) => {
+                      const next = new Set(b);
+                      if (next.has(r.itemId)) next.delete(r.itemId);
+                      else next.add(r.itemId);
+                      return next;
+                    });
+                    return;
+                  }
+                  place(r.barcode);
+                }}
+                className={`flex gap-2 rounded-card border bg-surface p-2 text-left transition-colors disabled:opacity-50 ${
+                  bulk.has(r.itemId)
+                    ? "border-brand bg-status-approved-bg"
+                    : "border-border hover:border-brand"
+                }`}
               >
+                <input
+                  type="checkbox"
+                  checked={bulk.has(r.itemId)}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={() =>
+                    setBulk((b) => {
+                      const next = new Set(b);
+                      if (next.has(r.itemId)) next.delete(r.itemId);
+                      else next.add(r.itemId);
+                      return next;
+                    })
+                  }
+                  className="mt-1 h-4 w-4 shrink-0 accent-[var(--color-brand)]"
+                  aria-label={`Select ${r.barcode} for bulk placement`}
+                />
                 <PhotoThumb src={itemPhotoUrl(r.photoPath)} alt={r.name} size={52} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-2xs font-medium">{r.name}</span>
@@ -209,9 +257,49 @@ export function DisplayPicker({
           </div>
         )}
 
-        <Button variant="ghost" onClick={onClose}>
-          Close
-        </Button>
+        <div className="flex flex-wrap items-center gap-2 border-t border-border pt-2">
+          {bulk.size > 0 ? (
+            <>
+              <Button
+                disabled={busy}
+                onClick={() =>
+                  start(async () => {
+                    setError(null);
+                    const r = await placeManyOnDisplay(sectionId, [...bulk]);
+                    if (!r.ok) {
+                      setError(r.error);
+                      return;
+                    }
+                    setBulk(new Set());
+                    onPlaced();
+                  })
+                }
+              >
+                {busy
+                  ? "Placing…"
+                  : `Place ${bulk.size} piece${bulk.size === 1 ? "" : "s"}`}
+              </Button>
+              <button
+                type="button"
+                onClick={() => setBulk(new Set())}
+                className="text-2xs text-text-muted hover:underline"
+              >
+                clear selection
+              </button>
+              <span className="text-2xs text-text-muted">
+                One per neck, in order. Drag them where you want afterwards.
+              </span>
+            </>
+          ) : (
+            <span className="text-2xs text-text-muted">
+              Tap a piece to hang it on {block.code}, or tick several to place
+              them across the section at once.
+            </span>
+          )}
+          <Button variant="ghost" className="ml-auto" onClick={onClose}>
+            Close
+          </Button>
+        </div>
       </div>
     </Modal>
   );

@@ -49,6 +49,56 @@ export async function placeOnDisplay(
   });
 }
 
+/**
+ * Move a piece from one niche to another.
+ *
+ * Onto a neck with room, it joins as the second piece -- that is how a
+ * long and a short come to share a neck. Onto a full one, the two trade
+ * places, because dragging one piece onto another is how somebody says
+ * "these should swap" and a refusal there would mean emptying a niche
+ * first every single time.
+ */
+export async function moveDisplayPiece(
+  placementId: string,
+  toBlockId: string,
+): Promise<Result<{ from: string; to: string; swapped: boolean }>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("move_display_piece", {
+    p_placement: placementId,
+    p_to_block: toBlockId,
+  });
+  if (error) return err(toMessage(error));
+  const r = (data ?? {}) as Record<string, unknown>;
+  revalidatePath(ROUTES.display);
+  return ok({
+    from: String(r.from ?? ""),
+    to: String(r.to ?? ""),
+    swapped: Boolean(r.swapped),
+  });
+}
+
+/**
+ * Hang a whole armful at once, one per neck, in reading order.
+ *
+ * Choosing thirty pieces and then choosing thirty positions is two
+ * jobs. This does the boring one and leaves the arranging to a drag.
+ */
+export async function placeManyOnDisplay(
+  sectionId: string,
+  itemIds: string[],
+): Promise<Result<{ placed: number; skipped: number }>> {
+  if (itemIds.length === 0) return err("Pick some pieces first.");
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("place_many_on_display", {
+    p_section: sectionId,
+    p_items: itemIds,
+  });
+  if (error) return err(toMessage(error));
+  const r = (data ?? {}) as Record<string, unknown>;
+  revalidatePath(ROUTES.display);
+  return ok({ placed: Number(r.placed ?? 0), skipped: Number(r.skipped ?? 0) });
+}
+
 /** Take a piece off. Only for a deliberate change -- a sold piece
  *  releases its own niche. */
 export async function clearDisplaySlot(placementId: string): Promise<Result<void>> {

@@ -87,3 +87,57 @@ them would actually look.
                         ├ ƒ /stock/audit        4.1 kB
                         ├ ƒ /stock/audit/[id]  4.45 kB
                         exit 0
+
+---
+
+# UPDATE — see it before you commit, and a slip to carry
+
+The count was blind at exactly the wrong moment. You picked filters and
+pressed Generate, and the first time you learned what you had committed
+to was when the document already existed — with no way out but to
+discard it. "Chains and bangles at Boduppal" is a sentence, not a shelf.
+
+The transfer flow does not work that way: it shows you a grid of pieces
+and you build a selection before anything is written. The audit now
+matches.
+
+## Two steps
+
+**See what this covers** runs the same WHERE that `create_stock_audit`
+will, and shows the pieces — photo, tag, name, size, quantity — with the
+totals above:
+
+    151 lines · 337 pieces to count
+
+Then Generate. Nothing is written until that press, so filters can be
+changed as many times as you like. Changing any filter clears the
+preview, because a stale count under new filters is worse than none.
+
+One WHERE, not two: what the preview shows is what the slip contains,
+and a second definition of scope would drift the first time either
+changed.
+
+## The slip
+
+`Print the slip` on the count itself. Landscape, hidden on screen:
+
+    Tag        Item                      Size    Books say   Counted
+    SV17939    CZ neck set 445691200826  —       2           ______
+
+No photographs — a thumbnail is useless at print resolution and would
+double the page count of a 150-line shelf. The Counted column is blank
+on purpose: that is what gets written at the rack and typed back at the
+screen.
+
+Header carries the document number, branch, note, line count, and blanks
+for who counted and when.
+
+## Verified
+
+    stock_audit_preview, Chains at BOD    151 lines, 337 pieces
+    npx tsc --noEmit                      clean
+    npx next build                        ✓ 66/66, exit 0
+
+## Migration
+
+    stock_audit_scope_preview

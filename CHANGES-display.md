@@ -220,3 +220,59 @@ exclusion is now a NOT EXISTS inside the query.
 ## Migration
 
     display_pick_candidates_rpc
+
+---
+
+# UPDATE 4 — place a handful at once, then drag them about
+
+## Bulk placement
+
+Tick pieces in the picker and press **Place N pieces**. They fill the
+section's empty necks in reading order, one per neck.
+
+One at a time is right when you know which neck a piece belongs on. It
+is the wrong shape entirely for filling a bare section — thirty pieces
+meant thirty round trips through the dialog. Choosing the pieces and
+choosing the positions are two different jobs; this does the boring one.
+
+With nothing ticked, tapping a piece still means "this one, on this
+neck, now". The batch only takes over once something is ticked.
+
+**One per neck, not two.** The first version filled both slots of T1
+before touching T2 — six pieces buried on three necks with thirty bare.
+A second piece on a neck is a deliberate pairing of a long with a short,
+not somewhere to put overflow. The mannequin is skipped for the same
+reason: it is an arrangement of up to six, not a spill tray.
+
+## Moving pieces
+
+Drag a photo from one niche to another. Onto a neck with room it JOINS
+as the second piece — that is how a long and a short come to share a
+neck. Onto a full one the two SWAP, because dragging one piece onto
+another is how somebody says "these should trade places", and refusing
+there would mean emptying a niche first every single time.
+
+**A tap works too.** HTML5 drag and drop does not exist on a touch
+screen, and this gets used on a tablet at the counter. The ⇄ on any
+filled niche picks the piece up; a banner says what is being carried;
+tapping any niche puts it down. Same two gestures a drag is made of.
+
+Moving is a delete and re-insert rather than an UPDATE, so the history
+triggers fire: the old stint closes as 'taken' and a new one opens at
+the new neck. An UPDATE would move the piece and leave the record saying
+it had been on the first neck all along.
+
+## Verified live, rolled back
+
+    place 6 at once            placed 6, one per neck: T1 T2 T3 T4 T5 T6
+    drag T1 onto T2 (has one)  paired — T2:1 T2:2
+    drag T3 onto full T2       swapped
+    history                    stints close as 'taken' on every move
+
+    npx tsc --noEmit   clean
+    npx next build     ✓ Compiled successfully in 67s, 66/66, exit 0
+
+## Migrations
+
+    display_move_and_place_many
+    place_many_spreads_one_per_neck

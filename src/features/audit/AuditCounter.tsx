@@ -70,6 +70,22 @@ export function AuditCounter({
 
   return (
     <div className="space-y-4">
+      {/* The slip, landscape and on paper.
+          Counting happens at the rack, not at the screen -- someone
+          walks off with a list, ticks it, and comes back. Printing the
+          whole page would put the scan box and a wall of thumbnails on
+          the sheet; what is wanted is codes, tags, names, what the books
+          expect and a blank to write the count in. */}
+      <style>{`
+        @media print {
+          @page { size: landscape; margin: 12mm; }
+          body * { visibility: hidden; }
+          .audit-slip, .audit-slip * { visibility: visible; }
+          .audit-slip { position: absolute; left: 0; top: 0; width: 100%; }
+          .no-print { display: none !important; }
+        }
+      `}</style>
+
       {done && (
         <p className="rounded-control border border-status-done-fg/40 bg-status-done-bg px-3 py-2 text-sm">
           {done}
@@ -77,7 +93,7 @@ export function AuditCounter({
       )}
 
       {counting && (
-        <Card>
+        <Card className="no-print">
           <CardBody className="space-y-2">
             <Input
               ref={scanRef}
@@ -124,7 +140,7 @@ export function AuditCounter({
         </Card>
       )}
 
-      <Card>
+      <Card className="no-print">
         <CardBody className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
           <span>
             <span className="tnum text-2xl font-semibold">
@@ -142,10 +158,19 @@ export function AuditCounter({
               {variances.length} do not match
             </span>
           )}
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="ml-auto rounded-control border border-border-strong px-2.5 py-1 text-2xs hover:bg-surface-sunken"
+          >
+            Print the slip
+          </button>
         </CardBody>
       </Card>
 
-      <ul className="space-y-1.5">
+      <AuditSlip audit={audit} />
+
+      <ul className="no-print space-y-1.5">
         {audit.rows.map((r) => {
           const diff = r.countedQty === null ? null : r.countedQty - r.expectedQty;
           return (
@@ -213,7 +238,7 @@ export function AuditCounter({
         })}
       </ul>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="no-print flex flex-wrap gap-2">
         {counting && (
           <Button
             disabled={busy || pending > 0}
@@ -274,6 +299,54 @@ export function AuditCounter({
         </p>
       )}
       {error && <FieldError>{error}</FieldError>}
+    </div>
+  );
+}
+
+
+/**
+ * The paper version.
+ *
+ * Hidden on screen, because the grid above already says everything it
+ * says and better. On paper it is the only thing: tag, item, what the
+ * books expect, and a ruled box to write the count into. No photographs
+ * -- a thumbnail is useless at print resolution and doubles the page
+ * count of a 150-line shelf.
+ */
+function AuditSlip({ audit }: { audit: AuditDetail }) {
+  return (
+    <div className="audit-slip hidden print:block">
+      <p className="mb-1 text-base font-medium">
+        {audit.docNo} · {audit.locationCode}
+      </p>
+      <p className="mb-3 text-[11px]">
+        {audit.note ? `${audit.note} · ` : ""}
+        {audit.lines} lines · counted by ________________ on ____ / ____ / ______
+      </p>
+      <table className="w-full text-[11px]">
+        <thead>
+          <tr className="border-b border-black text-left">
+            <th className="py-1 pr-2">Tag</th>
+            <th className="py-1 pr-2">Item</th>
+            <th className="py-1 pr-2">Size</th>
+            <th className="py-1 pr-2 text-right">Books say</th>
+            <th className="py-1 text-right">Counted</th>
+          </tr>
+        </thead>
+        <tbody>
+          {audit.rows.map((r) => (
+            <tr key={r.id} className="border-b border-neutral-300">
+              <td className="py-1 pr-2 font-mono">{r.barcode}</td>
+              <td className="max-w-72 truncate py-1 pr-2">{r.name}</td>
+              <td className="py-1 pr-2">{r.variant ?? ""}</td>
+              <td className="py-1 pr-2 text-right">{r.expectedQty}</td>
+              {/* Left blank deliberately: this is what someone writes in
+                  at the rack and types back at the screen. */}
+              <td className="w-20 py-1 text-right">&nbsp;</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
