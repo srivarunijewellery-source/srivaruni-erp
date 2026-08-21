@@ -1,6 +1,6 @@
 import { VariantBadge } from "@/components/ui/VariantBadge";
 import Link from "next/link";
-import { PhotoThumb } from "@/components/ui/PhotoThumb";
+import { PhotoZoom } from "@/components/ui/PhotoZoom";
 import { Badge } from "@/components/ui/Badge";
 import { itemPhotoUrl } from "@/lib/storage";
 import { formatPaise } from "@/lib/money";
@@ -36,17 +36,30 @@ export function ProductGrid({ rows }: { rows: ProductRow[] }) {
             : null;
 
         return (
-          <Link
+          <div
             key={p.id}
-            href={ROUTES.productDetail(p.id)}
             className="flex gap-3 rounded-card border border-border bg-surface p-3 transition-colors hover:border-brand"
           >
-            <PhotoThumb src={itemPhotoUrl(p.photoPath)} alt={p.name} size={72} />
+            {/* The photo opens the photo; the name opens the product.
+                The card used to be one link, so a tap on the picture --
+                the obvious gesture when you want a better look at a
+                piece -- navigated away instead. */}
+            <PhotoZoom
+              src={itemPhotoUrl(p.photoPath)}
+              alt={p.name}
+              size={72}
+              caption={`${p.barcode} · ${p.name}`}
+            />
 
             {/* min-w-0 so a long name wraps inside the card instead of
                 widening it and pushing the grid sideways. */}
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium">{p.name}</p>
+              <Link
+                href={ROUTES.productDetail(p.id)}
+                className="block truncate text-sm font-medium hover:underline"
+              >
+                {p.name}
+              </Link>
               <p className="truncate font-mono text-2xs text-text-muted">
                 {p.barcode} · {p.categoryName}
                 <VariantBadge variant={p.variant} />
@@ -84,6 +97,12 @@ export function ProductGrid({ rows }: { rows: ProductRow[] }) {
                 </span>
                 {/* Only when it is not the ordinary case: a badge on every
                     card is a badge nobody reads. */}
+                {/* Where it is hanging. Worth a badge because the
+                    commonest question about a piece on a shelf list is
+                    "is it out front or in the drawer". */}
+                {p.displayLabel && (
+                  <Badge tone="approved">on display · {p.displayLabel}</Badge>
+                )}
                 {p.status !== "active" && (
                   <Badge tone={STATUS_TONE[p.status] ?? "neutral"}>
                     {p.status.replace(/_/g, " ")}
@@ -91,7 +110,7 @@ export function ProductGrid({ rows }: { rows: ProductRow[] }) {
                 )}
               </p>
             </div>
-          </Link>
+          </div>
         );
       })}
     </div>

@@ -23,6 +23,8 @@ export interface ProductRow {
   /** The bare vendor rate, before freight and packing were prorated in. */
   purchaseRatePaise: Paise | null;
   onHand: number;
+  /** "S1 · L5" when the piece is hanging on the rack, else null. */
+  displayLabel: string | null;
   createdAt: string;
   colourId: string | null;
   platingId: string | null;
@@ -222,6 +224,19 @@ export async function listProducts(
     for (const a of attrs ?? []) attrNames.set(a.id, a.value);
   }
 
+  // Where each piece is hanging, in one indexed read for the page. The
+  // listing screens do not need to learn the shape of the rack tables.
+  const displayLabels = new Map<string, string>();
+  if (ids.length > 0) {
+    const { data: onDisplay } = await supabase
+      .from("item_on_display")
+      .select("item_id, label")
+      .in("item_id", ids);
+    for (const d of onDisplay ?? []) {
+      displayLabels.set(d.item_id as string, d.label as string);
+    }
+  }
+
   const mapped = (data ?? []).map((r) => {
     const category = Array.isArray(r.categories) ? r.categories[0] : r.categories;
     const photos = (r.item_photos ?? []) as Array<{
@@ -257,6 +272,7 @@ export async function listProducts(
       landedCostPaise: costs.get(r.id) ?? null,
       purchaseRatePaise: rates.get(r.id) ?? null,
       onHand: balances.reduce((s, b) => s + b.qty, 0),
+      displayLabel: displayLabels.get(r.id) ?? null,
       createdAt: r.created_at,
       colourId: r.colour_id,
       platingId: r.plating_id,
@@ -346,6 +362,14 @@ export async function getProduct(id: string): Promise<ProductDetail | null> {
     .eq("item_id", id)
     .maybeSingle();
 
+  // Where this piece is hanging, if it is. The detail page is exactly
+  // where someone asks "so where is it".
+  const { data: onDisplay } = await supabase
+    .from("item_on_display")
+    .select("label")
+    .eq("item_id", id)
+    .maybeSingle();
+
   const photos = (data.item_photos ?? []) as Array<{
     id: string; storage_path: string; is_primary: boolean; sort_order: number;
   }>;
@@ -369,6 +393,7 @@ export async function getProduct(id: string): Promise<ProductDetail | null> {
     landedCostPaise: cost?.landed_cost_paise ?? null,
     purchaseRatePaise: cost?.purchase_rate_paise ?? null,
     onHand: balances.reduce((s, b) => s + b.qty, 0),
+    displayLabel: (onDisplay?.label as string | null) ?? null,
     createdAt: data.created_at,
     colourId: data.colour_id,
     platingId: data.plating_id,

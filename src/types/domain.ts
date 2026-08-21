@@ -220,6 +220,8 @@ export interface StockFilterOptions {
 }
 
 export interface StockRow {
+  /** "S1 · L5" when the piece is on the rack, else null. */
+  displayLabel?: string | null;
   photoPath: string | null;
   itemId: string;
   barcode: string;

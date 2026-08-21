@@ -198,6 +198,19 @@ export async function searchStock(
   // used to sit here is gone — it was a second round trip that also
   // risked the oversized `.in()` problem once a store holds more than a
   // few hundred lines.
+  // One indexed read for the page, same as the catalogue.
+  const displayLabels = new Map<string, string>();
+  const pageIds = (data ?? []).map((r) => r.item_id as string);
+  if (pageIds.length > 0) {
+    const { data: onDisplay } = await supabase
+      .from("item_on_display")
+      .select("item_id, label")
+      .in("item_id", pageIds);
+    for (const d of onDisplay ?? []) {
+      displayLabels.set(d.item_id as string, d.label as string);
+    }
+  }
+
   const rows = (data ?? []).map((r) => ({
     itemId: r.item_id,
     photoPath: r.photo_path ?? null,
@@ -209,6 +222,7 @@ export async function searchStock(
     locationCode: r.location_code,
     qty: r.qty,
     sellingPricePaise: r.selling_price_paise,
+    displayLabel: displayLabels.get(r.item_id) ?? null,
   }));
 
   return { rows, total: count ?? rows.length };
