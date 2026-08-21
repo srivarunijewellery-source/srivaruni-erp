@@ -117,3 +117,52 @@ One component, so the today page and the dashboard both change.
     npx tsc --noEmit   clean
     npx next build     ✓ Compiled successfully in 67s
                        ✓ Generating static pages (66/66)
+
+---
+
+# UPDATE 2 — six corrections
+
+**Nine on top, not ten.** T10 removed from all five sections; 33 necks
+plus the mannequin. Checked first that nothing was hanging on any T10 —
+deleting a block cascades to its placements, so this would have thrown
+away real assignments. All five were empty. The grid now takes its
+column count from the data, so a rack that differs again is a seed
+change rather than a code change.
+
+**Taller niches.** The spare height at the bottom was doing nothing, so
+each niche now carries the tag and name under the photo. A wall of
+unlabelled photographs is hard to talk about across a shop floor.
+
+**Sections are nameable.** "Bridal wall, left of the counter" rather than
+S3. Owner only: hanging a piece is the counter's daily job, but what a
+run of rack is CALLED is a decision everyone else reads off, and a name
+that changes under people is worse than a dull one.
+
+**A position table under the grid**, with Print. The grid answers "which
+necks are bare" at a glance and does not survive being carried around a
+shop floor. The table is the version someone prints, walks the rack
+with, arranges from, then comes back to the screen to check. Ordered the
+way the wall reads.
+
+**Real filters in the picker.** Category, style, plating and vendor, plus
+search and Clear — the same lists the products and stock pages use, from
+`getStockFacets`.
+
+That one was my fault in a way that has now happened five times: I built
+`DisplayPicker` to take `categories` and `styles`, defaulted them to
+empty arrays, and never passed them from the page. Optional props that
+default to empty fail silently — the dropdowns simply were not there.
+Nothing to see, nothing to error. Defaulting to `[]` is what hid it; the
+props are required now, so leaving them out would not compile.
+
+## Verified
+
+    top row              T1..T9, nine per section, all five
+    npx tsc --noEmit     clean
+    npx next build       ✓ Compiled successfully in 73s
+                         ✓ Generating static pages (66/66)
+
+## Migrations
+
+    display_top_row_nine_necks
+    rename_display_section

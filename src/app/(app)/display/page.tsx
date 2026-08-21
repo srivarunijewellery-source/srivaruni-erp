@@ -6,6 +6,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { listDisplaySections } from "@/features/display/queries";
 import { DisplayRack } from "@/features/display/DisplayRack";
 import { listStores } from "@/features/inward/queries";
+import { getStockFacets } from "@/features/stock/queries";
 
 export const metadata: Metadata = { title: "Display" };
 
@@ -27,11 +28,18 @@ export default async function DisplayPage({
   const locationId =
     sp.location ?? user.locationId ?? stores[0]?.id ?? "";
 
-  const sections = await listDisplaySections(locationId);
+  const [sections, facets] = await Promise.all([
+    listDisplaySections(locationId),
+    // The same lists the products and stock pages filter on, so the
+    // picker speaks a vocabulary people already use.
+    getStockFacets(),
+  ]);
   const store = stores.find((s) => s.id === locationId);
 
   // Anyone at the counter can rearrange the wall; that is the job.
   const canEdit = can(user, "stock.view");
+  // Naming a section is a decision about the shop, not a daily task.
+  const canConfigure = can(user, "settings.manage");
 
   return (
     <>
@@ -51,6 +59,13 @@ export default async function DisplayPage({
           sections={sections}
           locationId={locationId}
           canEdit={canEdit}
+          canConfigure={canConfigure}
+          facets={{
+            categories: facets.categories,
+            styles: facets.styles,
+            platings: facets.platings,
+            vendors: facets.vendors,
+          }}
         />
       )}
     </>

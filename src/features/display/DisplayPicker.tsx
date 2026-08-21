@@ -25,21 +25,28 @@ import type { DisplayBlock } from "./queries";
 export function DisplayPicker({
   block,
   locationId,
-  categories = [],
-  styles = [],
+  facets,
   onClose,
   onPlaced,
 }: {
   block: DisplayBlock;
   locationId: string;
-  categories?: string[];
-  styles?: string[];
+  /** The same lists the products and stock pages filter on, so the
+   *  vocabulary is one someone already knows. */
+  facets: {
+    categories: string[];
+    styles: string[];
+    platings: string[];
+    vendors: string[];
+  };
   onClose: () => void;
   onPlaced: () => void;
 }) {
   const [q, setQ] = useState("");
   const [category, setCategory] = useState("");
   const [style, setStyle] = useState("");
+  const [plating, setPlating] = useState("");
+  const [vendor, setVendor] = useState("");
   const [rows, setRows] = useState<PickableItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -50,14 +57,16 @@ export function DisplayPicker({
     // than no search at all.
     const id = setTimeout(() => {
       setLoading(true);
-      void searchForDisplay(locationId, { q, category, style }).then((r) => {
+      void searchForDisplay(locationId, {
+        q, category, style, plating, vendor,
+      }).then((r) => {
         setLoading(false);
         if (r.ok) setRows(r.data);
         else setError(r.error);
       });
     }, 250);
     return () => clearTimeout(id);
-  }, [q, category, style, locationId]);
+  }, [q, category, style, plating, vendor, locationId]);
 
   function place(barcode: string) {
     start(async () => {
@@ -103,25 +112,39 @@ export function DisplayPicker({
               }
             }}
           />
-          {categories.length > 0 && (
-            <Select value={category} onChange={(e) => setCategory(e.target.value)}>
-              <option value="">All categories</option>
-              {categories.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </Select>
-          )}
-          {styles.length > 0 && (
-            <Select value={style} onChange={(e) => setStyle(e.target.value)}>
-              <option value="">All styles</option>
-              {styles.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </Select>
+          <Select value={category} onChange={(e) => setCategory(e.target.value)}>
+            <option value="">All categories</option>
+            {facets.categories.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </Select>
+          <Select value={style} onChange={(e) => setStyle(e.target.value)}>
+            <option value="">All styles</option>
+            {facets.styles.map((v) => (
+              <option key={v} value={v}>{v}</option>
+            ))}
+          </Select>
+          <Select value={plating} onChange={(e) => setPlating(e.target.value)}>
+            <option value="">All platings</option>
+            {facets.platings.map((v) => (
+              <option key={v} value={v}>{v}</option>
+            ))}
+          </Select>
+          <Select value={vendor} onChange={(e) => setVendor(e.target.value)}>
+            <option value="">All vendors</option>
+            {facets.vendors.map((v) => (
+              <option key={v} value={v}>{v}</option>
+            ))}
+          </Select>
+          {(category || style || plating || vendor || q) && (
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setQ(""); setCategory(""); setStyle(""); setPlating(""); setVendor("");
+              }}
+            >
+              Clear
+            </Button>
           )}
         </div>
 

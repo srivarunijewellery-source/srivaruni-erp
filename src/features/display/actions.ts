@@ -61,6 +61,21 @@ export async function clearDisplaySlot(placementId: string): Promise<Result<void
   return ok(undefined);
 }
 
+/** Rename a run of rack. Owner only, enforced in the database. */
+export async function renameDisplaySection(
+  sectionId: string,
+  name: string,
+): Promise<Result<void>> {
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("rename_display_section", {
+    p_section: sectionId,
+    p_name: name,
+  });
+  if (error) return err(toMessage(error));
+  revalidatePath(ROUTES.display);
+  return ok(undefined);
+}
+
 export interface PickableItem {
   itemId: string;
   barcode: string;
@@ -81,7 +96,13 @@ export interface PickableItem {
  */
 export async function searchForDisplay(
   locationId: string,
-  filters: { q?: string; category?: string; style?: string } = {},
+  filters: {
+    q?: string;
+    category?: string;
+    style?: string;
+    plating?: string;
+    vendor?: string;
+  } = {},
 ): Promise<Result<PickableItem[]>> {
   const supabase = await createClient();
 
@@ -95,6 +116,8 @@ export async function searchForDisplay(
 
   if (filters.category) q = q.eq("category", filters.category);
   if (filters.style) q = q.eq("style", filters.style);
+  if (filters.plating) q = q.eq("plating", filters.plating);
+  if (filters.vendor) q = q.eq("vendor", filters.vendor);
   const term = filters.q?.trim();
   if (term) q = q.or(`barcode.ilike.%${term}%,name.ilike.%${term}%`);
 
