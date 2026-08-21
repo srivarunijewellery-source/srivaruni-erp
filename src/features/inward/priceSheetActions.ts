@@ -6,6 +6,9 @@ import { err, ok, toMessage, type Result } from "@/lib/result";
 import { revalidateInwardCosts } from "./costCache";
 
 export interface SheetLine {
+  /** The tag on the piece. The item name carries the design code, but
+   *  only the barcode identifies the thing on the tray. */
+  barcode: string | null;
   /** Pieces the sheet bills, and pieces entered at inward. Reported,
    *  never enforced: a wrong count does not make the rate wrong. */
   sheetQty: number | null;
@@ -55,6 +58,7 @@ export async function applyPriceSheet(
     lineId: String(r.line_id),
     itemName: String(r.item_name ?? ""),
     code: (r.code as string | null) ?? null,
+    barcode: (r.barcode as string | null) ?? null,
     matched: Boolean(r.matched),
     ratePaise: r.rate_paise === null ? null : Number(r.rate_paise),
     reason: (r.reason as string | null) ?? null,

@@ -65,3 +65,29 @@ you applied.
 Both were DROP and CREATE rather than REPLACE: the return signature
 gained three columns, and Postgres will not change a return type in
 place.
+
+---
+
+# UPDATE — the tag, not just the name
+
+The spreadsheet report named items only:
+
+    Kundan studs 352946200826 — code 352946 is not in the sheet
+
+which identifies a row in the catalogue, not the thing on the tray. The
+barcode now leads every line:
+
+    SV17781 Kundan studs 352946200826 — code 352946 is not in the sheet
+
+It matters more than it looks. On BOD-IN-000069 two consecutive lines
+both read "Black Beads bangles 2329080180826" — same design, same date,
+identical names. Only SV17568 and SV17569 tell them apart, and without
+the tag the report was asking someone to go and find "one of those two".
+
+Applied to both lists in the spreadsheet report: lines that could not be
+priced, and lines whose count disagrees. The Selva PDF report already
+led with the barcode.
+
+    apply_price_sheet now returns barcode
+    npx tsc --noEmit   clean
+    npx next build     ✓ Compiled successfully, 65/65, exit 0

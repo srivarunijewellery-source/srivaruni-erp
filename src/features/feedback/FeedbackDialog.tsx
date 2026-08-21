@@ -30,7 +30,8 @@ export function FeedbackDialog({
   types: FeedbackType[];
   stores: Array<{ id: string; code: string; name: string }>;
   defaultLocationId: string;
-  /** Managers cover both branches by phone, so they choose. Counter
+  /** Managers cover both branches by phone, so they choose -- and they
+   *  can read back what they filed against the other store. Counter
    *  staff get their own branch and no picker to mis-tap. */
   canPickStore: boolean;
   trigger?: (open: () => void) => React.ReactNode;

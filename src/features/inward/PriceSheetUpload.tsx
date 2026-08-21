@@ -271,6 +271,11 @@ export function PriceSheetUpload({
                     .filter((l) => l.qtyStatus === "short" || l.qtyStatus === "over")
                     .map((l) => (
                       <li key={l.lineId} className="text-text-muted">
+                        {l.barcode && (
+                          <span className="font-mono text-text-primary">
+                            {l.barcode}{" "}
+                          </span>
+                        )}
                         <span className="text-text-primary">{l.itemName}</span> —
                         entered <span className="tnum">{l.lineQty}</span>, sheet says{" "}
                         <span className="tnum">{l.sheetQty}</span> ({l.qtyStatus})
@@ -287,6 +292,11 @@ export function PriceSheetUpload({
                     .filter((l) => !l.matched)
                     .map((l) => (
                       <li key={l.lineId} className="text-text-muted">
+                        {l.barcode && (
+                          <span className="font-mono text-text-primary">
+                            {l.barcode}{" "}
+                          </span>
+                        )}
                         <span className="text-text-primary">{l.itemName}</span> —{" "}
                         {l.reason}
                       </li>

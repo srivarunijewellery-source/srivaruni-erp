@@ -67,3 +67,34 @@ Permissions tested live against real auth identities, rolled back:
     feedback_rls
     log_feedback_function
     set_feedback_actioned_function
+
+---
+
+# UPDATE — managers read across branches
+
+The Boduppal manager could not update notes for Zaheerabad. The cause
+was subtler than a missing permission: he COULD write them. The read
+policy was
+
+    is_owner() or location_id = my_location_id()
+
+so the note saved and then disappeared, because he was not the owner and
+it did not belong to his branch. From his side that is indistinguishable
+from having no access — and worse than an honest refusal, because the
+note was there, just invisible to the person who had typed it.
+
+Now any manager reads and writes notes for either branch. Counter staff
+are still scoped to their own store, so a note cannot be filed against
+the wrong branch by a mis-tap on a picker they had no reason to touch.
+
+Ticking a note as actioned is still owner-only. Verified as Vijay
+Krishna, the Boduppal manager:
+
+    logs a note for ZHB          allowed
+    reads it back                yes
+    sees existing ZHB notes      3 visible
+    ticks actioned               refused, owner only
+
+Notes carry no cost, no margin and no customer money — they are "someone
+asked for 2.12 in rose gold". There is nothing in them that branch
+scoping was protecting.

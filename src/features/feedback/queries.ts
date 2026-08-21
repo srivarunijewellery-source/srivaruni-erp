@@ -52,9 +52,14 @@ export async function listFeedbackTypes(): Promise<FeedbackType[]> {
 /**
  * Notes for the admin screen.
  *
- * RLS decides visibility: the owner sees both branches, everyone else
- * sees their own. So nothing here filters by location for safety --
- * only because you asked to narrow it.
+ * RLS decides visibility: the owner and any manager see both branches,
+ * counter staff see their own. So nothing here filters by location for
+ * safety -- only because the person asked to narrow it.
+ *
+ * Managers read across branches because one of them covers both by
+ * phone. The old rule let a manager WRITE a note for the other store
+ * and then hid it the moment it saved, which reads as "no access" and
+ * is worse than an honest refusal.
  *
  * Open notes first, then newest, because the list exists to be worked
  * through rather than read. A note ticked last week should not sit
