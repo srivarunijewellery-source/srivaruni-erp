@@ -102,49 +102,44 @@ export async function searchForDisplay(
     style?: string;
     plating?: string;
     vendor?: string;
+    minPaise?: number;
+    maxPaise?: number;
   } = {},
 ): Promise<Result<PickableItem[]>> {
   const supabase = await createClient();
 
-  let q = supabase
-    .from("stock_on_hand")
-    .select("item_id, barcode, name, category, style, variant, photo_path, selling_price_paise, qty")
-    .eq("location_id", locationId)
-    .gt("qty", 0)
-    .order("barcode", { ascending: false })
-    .limit(120);
-
-  if (filters.category) q = q.eq("category", filters.category);
-  if (filters.style) q = q.eq("style", filters.style);
-  if (filters.plating) q = q.eq("plating", filters.plating);
-  if (filters.vendor) q = q.eq("vendor", filters.vendor);
-  const term = filters.q?.trim();
-  if (term) q = q.or(`barcode.ilike.%${term}%,name.ilike.%${term}%`);
-
-  const { data, error } = await q;
+  // One round trip, and the exclusion happens in the database.
+  //
+  // This used to read stock_on_hand and then drop already-placed pieces
+  // in JS. Two problems: that view joins categories, three attribute
+  // tables and vendors and runs a photo lookup per row -- ~150ms to fill
+  // a picker showing six fields -- and filtering AFTER the limit meant a
+  // page of already-hanging pieces came back empty instead of showing
+  // the next hundred.
+  const { data, error } = await supabase.rpc("display_pick_candidates", {
+    p_location: locationId,
+    p_query: filters.q?.trim() || null,
+    p_category: filters.category || null,
+    p_style: filters.style || null,
+    p_plating: filters.plating || null,
+    p_vendor: filters.vendor || null,
+    p_min_paise: filters.minPaise ?? null,
+    p_max_paise: filters.maxPaise ?? null,
+    p_limit: 120,
+  });
   if (error) return err(toMessage(error));
 
-  // Anything already hanging is dropped: a piece is in one place, and
-  // offering it again only produces a refusal a moment later.
-  const { data: placed } = await supabase
-    .from("item_on_display")
-    .select("item_id")
-    .eq("location_id", locationId);
-  const taken = new Set((placed ?? []).map((p) => p.item_id as string));
-
   return ok(
-    (data ?? [])
-      .filter((r) => !taken.has(r.item_id as string))
-      .map((r) => ({
-        itemId: r.item_id as string,
-        barcode: r.barcode as string,
-        name: r.name as string,
-        categoryName: (r.category as string) ?? "—",
-        variant: (r.variant as string | null) ?? null,
-        photoPath: (r.photo_path as string | null) ?? null,
-        sellingPricePaise:
-          r.selling_price_paise === null ? null : Number(r.selling_price_paise),
-        onHand: Number(r.qty ?? 0),
-      })),
+    ((data ?? []) as Array<Record<string, unknown>>).map((r) => ({
+      itemId: String(r.item_id),
+      barcode: String(r.barcode),
+      name: String(r.name),
+      categoryName: String(r.category ?? "—"),
+      variant: (r.variant as string | null) ?? null,
+      photoPath: (r.photo_path as string | null) ?? null,
+      sellingPricePaise:
+        r.selling_price_paise === null ? null : Number(r.selling_price_paise),
+      onHand: Number(r.qty_here ?? 0),
+    })),
   );
 }

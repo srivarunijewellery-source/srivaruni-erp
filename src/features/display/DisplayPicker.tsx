@@ -47,6 +47,8 @@ export function DisplayPicker({
   const [style, setStyle] = useState("");
   const [plating, setPlating] = useState("");
   const [vendor, setVendor] = useState("");
+  const [minRs, setMinRs] = useState("");
+  const [maxRs, setMaxRs] = useState("");
   const [rows, setRows] = useState<PickableItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -59,6 +61,10 @@ export function DisplayPicker({
       setLoading(true);
       void searchForDisplay(locationId, {
         q, category, style, plating, vendor,
+        // Rupees on screen, paise underneath -- money is integers here
+        // and a float would round a Rs1,760 piece out of its own range.
+        minPaise: minRs.trim() ? Math.round(Number(minRs) * 100) : undefined,
+        maxPaise: maxRs.trim() ? Math.round(Number(maxRs) * 100) : undefined,
       }).then((r) => {
         setLoading(false);
         if (r.ok) setRows(r.data);
@@ -66,7 +72,7 @@ export function DisplayPicker({
       });
     }, 250);
     return () => clearTimeout(id);
-  }, [q, category, style, plating, vendor, locationId]);
+  }, [q, category, style, plating, vendor, minRs, maxRs, locationId]);
 
   function place(barcode: string) {
     start(async () => {
@@ -136,11 +142,29 @@ export function DisplayPicker({
               <option key={v} value={v}>{v}</option>
             ))}
           </Select>
-          {(category || style || plating || vendor || q) && (
+          <span className="flex items-center gap-1">
+            <Input
+              value={minRs}
+              onChange={(e) => setMinRs(e.target.value)}
+              inputMode="numeric"
+              placeholder="min ₹"
+              className="w-24"
+            />
+            <span className="text-2xs text-text-subtle">to</span>
+            <Input
+              value={maxRs}
+              onChange={(e) => setMaxRs(e.target.value)}
+              inputMode="numeric"
+              placeholder="max ₹"
+              className="w-24"
+            />
+          </span>
+          {(category || style || plating || vendor || q || minRs || maxRs) && (
             <Button
               variant="ghost"
               onClick={() => {
-                setQ(""); setCategory(""); setStyle(""); setPlating(""); setVendor("");
+                setQ(""); setCategory(""); setStyle(""); setPlating("");
+                setVendor(""); setMinRs(""); setMaxRs("");
               }}
             >
               Clear

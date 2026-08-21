@@ -166,3 +166,57 @@ props are required now, so leaving them out would not compile.
 
     display_top_row_nine_necks
     rename_display_section
+
+---
+
+# UPDATE 3 — print, price filter, speed
+
+## Print is now the table, landscape, no photos
+
+Printing the page put the whole SCREEN on paper — nav, section tabs, a
+grid of photographs — across three portrait pages. Not something anyone
+carries round a rack.
+
+Now: landscape, the position table only, everything else hidden.
+Position, tag, item, price, in the order the wall reads. Four columns
+fit a sheet sideways with room for full item names.
+
+## Price range in the picker
+
+Min and max in rupees beside the other filters, converted to paise
+before the query — money is integers here, and a float would round a
+₹1,760 piece out of its own range.
+
+## The picker was slow because of the query behind it
+
+`stock_on_hand` joins categories, three attribute tables and vendors,
+then runs a correlated photo lookup PER ROW. Measured:
+
+    stock_on_hand, empty search     134ms + 65ms planning
+    stock_on_hand, search "neck"    148ms + 26ms planning
+
+and the screen fired that PLUS a second query against item_on_display on
+every keystroke and every filter change — two round trips to Mumbai each
+time.
+
+Replaced with `display_pick_candidates`, one function that filters,
+limits, and only then looks up photos for the surviving rows:
+
+    display_pick_candidates, search "neck"   120ms + 0.05ms planning
+
+Planning drops because a function is planned once rather than per call.
+One round trip instead of two. Roughly three times less work per
+keystroke.
+
+It also fixes a correctness bug: already-hanging pieces used to be
+filtered out in JS AFTER the limit, so a page where the top 120 were all
+already placed came back empty instead of showing the next hundred. The
+exclusion is now a NOT EXISTS inside the query.
+
+    npx tsc --noEmit   clean
+    npx next build     ✓ Compiled successfully in 70s
+                       ✓ Generating static pages (66/66)
+
+## Migration
+
+    display_pick_candidates_rpc

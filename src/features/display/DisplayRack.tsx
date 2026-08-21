@@ -158,7 +158,26 @@ export function DisplayRack({
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
+      {/* Landscape, and the table only.
+          Printing the page as it stands put the whole screen on paper --
+          nav, tabs, a grid of photographs -- across three portrait pages,
+          which is not something anyone carries round a rack. What is
+          wanted on paper is the positions: code, tag, name. So the grid
+          and the chrome are hidden at print time and the table is left
+          to fill the sheet sideways, where the four columns fit. */}
+      <style>{`
+        @media print {
+          @page { size: landscape; margin: 12mm; }
+          body * { visibility: hidden; }
+          .print-positions, .print-positions * { visibility: visible; }
+          .print-positions {
+            position: absolute; left: 0; top: 0; width: 100%;
+          }
+          .print-hide { display: none !important; }
+        }
+      `}</style>
+
+      <div className="print-hide flex flex-wrap items-center gap-2">
         {sections.map((s, i) => (
           <button
             key={s.sectionId}
@@ -181,15 +200,17 @@ export function DisplayRack({
         </span>
       </div>
 
-      <SectionTitle
-        section={section}
-        canConfigure={canConfigure}
-        onRenamed={() => router.refresh()}
-      />
+      <div className="print-hide">
+        <SectionTitle
+          section={section}
+          canConfigure={canConfigure}
+          onRenamed={() => router.refresh()}
+        />
+      </div>
 
       {error && <FieldError>{error}</FieldError>}
 
-      <div className="rounded-card border border-border-strong bg-surface-sunken p-2">
+      <div className="print-hide rounded-card border border-border-strong bg-surface-sunken p-2">
         <div
           className="mb-2 grid gap-1 border-b border-border pb-2"
           style={{ gridTemplateColumns: `repeat(${topCols},minmax(0,1fr))` }}
@@ -416,8 +437,13 @@ function PositionTable({ section }: { section: DisplaySection }) {
   );
 
   return (
-    <div className="rounded-card border border-border bg-surface print:border-0">
-      <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2 print:hidden">
+    <div className="print-positions rounded-card border border-border bg-surface">
+      {/* Only shown on paper: on screen the section name is already
+          above the grid. */}
+      <h3 className="hidden px-3 pt-2 text-base font-medium print:block">
+        {section.name} · positions
+      </h3>
+      <div className="print-hide flex items-center justify-between gap-2 border-b border-border px-3 py-2">
         <h3 className="text-sm font-medium">{section.name} · positions</h3>
         <button
           type="button"
@@ -427,7 +453,7 @@ function PositionTable({ section }: { section: DisplaySection }) {
           Print this section
         </button>
       </div>
-      <table className="w-full text-2xs">
+      <table className="w-full text-2xs print:text-[11px]">
         <thead>
           <tr className="border-b border-border text-left">
             <th className="px-3 py-1.5 font-medium">Position</th>
