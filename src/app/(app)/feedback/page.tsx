@@ -38,7 +38,8 @@ export default async function FeedbackPage({
 
   const [types, stores, rows] = await Promise.all([
     listFeedbackTypes(),
-    listStores(),
+    // Managers cover both branches by phone, so the picker offers both.
+    listStores({ allBranches: true }),
     listFeedback({
       type: sp.type,
       location: sp.location,

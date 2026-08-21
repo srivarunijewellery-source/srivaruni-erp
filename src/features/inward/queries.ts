@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/features/auth/session";
-import { isOwner } from "@/config/roles";
+import { isOwner, isManagerOrAbove } from "@/config/roles";
 import { byItemCode } from "@/lib/itemOrder";
 import type {
   InwardSummary, InwardDetail, VendorOption, Category, StoreLocation,
@@ -92,7 +92,25 @@ export async function listCategories(): Promise<Category[]> {
  * The owner gets all of them; a staff member gets their own. Someone
  * with no home branch is a genuine floater and keeps the full list.
  */
-export async function listStores(): Promise<StoreLocation[]> {
+export async function listStores(
+  opts: {
+    /**
+     * Let a MANAGER see both branches.
+     *
+     * Off by default, because for most of this app a manager belongs to
+     * one shop: an inward, a return, a stock audit are all things done
+     * where you are standing, and offering the other branch in those
+     * pickers invites filing against the wrong one.
+     *
+     * Notes are the exception. One manager covers both stores by phone,
+     * so a note about the other branch is ordinary work -- and the
+     * database already allows it. Without this flag the picker had only
+     * the manager's own shop in it, so the permission existed and the
+     * dropdown never showed it.
+     */
+    allBranches?: boolean;
+  } = {},
+): Promise<StoreLocation[]> {
   const supabase = await createClient();
   const user = await getCurrentUser();
 
@@ -103,7 +121,9 @@ export async function listStores(): Promise<StoreLocation[]> {
     .eq("kind", "store")
     .order("code");
 
-  if (user && !isOwner(user.role) && user.locationId) {
+  const widen = opts.allBranches && user ? isManagerOrAbove(user.role) : false;
+
+  if (user && !isOwner(user.role) && !widen && user.locationId) {
     q = q.eq("id", user.locationId);
   }
 

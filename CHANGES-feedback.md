@@ -98,3 +98,33 @@ Krishna, the Boduppal manager:
 Notes carry no cost, no margin and no customer money — they are "someone
 asked for 2.12 in rose gold". There is nothing in them that branch
 scoping was protecting.
+
+---
+
+# UPDATE 2 — the picker only ever had one branch in it
+
+The permission was right; the dropdown was not. `listStores()` narrows
+to a single branch for anyone who is not the owner:
+
+    if (user && !isOwner(user.role) && user.locationId) {
+      q = q.eq("id", user.locationId);
+    }
+
+So Vijay could log a note for Zaheerabad, and read it back, and there
+was no way to choose Zaheerabad because the list handed to the picker
+contained only Boduppal.
+
+`listStores()` now takes an opt-in:
+
+    listStores({ allBranches: true })
+
+which widens to both branches for a MANAGER. Off by default and used in
+exactly two places — the notes page and the counter's Note button.
+
+The other twelve callers are untouched on purpose. An inward, a return,
+a stock audit are done where you are standing, and offering the other
+branch in those pickers invites filing against the wrong one. Notes are
+the exception because one manager covers both stores by phone.
+
+    npx tsc --noEmit   clean
+    npx next build     ✓ Compiled successfully, 65/65, exit 0

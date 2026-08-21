@@ -17,7 +17,12 @@ export interface NoteContext {
 export async function getNoteContext(): Promise<Result<NoteContext>> {
   try {
     const user = await requireUser();
-    const [types, stores] = await Promise.all([listFeedbackTypes(), listStores()]);
+    const [types, stores] = await Promise.all([
+      listFeedbackTypes(),
+      // Both branches for a manager: a note about the other store is
+      // ordinary work, and the database already allows it.
+      listStores({ allBranches: true }),
+    ]);
     return ok({
       types,
       stores,
