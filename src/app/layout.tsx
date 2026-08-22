@@ -1,13 +1,22 @@
 import type { Metadata, Viewport } from "next";
-
+import { Instrument_Sans, IBM_Plex_Mono } from "next/font/google";
 import { APP } from "@/config/app";
 import "./globals.css";
 
 /** Two roles only: sans for the interface, mono for anything read
  *  character-by-character or compared down a column. */
-const sans = { variable: "--font-sans", className: "" };
+const sans = Instrument_Sans({
+  subsets: ["latin"],
+  variable: "--font-instrument-sans",
+  display: "swap",
+});
 
-const mono = { variable: "--font-mono", className: "" };
+const mono = IBM_Plex_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500"],
+  variable: "--font-plex-mono",
+  display: "swap",
+});
 
 /**
  * Run server components in Mumbai, next to the database.

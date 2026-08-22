@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Sri Varuni">
+  <!--
+    The tab mark: the lotus and crown emblem on brand maroon.
+
+    Drawn deliberately heavier than the emblem on the price tags. A tab
+    icon is painted at sixteen pixels, where a fine crown collapses into
+    a blob and thin petals disappear entirely: checked by rendering it at
+    16 and magnifying. So there are three chunky crown points, one thick
+    band, and three fat petals, and nothing thinner than about three
+    units in a 64 unit box.
+
+    The maroon is the brand colour used on the price tags and the
+    Counter button, so the tab matches the shop.
+  -->
+  <rect width="64" height="64" rx="12" fill="#6b1d2b"/>
+
+  <g fill="#ffffff">
+    <!-- Crown, filling most of the width so the points survive. -->
+    <path d="M12 20 L22 30 L32 14 L42 30 L52 20 L48.5 36 L15.5 36 Z"/>
+
+    <!-- Band: thick enough to stay a bar rather than a grey smear. -->
+    <rect x="15" y="39.5" width="34" height="6" rx="3"/>
+
+    <!-- Three petals, wide and separated by a clear gap. -->
+    <path d="M32 48 C37 52 37 56 32 61 C27 56 27 52 32 48 Z"/>
+    <path d="M21.5 49 C26 52 26.5 56 22.5 60 C17 57.5 17.5 52 21.5 49 Z"/>
+    <path d="M42.5 49 C38 52 37.5 56 41.5 60 C47 57.5 46.5 52 42.5 49 Z"/>
+  </g>
+</svg>

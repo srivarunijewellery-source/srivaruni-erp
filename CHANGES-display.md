@@ -355,3 +355,45 @@ press becomes a drag instead of scrolling the page out from under it.
 
     npx tsc --noEmit   clean
     npx next build     ✓ Compiled successfully in 63s, 66/66, exit 0
+
+---
+
+# UPDATE 7 — the tab icon, and a regression I caused
+
+## The favicon
+
+There was no icon file at all — `src/app/` had no `icon`, no
+`favicon.ico`, nothing — so the browser drew its own generic mark.
+
+Added `src/app/icon.svg` and `src/app/apple-icon.svg`: the lotus and
+crown on brand maroon, the same #6b1d2b as the price tags and the
+Counter button. Next serves them at whatever size a browser asks for.
+
+Drawn deliberately heavier than the emblem on the tags. A tab icon gets
+painted at sixteen pixels, and the first version turned to mush there —
+the crown collapsed into a blob and the petals vanished. I only knew
+because I rendered it at 16 and magnified it rather than trusting the
+256px version. Second attempt: three chunky crown points, one thick
+band, three fat petals, nothing thinner than about three units in a 64
+unit box. Legible at 32, still readable at 16.
+
+One thing worth knowing: the first file would not have rendered AT ALL.
+Its comment contained "--color-brand", and a double hyphen is illegal
+inside an XML comment, so the SVG was malformed. It would have shipped
+as a broken icon with no error anywhere. The renderer caught it.
+
+## A regression I introduced and have now fixed
+
+To build offline I stub out the Google Font imports in `layout.tsx`,
+because the sandbox cannot reach fonts.googleapis.com. On two commits I
+restored the wrong file afterwards, and **the stub got committed** —
+`Instrument_Sans` and `IBM_Plex_Mono` replaced by placeholder objects.
+
+Production would have fallen back to system fonts on every page. Nothing
+would error; it would just quietly stop looking like itself.
+
+Restored from the pre-existing version on main. Worth me finding a
+better way to do offline builds than editing a real source file.
+
+    npx tsc --noEmit   clean
+    npx next build     ✓ 67/67 routes, exit 0
