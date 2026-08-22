@@ -324,6 +324,12 @@ export function DisplayRack({
                 key={p.placementId}
                 onPointerDown={(e) => {
                   if (!canEdit || e.button === 2) return;
+                  // Capture, so every move and the release come back to
+                  // this element even once the pointer has left it.
+                  // Without it a fast drag off the niche loses the
+                  // pointer and the piece is dropped wherever the
+                  // browser last saw it.
+                  (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
                   pending.current = {
                     placementId: p.placementId,
                     blockId: block.blockId,
@@ -354,6 +360,7 @@ export function DisplayRack({
                 <PhotoZoom
                   src={itemPhotoUrl(p.photoPath)}
                   alt={p.name}
+                  hoverPanel={false}
                   size={block.pieces.length > 1 ? 44 : 88}
                   caption={`${p.barcode} · ${p.name}${
                     p.sellingPricePaise ? ` · ${formatPaise(p.sellingPricePaise)}` : ""
@@ -503,7 +510,7 @@ export function DisplayRack({
           style={{ left: drag.x, top: drag.y }}
           aria-hidden="true"
         >
-          <PhotoThumb src={drag.photo} alt="" size={64} />
+          <PhotoThumb src={drag.photo} alt="" size={64} hoverPanel={false} />
         </div>
       )}
 
@@ -613,6 +620,7 @@ function RowCells({
                   key={p.placementId}
                   src={itemPhotoUrl(p.photoPath)}
                   alt={p.name}
+                  hoverPanel={false}
                   size={52}
                   caption={`${p.barcode} · ${p.name}`}
                 />

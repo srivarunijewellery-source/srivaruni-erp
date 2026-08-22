@@ -23,10 +23,15 @@ export function PhotoThumb({
   src,
   alt,
   size = 56,
+  hoverPanel = true,
 }: {
   src: string | null;
   alt: string;
   size?: number;
+  /** Off where the thumbnail is draggable: a magnified panel opening
+   *  under the cursor mid-drag fights the gesture and covers the niche
+   *  being aimed at. */
+  hoverPanel?: boolean;
 }) {
   const [failed, setFailed] = useState(false);
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
@@ -85,8 +90,8 @@ export function PhotoThumb({
       ref={ref}
       className="relative shrink-0"
       style={{ width: size, height: size }}
-      onMouseEnter={place}
-      onMouseLeave={() => setPos(null)}
+      onMouseEnter={hoverPanel ? place : undefined}
+      onMouseLeave={hoverPanel ? () => setPos(null) : undefined}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
@@ -96,7 +101,14 @@ export function PhotoThumb({
         height={size}
         loading="lazy"
         onError={() => setFailed(true)}
-        className="h-full w-full rounded-control border border-border object-cover"
+        // An <img> is draggable by default, and the browser's own image
+        // drag hijacks any pointer gesture that starts on one: you press,
+        // the native drag takes over, and the real drop only lands when
+        // it gives up. Turning it off is what makes a custom drag feel
+        // direct rather than delayed.
+        draggable={false}
+        onDragStart={(e) => e.preventDefault()}
+        className="h-full w-full select-none rounded-control border border-border object-cover [-webkit-user-drag:none]"
       />
 
       {pos &&

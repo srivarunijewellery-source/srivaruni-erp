@@ -21,11 +21,14 @@ export function PhotoZoom({
   alt,
   size = 72,
   caption,
+  hoverPanel = true,
 }: {
   src: string | null;
   alt: string;
   size?: number;
   caption?: string;
+  /** Passed through: off where the thumbnail is draggable. */
+  hoverPanel?: boolean;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -48,9 +51,12 @@ export function PhotoZoom({
           e.stopPropagation();
           if (src) setOpen(true);
         }}
-        className="shrink-0 rounded-control focus:outline-none focus:ring-2 focus:ring-brand"
+        // touch-action none so a finger press can become a drag in the
+        // parent rather than scrolling the page out from under it.
+        style={{ touchAction: "none" }}
+        className="shrink-0 select-none rounded-control focus:outline-none focus:ring-2 focus:ring-brand"
       >
-        <PhotoThumb src={src} alt={alt} size={size} />
+        <PhotoThumb src={src} alt={alt} size={size} hoverPanel={hoverPanel} />
       </button>
 
       {open && src && (

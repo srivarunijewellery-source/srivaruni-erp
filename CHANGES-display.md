@@ -322,3 +322,36 @@ was still wrong; the lint rule caught that too.
 
     npx tsc --noEmit   clean
     npx next build     ✓ Compiled successfully, 66/66, exit 0
+
+---
+
+# UPDATE 6 — the browser was dragging the image
+
+Still patchy after the pointer rewrite, and the reason was underneath
+all of it: **an `<img>` is draggable by default.**
+
+Pressing on a photo started the BROWSER's own image drag. That hijacks
+the gesture — it takes the pointer, paints its own ghost, and my drop
+only landed once it gave up. Exactly "I hold the photo, can't move it
+directly, and the drop happens after".
+
+Three fixes, all in the same place:
+
+**`draggable={false}` on the img**, plus `onDragStart` prevented and
+`-webkit-user-drag: none` for Safari. Nothing native competes now.
+
+**`setPointerCapture` on press.** Every move and the release come back
+to the piece even once the pointer has left it. Without it a fast drag
+off the niche loses the pointer and the piece lands wherever the browser
+last saw it — the other half of "patchy".
+
+**The hover panel is off on draggable pieces.** PhotoThumb magnifies to
+340px on hover, which fired mid-drag and covered the very niche being
+aimed at. `hoverPanel={false}` on the rack; the picker keeps it, since
+that is a browsing list where magnifying helps and nothing is dragged.
+
+Also `touch-action: none` and `select-none` on the button, so a finger
+press becomes a drag instead of scrolling the page out from under it.
+
+    npx tsc --noEmit   clean
+    npx next build     ✓ Compiled successfully in 63s, 66/66, exit 0
