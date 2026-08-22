@@ -402,7 +402,7 @@ export function DisplayRack({
                     placementId: p.placementId,
                     blockId: block.blockId,
                     code: block.code,
-                    photo: itemPhotoUrl(p.photoPath),
+                    photo: itemPhotoUrl(p.photoPath, 64),
                     name: p.name,
                     x: e.clientX,
                     y: e.clientY,
@@ -426,7 +426,8 @@ export function DisplayRack({
                 }
               >
                 <PhotoZoom
-                  src={itemPhotoUrl(p.photoPath)}
+                  src={itemPhotoUrl(p.photoPath, block.pieces.length > 1 ? 44 : 88)}
+                  full={itemPhotoUrl(p.photoPath)}
                   alt={p.name}
                   hoverPanel={false}
                   size={block.pieces.length > 1 ? 44 : 88}
@@ -753,7 +754,8 @@ function RowCells({
               mannequin.pieces.map((p) => (
                 <PhotoZoom
                   key={p.placementId}
-                  src={itemPhotoUrl(p.photoPath)}
+                  src={itemPhotoUrl(p.photoPath, 52)}
+                  full={itemPhotoUrl(p.photoPath)}
                   alt={p.name}
                   hoverPanel={false}
                   size={52}

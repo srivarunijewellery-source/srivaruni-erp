@@ -43,7 +43,8 @@ export function SoldItemsGrid({ items }: { items: SoldItem[] }) {
                 answers "what does it look like"; the name answers "take
                 me to it". Two intentions, two targets. */}
             <PhotoZoom
-              src={itemPhotoUrl(i.photoPath)}
+              src={itemPhotoUrl(i.photoPath, 72)}
+              full={itemPhotoUrl(i.photoPath)}
               alt={i.name}
               size={72}
               caption={`${i.barcode ?? "no tag"} · ${i.name} · ${formatPaise(i.revenuePaise)} from ${i.qtySold} sold`}

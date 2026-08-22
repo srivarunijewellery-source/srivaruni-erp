@@ -456,3 +456,95 @@ SectionTitle where it is dead. The build caught it.
 
     npx tsc --noEmit   clean
     npx next build     ✓ 67/67, exit 0
+
+---
+
+# UPDATE 9 — the real emblem, and why the photos were slow
+
+## The tab icon
+
+Taken from the logo you sent: #311337 deep purple, #f2e7e7 blush, read
+off the file rather than guessed. The browser theme colour matches, so
+the address bar on a phone is the same purple as the tab.
+
+The logo is fine line art — right on a shopfront, wrong at sixteen
+pixels where a one pixel stroke turns to grey haze. So the petals are
+solid, and there are THREE rather than five: at 16px five merged into a
+single smudge and three hold as three. Rendered at 16 and magnified to
+check, rather than trusting how it looks large.
+
+## The photos, which is the real answer to "still slow"
+
+`itemPhotoUrl` was returning the ORIGINAL file. A phone photograph, two
+or three megabytes, downloaded in full and painted into an 88 pixel box.
+One is merely wasteful. A display rack draws thirty-four at once and the
+stock page sixty.
+
+That is why moving things felt slow even though nothing was being saved:
+the delay was never the drag, it was the pictures being re-fetched at
+full size as they moved through the DOM.
+
+`itemPhotoUrl(path, width)` now uses Supabase's render endpoint, which
+resizes and caches at the edge — a feature this project's Pro plan
+already pays for and was not using. Asked for at twice the CSS width so
+it stays sharp on a retina screen, quality 70, capped at 1200px.
+
+Applied to the rack, the picker, the product grid and the sold-items
+grid. The full-size original is still what opens when a photo is tapped,
+so nothing is lost where it matters.
+
+Rough arithmetic: a 2.5MB photo at 88px becomes about 12KB. Thirty-four
+of them, 85MB down to under half a megabyte.
+
+## Same XML trap, caught again
+
+The second icon draft would not have rendered: its comment contained a
+double hyphen, which is illegal inside an XML comment. Malformed SVG,
+no error anywhere, a broken favicon. The renderer caught it — which is
+the argument for rendering the thing rather than reading it.
+
+    npx tsc --noEmit   clean
+    npx next build     ✓ 67/67, exit 0
+    fonts and themeColor verified present after the build
+
+---
+
+# UPDATE 10 — your icon package, installed
+
+Replaced the marks I drew with the real files.
+
+    src/app/favicon.ico          the supplied .ico
+    src/app/apple-icon.png       apple-touch-icon, 180px
+    public/android-chrome-*.png  192 and 512, for a home screen shortcut
+    public/favicon-16x16.png     kept alongside for completeness
+    public/favicon-32x32.png
+    src/app/manifest.ts          replaces site.webmanifest
+
+My icon.svg and apple-icon.svg are deleted — two sources for one icon is
+one too many.
+
+## Why the manifest is code and not the file that came in the zip
+
+The supplied `site.webmanifest` had an empty name and a white theme
+colour. That would label a home screen shortcut with nothing at all and
+flash a white splash in front of a dark purple app. It now carries the
+app name from config and #311337 for both theme and background.
+
+## One thing to decide
+
+At 512 the logo is lovely. At 32 the line art is already hazy and at 16
+it is a grey smudge — a one pixel stroke cannot survive being drawn at
+one pixel, and 16px is what a browser tab actually uses.
+
+The comparison image shows both side by side. The solid three petal
+version reads at 16; the line art does not.
+
+Nothing is broken either way — it is a question of whether a slightly
+fuzzy tab icon bothers you more than a simplified one. The usual answer
+is to serve the real logo everywhere EXCEPT 16 and 32, where a bolder
+variant of the same shape stands in. Say the word and I will do that; it
+is a `src/app/icon.tsx` that picks by size, ten minutes.
+
+    npx tsc --noEmit   clean
+    npx next build     ✓ 69/69 routes, exit 0
+                       /manifest.webmanifest generated

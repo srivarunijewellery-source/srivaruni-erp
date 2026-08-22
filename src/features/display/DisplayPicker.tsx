@@ -242,7 +242,7 @@ export function DisplayPicker({
                   className="mt-1 h-4 w-4 shrink-0 accent-[var(--color-brand)]"
                   aria-label={`Select ${r.barcode} for bulk placement`}
                 />
-                <PhotoThumb src={itemPhotoUrl(r.photoPath)} alt={r.name} size={52} />
+                <PhotoThumb src={itemPhotoUrl(r.photoPath, 52)} alt={r.name} size={52} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-2xs font-medium">{r.name}</span>
                   <span className="block truncate font-mono text-2xs text-text-subtle">

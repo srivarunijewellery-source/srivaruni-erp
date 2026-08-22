@@ -45,7 +45,8 @@ export function ProductGrid({ rows }: { rows: ProductRow[] }) {
                 the obvious gesture when you want a better look at a
                 piece -- navigated away instead. */}
             <PhotoZoom
-              src={itemPhotoUrl(p.photoPath)}
+              src={itemPhotoUrl(p.photoPath, 72)}
+              full={itemPhotoUrl(p.photoPath)}
               alt={p.name}
               size={72}
               caption={`${p.barcode} · ${p.name}`}

@@ -34,7 +34,9 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#6b1d2b",
+  // The browser chrome colour on mobile: the logo purple, so the
+  // address bar matches the tab icon rather than the old maroon.
+  themeColor: "#311337",
   width: "device-width",
   initialScale: 1,
 };

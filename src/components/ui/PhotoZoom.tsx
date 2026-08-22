@@ -18,12 +18,16 @@ import { PhotoThumb } from "./PhotoThumb";
  */
 export function PhotoZoom({
   src,
+  full,
   alt,
   size = 72,
   caption,
   hoverPanel = true,
 }: {
+  /** The thumbnail: ask for it at the size it is drawn. */
   src: string | null;
+  /** The original, for the full-screen view. Falls back to src. */
+  full?: string | null;
   alt: string;
   size?: number;
   caption?: string;
@@ -73,7 +77,7 @@ export function PhotoZoom({
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={src}
+            src={full ?? src}
             alt={alt}
             className="max-h-[85vh] max-w-full rounded-card object-contain"
           />
