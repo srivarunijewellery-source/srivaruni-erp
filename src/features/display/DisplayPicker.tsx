@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
-import { Input, Select, Label, FieldError } from "@/components/ui/Field";
+import { Input, Select, FieldError } from "@/components/ui/Field";
 import { PhotoThumb } from "@/components/ui/PhotoThumb";
 import { itemPhotoUrl } from "@/lib/storage";
 import { formatPaise } from "@/lib/money";

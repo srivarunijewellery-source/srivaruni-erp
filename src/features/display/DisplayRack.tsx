@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { FieldError } from "@/components/ui/Field";
 import { PhotoZoom } from "@/components/ui/PhotoZoom";
+import { PhotoThumb } from "@/components/ui/PhotoThumb";
 import { itemPhotoUrl } from "@/lib/storage";
 import { formatPaise } from "@/lib/money";
 import { clearDisplaySlot, renameDisplaySection, moveDisplayPiece } from "./actions";
@@ -48,19 +49,222 @@ export function DisplayRack({
   const router = useRouter();
   const [active, setActive] = useState(0);
   const [picking, setPicking] = useState<DisplayBlock | null>(null);
+
   /**
-   * The piece currently being moved.
+   * A local copy of the rack, moved BEFORE the server is asked.
    *
-   * Held in state rather than relying on the drag event alone, because
-   * HTML5 drag and drop does not exist on a touch screen. Tapping a
-   * piece picks it up and tapping a niche puts it down -- the same two
-   * gestures a drag is made of, available on a tablet at the counter.
+   * The first version waited for the round trip and then re-rendered the
+   * whole page, so a drag ended with the piece sitting where it started
+   * for a beat and then teleporting. Moving the copy first makes the
+   * gesture feel like moving a physical thing; the server call catches
+   * up behind it, and if it fails the copy snaps back with the reason.
    */
-  const [held, setHeld] = useState<{ placementId: string; from: string } | null>(null);
+  const [live, setLive] = useState<DisplaySection[]>(sections);
+  useEffect(() => setLive(sections), [sections]);
+
+  /**
+   * Pointer drag, not HTML5 drag and drop.
+   *
+   * Native dnd gives you a browser-drawn ghost you cannot style, fires
+   * nothing useful on a touch screen, and needs a parallel tap-to-move
+   * path for the tablet at the counter. One pointer implementation
+   * covers mouse, pen and finger, and lets the thing under the cursor
+   * actually be the photograph being carried.
+   */
+  const [drag, setDrag] = useState<{
+    placementId: string;
+    fromBlockId: string;
+    fromCode: string;
+    photo: string | null;
+    name: string;
+    x: number;
+    y: number;
+    overBlockId: string | null;
+  } | null>(null);
+  const dragRef = useRef<typeof drag>(null);
+  dragRef.current = drag;
+  const isDragging = drag !== null;
+
+  /**
+   * Where a press began, before it is known to be a drag.
+   *
+   * A press is ambiguous: it might be a tap to enlarge the photo, or the
+   * start of moving the piece. Committing to a drag on pointer-down made
+   * every tap flash a preview and then open the viewer anyway. So the
+   * press is only PENDING until the pointer travels a few pixels; under
+   * that it stays a tap and the photo opens as it always did.
+   */
+  const pending = useRef<
+    | { placementId: string; blockId: string; code: string; photo: string | null;
+        name: string; x: number; y: number }
+    | null
+  >(null);
+  /** Set for the instant after a drag so the trailing click cannot open
+   *  the zoom on the piece that was just dropped. */
+  const justDragged = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, start] = useTransition();
 
-  const section = sections[active];
+  const section = live[active];
+
+
+  // Watches a pending press and promotes it to a drag once the pointer
+  // has actually travelled. Always mounted, because the press it is
+  // watching for starts before any drag exists.
+  useEffect(() => {
+    const maybeStart = (e: PointerEvent) => {
+      const q = pending.current;
+      if (!q || dragRef.current) return;
+      if (Math.hypot(e.clientX - q.x, e.clientY - q.y) < 6) return;
+      setDrag({
+        placementId: q.placementId,
+        fromBlockId: q.blockId,
+        fromCode: q.code,
+        photo: q.photo,
+        name: q.name,
+        x: e.clientX,
+        y: e.clientY,
+        overBlockId: q.blockId,
+      });
+    };
+    const clear = () => {
+      pending.current = null;
+    };
+    window.addEventListener("pointermove", maybeStart);
+    window.addEventListener("pointerup", clear);
+    window.addEventListener("pointercancel", clear);
+    return () => {
+      window.removeEventListener("pointermove", maybeStart);
+      window.removeEventListener("pointerup", clear);
+      window.removeEventListener("pointercancel", clear);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!drag) return;
+
+    const move = (e: PointerEvent) => {
+      // The preview is pointer-events:none, so this finds the niche
+      // underneath rather than the picture being carried.
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      const over = el?.closest("[data-block-id]") as HTMLElement | null;
+      setDrag((d) =>
+        d
+          ? {
+              ...d,
+              x: e.clientX,
+              y: e.clientY,
+              overBlockId: over?.dataset.blockId ?? null,
+            }
+          : d,
+      );
+    };
+
+    const up = () => {
+      const d = dragRef.current;
+      setDrag(null);
+      pending.current = null;
+      // The click that follows this pointerup would otherwise land on
+      // the photo and open the viewer on whatever was just dropped.
+      justDragged.current = true;
+      setTimeout(() => {
+        justDragged.current = false;
+      }, 0);
+      if (!d?.overBlockId || d.overBlockId === d.fromBlockId) return;
+      commitMove(d.placementId, d.fromBlockId, d.overBlockId);
+    };
+
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+    };
+    // Keyed on whether a drag exists, not the drag itself: re-binding
+    // window listeners on every pointer move would be pointless work.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDragging]);
+
+  /**
+   * Move locally, then tell the server.
+   *
+   * Mirrors what move_display_piece does so the optimistic picture is
+   * the real one: room on the target means the piece joins it, a full
+   * target means the two trade places. If the two ever disagree the
+   * refresh below corrects it, but they should not.
+   */
+  function commitMove(placementId: string, fromBlockId: string, toBlockId: string) {
+    setLive((prev) =>
+      prev.map((sec) => {
+        const from = sec.blocks.find((b) => b.blockId === fromBlockId);
+        const to = sec.blocks.find((b) => b.blockId === toBlockId);
+        if (!from || !to) return sec;
+
+        const piece = from.pieces.find((p) => p.placementId === placementId);
+        if (!piece) return sec;
+
+        const full = to.pieces.length >= to.capacity;
+        const displaced = full ? to.pieces[to.pieces.length - 1]! : null;
+
+        return {
+          ...sec,
+          blocks: sec.blocks.map((b) => {
+            if (b.blockId === fromBlockId) {
+              return {
+                ...b,
+                pieces: [
+                  ...b.pieces.filter((p) => p.placementId !== placementId),
+                  ...(displaced ? [displaced] : []),
+                ],
+              };
+            }
+            if (b.blockId === toBlockId) {
+              return {
+                ...b,
+                pieces: [
+                  ...b.pieces.filter(
+                    (p) => p.placementId !== displaced?.placementId,
+                  ),
+                  piece,
+                ],
+              };
+            }
+            return b;
+          }),
+        };
+      }),
+    );
+
+    start(async () => {
+      setError(null);
+      const r = await moveDisplayPiece(placementId, toBlockId);
+      if (!r.ok) {
+        setError(r.error);
+        setLive(sections);
+        return;
+      }
+      router.refresh();
+    });
+  }
+
+  /** Tap-to-move, kept for precision and for anyone using a keyboard or
+   *  screen reader: a drag is not a gesture everyone can make. */
+  const [held, setHeld] = useState<{
+    placementId: string;
+    from: string;
+    blockId: string;
+  } | null>(null);
+
+  // EVERY hook is above this line, unconditionally.
+  //
+  // An early return placed among them changes how many hooks run between
+  // one render and the next, which React cannot recover from. My first
+  // attempt to fix this moved the guard above two useEffects and still
+  // left it above a useState -- the lint rule caught what testing would
+  // not have, because the crash only happens on a branch with no
+  // sections and Boduppal has five.
   if (!section) {
     return <p className="text-sm text-text-muted">No display racks set up yet.</p>;
   }
@@ -74,19 +278,12 @@ export function DisplayRack({
   );
   const mannequin = section.blocks.find((b) => b.kind === "mannequin");
 
-  function moveTo(blockCode: string, blockId: string) {
+  function moveTo(blockId: string) {
     if (!held) return;
     const carrying = held;
     setHeld(null);
-    start(async () => {
-      setError(null);
-      const r = await moveDisplayPiece(carrying.placementId, blockId);
-      if (!r.ok) {
-        setError(r.error);
-        return;
-      }
-      router.refresh();
-    });
+    if (carrying.blockId === blockId) return;
+    commitMove(carrying.placementId, carrying.blockId, blockId);
   }
 
   function remove(placementId: string) {
@@ -102,23 +299,22 @@ export function DisplayRack({
     const filled = block.pieces.length > 0;
     return (
       <div
-        onDragOver={(e) => {
-          if (canEdit && held) e.preventDefault();
-        }}
-        onDrop={(e) => {
-          e.preventDefault();
-          moveTo(block.code, block.blockId);
-        }}
+        data-block-id={block.blockId}
         onClick={() => {
-          // Tap a niche while carrying: put it down here.
-          if (held) moveTo(block.code, block.blockId);
+          if (held) moveTo(block.blockId);
         }}
-        className={`rounded-control border p-1 transition-colors ${
-          held && held.from !== block.code
-            ? "border-brand bg-status-approved-bg"
-            : filled
-              ? "border-border-strong bg-surface"
-              : "border-dashed border-border-strong"
+        className={`rounded-control border p-1 transition-all duration-150 ${
+          // Only the niche actually under the pointer lights up. Lighting
+          // every one of thirty-four at once said "something is being
+          // dragged", which the pointer already said, and drowned the one
+          // piece of information that mattered.
+          drag?.overBlockId === block.blockId && drag.fromBlockId !== block.blockId
+            ? "scale-[1.04] border-brand bg-status-approved-bg"
+            : held && held.blockId !== block.blockId
+              ? "border-brand/50"
+              : filled
+                ? "border-border-strong bg-surface"
+                : "border-dashed border-border-strong"
         }`}
       >
         <div className="flex h-[86px] items-center justify-center gap-0.5 overflow-hidden rounded-control bg-surface-sunken">
@@ -126,16 +322,32 @@ export function DisplayRack({
             block.pieces.map((p) => (
               <span
                 key={p.placementId}
-                draggable={canEdit}
-                onDragStart={() =>
-                  setHeld({ placementId: p.placementId, from: block.code })
-                }
-                onDragEnd={() => setHeld(null)}
+                onPointerDown={(e) => {
+                  if (!canEdit || e.button === 2) return;
+                  pending.current = {
+                    placementId: p.placementId,
+                    blockId: block.blockId,
+                    code: block.code,
+                    photo: itemPhotoUrl(p.photoPath),
+                    name: p.name,
+                    x: e.clientX,
+                    y: e.clientY,
+                  };
+                }}
+                onClickCapture={(e) => {
+                  if (justDragged.current) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }
+                }}
+                // Without this a finger drag scrolls the page instead of
+                // lifting the piece.
+                style={{ touchAction: canEdit ? "none" : undefined }}
                 className={
-                  held?.placementId === p.placementId
-                    ? "opacity-40"
+                  drag?.placementId === p.placementId
+                    ? "opacity-25"
                     : canEdit
-                      ? "cursor-grab"
+                      ? "cursor-grab active:cursor-grabbing"
                       : undefined
                 }
               >
@@ -192,7 +404,11 @@ export function DisplayRack({
                   setHeld(
                     held?.placementId === last.placementId
                       ? null
-                      : { placementId: last.placementId, from: block.code },
+                      : {
+                          placementId: last.placementId,
+                          from: block.code,
+                          blockId: block.blockId,
+                        },
                   );
                 }}
                 className={`text-2xs ${
@@ -251,7 +467,7 @@ export function DisplayRack({
       `}</style>
 
       <div className="print-hide flex flex-wrap items-center gap-2">
-        {sections.map((s, i) => (
+        {live.map((s, i) => (
           <button
             key={s.sectionId}
             type="button"
@@ -280,6 +496,16 @@ export function DisplayRack({
           onRenamed={() => router.refresh()}
         />
       </div>
+
+      {drag && (
+        <div
+          className="pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-1/2 rounded-control border-2 border-brand bg-surface p-0.5 shadow-raised"
+          style={{ left: drag.x, top: drag.y }}
+          aria-hidden="true"
+        >
+          <PhotoThumb src={drag.photo} alt="" size={64} />
+        </div>
+      )}
 
       {held && (
         <p className="print-hide rounded-control border border-brand bg-status-approved-bg px-3 py-2 text-sm">

@@ -276,3 +276,49 @@ it had been on the first neck all along.
 
     display_move_and_place_many
     place_many_spreads_one_per_neck
+
+---
+
+# UPDATE 5 — the drag is now a drag
+
+It worked and felt wrong, for three separate reasons.
+
+**The browser drew the ghost.** Native HTML5 drag and drop hands you a
+translucent screenshot you cannot style, fires nothing useful on a touch
+screen, and needed a whole parallel tap-to-move path for the tablet at
+the counter. Replaced with pointer events: one implementation for mouse,
+pen and finger, and the thing following the cursor is the photograph
+being carried, at 64px with a brand border.
+
+**Every niche lit up at once.** Thirty-four highlighted rectangles said
+"something is being dragged", which the pointer already said, and buried
+the one fact that mattered. Now only the niche actually under the
+pointer lifts and highlights, found with elementFromPoint through a
+preview that is pointer-events:none.
+
+**Nothing moved until the server answered.** The piece sat where it
+started for a beat, then the whole page re-rendered and it teleported.
+The rack now moves locally the instant you let go, mirroring exactly
+what move_display_piece does — room on the target means the piece joins
+it, a full target means the two trade places. The server call catches up
+behind; if it fails the copy snaps back with the reason.
+
+**A tap is still a tap.** A press does not become a drag until the
+pointer has travelled six pixels, so tapping a photo opens the photo as
+it always did. The click that follows a real drop is swallowed, or the
+viewer would open on whatever was just dropped.
+
+Tap-to-move (⇄) is kept for precision and for anyone who cannot make a
+drag gesture.
+
+## Two bugs the build caught that testing would not have
+
+The guard `if (!section) return` sat ABOVE two useEffects and a useState.
+React counts hooks per render; an early return among them changes the
+count and crashes. It only fires on a branch with no sections, and
+Boduppal has five — so it would have shipped and broken Zaheerabad on
+its first day. My first fix moved it above two of the three hooks and
+was still wrong; the lint rule caught that too.
+
+    npx tsc --noEmit   clean
+    npx next build     ✓ Compiled successfully, 66/66, exit 0

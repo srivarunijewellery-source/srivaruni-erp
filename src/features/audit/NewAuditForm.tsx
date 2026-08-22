@@ -9,7 +9,6 @@ import { ROUTES } from "@/config/nav";
 import { startAudit, previewAudit, type AuditPreview } from "./actions";
 import { PhotoThumb } from "@/components/ui/PhotoThumb";
 import { itemPhotoUrl } from "@/lib/storage";
-import { formatPaise } from "@/lib/money";
 
 /**
  * Choosing what to count.
