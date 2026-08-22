@@ -99,6 +99,39 @@ export async function placeManyOnDisplay(
   return ok({ placed: Number(r.placed ?? 0), skipped: Number(r.skipped ?? 0) });
 }
 
+export interface LayoutSlot {
+  block_id: string;
+  item_id: string;
+  slot: number;
+}
+
+/**
+ * Write a whole section's arrangement at once.
+ *
+ * Every drag used to be its own save plus a page refresh, and a refresh
+ * landing mid-gesture overwrote what the person was still doing -- moves
+ * arriving late, and once a piece disappearing entirely. Rearranging a
+ * wall is ONE decision made over a couple of minutes, so the screen
+ * keeps a working copy and this writes the result.
+ *
+ * Only what changed is touched, so a piece that has not moved keeps its
+ * history stint.
+ */
+export async function applyDisplayLayout(
+  sectionId: string,
+  layout: LayoutSlot[],
+): Promise<Result<{ removed: number; added: number }>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("apply_display_layout", {
+    p_section: sectionId,
+    p_layout: layout,
+  });
+  if (error) return err(toMessage(error));
+  const r = (data ?? {}) as Record<string, unknown>;
+  revalidatePath(ROUTES.display);
+  return ok({ removed: Number(r.removed ?? 0), added: Number(r.added ?? 0) });
+}
+
 /** Take a piece off. Only for a deliberate change -- a sold piece
  *  releases its own niche. */
 export async function clearDisplaySlot(placementId: string): Promise<Result<void>> {

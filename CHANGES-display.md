@@ -397,3 +397,62 @@ better way to do offline builds than editing a real source file.
 
     npx tsc --noEmit   clean
     npx next build     ✓ 67/67 routes, exit 0
+
+---
+
+# UPDATE 8 — one save for the whole rearrangement
+
+You were right that the glitchiness was the design, not a bug to chase.
+
+Every drag was its own server call AND a `router.refresh()`. The refresh
+re-fetches the rack and replaces the working copy — so a refresh landing
+while you were still moving things overwrote what you had just done.
+Moves appearing late, and a piece disappearing entirely, are both that.
+
+## What changed
+
+Drags, adds and removals now edit a **working copy** on screen. Nothing
+touches the database until **Save the layout**.
+
+A sticky bar appears the moment anything differs: what section it is,
+Save, and discard changes. Switching to another section with unsaved
+work asks first, because the copy is per rack and only the section on
+screen gets written.
+
+`apply_display_layout` writes the arrangement in one call, and touches
+only what actually CHANGED — a piece that has not moved keeps its
+history stint. Wiping the section and re-inserting would close and
+reopen all thirty-three and make "which neck sells" meaningless.
+
+The picker no longer writes either: it hands its choices back and the
+rack places them locally. Otherwise adding a piece would have saved
+immediately and wiped every unsaved drag.
+
+## What it refuses on save, by name
+
+    sold while you were arranging   names the barcode
+    same piece in two places        names the barcode
+    more than a neck can take       names the block
+    already hanging elsewhere       names the barcode AND where
+
+All-or-nothing: a layout that breaks any rule writes none of itself.
+
+## Verified live, rolled back
+
+    swap two necks in one save      2 removed, 2 added
+    history rows created            2 — the untouched pieces kept theirs
+    save twice, same transaction    both fine
+    a no-change save                writes nothing
+    three on one neck               refused, names the piece
+
+## Two bugs found on the way
+
+`_want` is dropped before creating, not just ON COMMIT: the temp table
+outlived a call, so a second save in one transaction failed with
+"relation _want already exists".
+
+A `saved` state got inserted twice — once where it is used and once in
+SectionTitle where it is dead. The build caught it.
+
+    npx tsc --noEmit   clean
+    npx next build     ✓ 67/67, exit 0

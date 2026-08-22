@@ -7,9 +7,7 @@ import { Input, Select, FieldError } from "@/components/ui/Field";
 import { PhotoThumb } from "@/components/ui/PhotoThumb";
 import { itemPhotoUrl } from "@/lib/storage";
 import { formatPaise } from "@/lib/money";
-import {
-  placeOnDisplay, placeManyOnDisplay, searchForDisplay, type PickableItem,
-} from "./actions";
+import { searchForDisplay, type PickableItem } from "./actions";
 import type { DisplayBlock } from "./queries";
 
 /**
@@ -26,15 +24,12 @@ import type { DisplayBlock } from "./queries";
  */
 export function DisplayPicker({
   block,
-  sectionId,
   locationId,
   facets,
   onClose,
-  onPlaced,
+  onChoose,
 }: {
   block: DisplayBlock;
-  /** Bulk placement fills this section's empty necks in reading order. */
-  sectionId: string;
   locationId: string;
   /** The same lists the products and stock pages filter on, so the
    *  vocabulary is one someone already knows. */
@@ -45,7 +40,14 @@ export function DisplayPicker({
     vendors: string[];
   };
   onClose: () => void;
-  onPlaced: () => void;
+  /**
+   * Hands the chosen pieces back rather than saving them.
+   *
+   * The rack keeps a working copy that is written on Save, so the picker
+   * writing straight to the database would wipe any drag not yet saved.
+   * Choosing is the picker's job; committing belongs to one place.
+   */
+  onChoose: (items: PickableItem[], mode: "one" | "many") => void;
 }) {
   const [q, setQ] = useState("");
   const [category, setCategory] = useState("");
@@ -57,7 +59,9 @@ export function DisplayPicker({
   const [rows, setRows] = useState<PickableItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [busy, start] = useTransition();
+  // The picker no longer writes anything: choices go back to the rack,
+  // which saves the whole arrangement at once.
+  const [busy] = useTransition();
   /**
    * Pieces ticked for a bulk placement.
    *
@@ -90,16 +94,8 @@ export function DisplayPicker({
     return () => clearTimeout(id);
   }, [q, category, style, plating, vendor, minRs, maxRs, locationId]);
 
-  function place(barcode: string) {
-    start(async () => {
-      setError(null);
-      const r = await placeOnDisplay(block.blockId, barcode);
-      if (!r.ok) {
-        setError(r.error);
-        return;
-      }
-      onPlaced();
-    });
+  function place(item: PickableItem) {
+    onChoose([item], "one");
   }
 
   const room = block.capacity - block.pieces.length;
@@ -130,7 +126,15 @@ export function DisplayPicker({
               // without anyone touching the list.
               if (e.key === "Enter" && q.trim()) {
                 e.preventDefault();
-                place(q.trim());
+                // A scan ends in Enter. Exactly one match means the gun
+                // can fill a niche without anyone touching the list.
+                const hit = rows.find(
+                  (r) => r.barcode.toLowerCase() === q.trim().toLowerCase(),
+                );
+                if (hit) {
+                  place(hit);
+                  setQ("");
+                }
               }
             }}
           />
@@ -215,7 +219,7 @@ export function DisplayPicker({
                     });
                     return;
                   }
-                  place(r.barcode);
+                  place(r);
                 }}
                 className={`flex gap-2 rounded-card border bg-surface p-2 text-left transition-colors disabled:opacity-50 ${
                   bulk.has(r.itemId)
@@ -262,18 +266,13 @@ export function DisplayPicker({
             <>
               <Button
                 disabled={busy}
-                onClick={() =>
-                  start(async () => {
-                    setError(null);
-                    const r = await placeManyOnDisplay(sectionId, [...bulk]);
-                    if (!r.ok) {
-                      setError(r.error);
-                      return;
-                    }
-                    setBulk(new Set());
-                    onPlaced();
-                  })
-                }
+                onClick={() => {
+                  onChoose(
+                    rows.filter((r) => bulk.has(r.itemId)),
+                    "many",
+                  );
+                  setBulk(new Set());
+                }}
               >
                 {busy
                   ? "Placing…"

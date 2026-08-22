@@ -7,8 +7,11 @@ import { PhotoZoom } from "@/components/ui/PhotoZoom";
 import { PhotoThumb } from "@/components/ui/PhotoThumb";
 import { itemPhotoUrl } from "@/lib/storage";
 import { formatPaise } from "@/lib/money";
-import { clearDisplaySlot, renameDisplaySection, moveDisplayPiece } from "./actions";
+import {
+  renameDisplaySection, applyDisplayLayout, type PickableItem,
+} from "./actions";
 import { Input } from "@/components/ui/Field";
+import { Button } from "@/components/ui/Button";
 import { DisplayPicker } from "./DisplayPicker";
 import type { DisplaySection, DisplayBlock } from "./queries";
 
@@ -103,9 +106,13 @@ export function DisplayRack({
    *  the zoom on the piece that was just dropped. */
   const justDragged = useRef(false);
   const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState<string | null>(null);
   const [busy, start] = useTransition();
 
   const section = live[active];
+  const dirty =
+    section !== undefined &&
+    fingerprint(live, section.sectionId) !== fingerprint(sections, section.sectionId);
 
 
   // Watches a pending press and promotes it to a drag once the pointer
@@ -188,12 +195,11 @@ export function DisplayRack({
   }, [isDragging]);
 
   /**
-   * Move locally, then tell the server.
+   * Move within the working copy. Nothing is sent.
    *
-   * Mirrors what move_display_piece does so the optimistic picture is
-   * the real one: room on the target means the piece joins it, a full
-   * target means the two trade places. If the two ever disagree the
-   * refresh below corrects it, but they should not.
+   * Mirrors what apply_display_layout will do on save: room on the
+   * target means the piece joins it, a full target means the two trade
+   * places. Save writes the arrangement in one call.
    */
   function commitMove(placementId: string, fromBlockId: string, toBlockId: string) {
     setLive((prev) =>
@@ -224,9 +230,7 @@ export function DisplayRack({
               return {
                 ...b,
                 pieces: [
-                  ...b.pieces.filter(
-                    (p) => p.placementId !== displaced?.placementId,
-                  ),
+                  ...b.pieces.filter((p) => p.placementId !== displaced?.placementId),
                   piece,
                 ],
               };
@@ -236,17 +240,88 @@ export function DisplayRack({
         };
       }),
     );
+  }
 
-    start(async () => {
-      setError(null);
-      const r = await moveDisplayPiece(placementId, toBlockId);
-      if (!r.ok) {
-        setError(r.error);
-        setLive(sections);
-        return;
-      }
-      router.refresh();
-    });
+  /** The arrangement as the server last knew it, to compare against. */
+  function fingerprint(secs: DisplaySection[], id: string) {
+    const sec = secs.find((x) => x.sectionId === id);
+    if (!sec) return "";
+    return sec.blocks
+      .flatMap((b) => b.pieces.map((p) => `${b.blockId}:${p.slot}:${p.itemId}`))
+      .sort()
+      .join("|");
+  }
+
+  /**
+   * Add pieces to the working copy.
+   *
+   * "one" drops onto the niche that was clicked. "many" spreads across
+   * the section's empty necks one apiece, in reading order — the same
+   * rule the old server-side bulk placement used, moved here so it can
+   * be undone with Discard like anything else.
+   */
+  function addLocally(
+    items: PickableItem[],
+    mode: "one" | "many",
+    target: DisplayBlock,
+    sectionId: string,
+  ) {
+    setLive((prev) =>
+      prev.map((sec) => {
+        if (sec.sectionId !== sectionId) return sec;
+
+        const blocks = sec.blocks.map((b) => ({ ...b, pieces: [...b.pieces] }));
+        const asPiece = (it: PickableItem, slot: number) => ({
+          // A local id until the save gives it a real one. Never sent.
+          placementId: `new:${it.itemId}`,
+          slot,
+          itemId: it.itemId,
+          barcode: it.barcode,
+          name: it.name,
+          photoPath: it.photoPath,
+          sellingPricePaise: it.sellingPricePaise,
+        });
+
+        if (mode === "one") {
+          const b = blocks.find((x) => x.blockId === target.blockId);
+          if (b && b.pieces.length < b.capacity) {
+            const used = new Set(b.pieces.map((p) => p.slot));
+            let slot = 1;
+            while (used.has(slot)) slot += 1;
+            b.pieces.push(asPiece(items[0]!, slot));
+          }
+          return { ...sec, blocks };
+        }
+
+        const necks = blocks
+          .filter((b) => b.kind === "neck")
+          .sort((a, b) => a.rowNo - b.rowNo || a.colNo - b.colNo);
+
+        const queue = [...items];
+        for (let slot = 1; slot <= 2 && queue.length > 0; slot += 1) {
+          for (const b of necks) {
+            if (queue.length === 0) break;
+            if (b.pieces.some((p) => p.slot === slot)) continue;
+            if (b.pieces.length >= b.capacity) continue;
+            b.pieces.push(asPiece(queue.shift()!, slot));
+          }
+        }
+        return { ...sec, blocks };
+      }),
+    );
+  }
+
+  /** Take a piece off, locally. Committed on save like everything else. */
+  function removeLocally(placementId: string) {
+    setLive((prev) =>
+      prev.map((sec) => ({
+        ...sec,
+        blocks: sec.blocks.map((b) => ({
+          ...b,
+          pieces: b.pieces.filter((p) => p.placementId !== placementId),
+        })),
+      })),
+    );
   }
 
   /** Tap-to-move, kept for precision and for anyone using a keyboard or
@@ -286,14 +361,7 @@ export function DisplayRack({
     commitMove(carrying.placementId, carrying.blockId, blockId);
   }
 
-  function remove(placementId: string) {
-    start(async () => {
-      setError(null);
-      const r = await clearDisplaySlot(placementId);
-      if (!r.ok) setError(r.error);
-      else router.refresh();
-    });
-  }
+
 
   const Niche = ({ block }: { block: DisplayBlock }) => {
     const filled = block.pieces.length > 0;
@@ -439,7 +507,9 @@ export function DisplayRack({
               <button
                 type="button"
                 disabled={busy}
-                onClick={() => remove(block.pieces[block.pieces.length - 1]!.placementId)}
+                onClick={() =>
+                  removeLocally(block.pieces[block.pieces.length - 1]!.placementId)
+                }
                 className="text-2xs text-text-muted hover:text-status-danger-fg"
                 aria-label={`Take the last piece off ${block.code}`}
               >
@@ -478,7 +548,22 @@ export function DisplayRack({
           <button
             key={s.sectionId}
             type="button"
-            onClick={() => setActive(i)}
+            onClick={() => {
+              // Switching away would strand the edits: the working copy
+              // is per rack, and only the section on screen gets saved.
+              if (
+                dirty &&
+                i !== active &&
+                !window.confirm(
+                  `${section?.name ?? "This section"} has unsaved changes. Leave them?`,
+                )
+              ) {
+                return;
+              }
+              if (dirty && i !== active) setLive(sections);
+              setSaved(null);
+              setActive(i);
+            }}
             className={`rounded-control px-3 py-1.5 text-sm ${
               i === active
                 ? "bg-brand text-brand-fg"
@@ -512,6 +597,57 @@ export function DisplayRack({
         >
           <PhotoThumb src={drag.photo} alt="" size={64} hoverPanel={false} />
         </div>
+      )}
+
+      {/* One save for the whole rearrangement.
+          Nothing above this has touched the database: drags, adds and
+          removals all edit a working copy. That is what makes the
+          dragging feel immediate -- there is no round trip inside the
+          gesture -- and it is why a refresh can no longer land in the
+          middle of one and undo it. */}
+      {dirty && (
+        <div className="print-hide sticky top-2 z-30 flex flex-wrap items-center gap-2 rounded-control border border-brand bg-brand-subtle px-3 py-2">
+          <span className="text-sm font-medium">
+            {section.name} has unsaved changes
+          </span>
+          <Button
+            size="sm"
+            disabled={busy}
+            onClick={() =>
+              start(async () => {
+                setError(null);
+                const layout = section.blocks.flatMap((b) =>
+                  b.pieces.map((p) => ({
+                    block_id: b.blockId,
+                    item_id: p.itemId,
+                    slot: p.slot,
+                  })),
+                );
+                const r = await applyDisplayLayout(section.sectionId, layout);
+                if (!r.ok) {
+                  setError(r.error);
+                  return;
+                }
+                setSaved(`Saved. ${r.data.added} placed, ${r.data.removed} cleared.`);
+                router.refresh();
+              })
+            }
+          >
+            {busy ? "Saving…" : "Save the layout"}
+          </Button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => setLive(sections)}
+            className="text-2xs text-text-muted hover:underline"
+          >
+            discard changes
+          </button>
+        </div>
+      )}
+
+      {saved && !dirty && (
+        <p className="print-hide text-2xs text-status-done-fg">{saved}</p>
       )}
 
       {held && (
@@ -563,13 +699,12 @@ export function DisplayRack({
       {picking && (
         <DisplayPicker
           block={picking}
-          sectionId={section.sectionId}
           locationId={locationId}
           facets={facets}
           onClose={() => setPicking(null)}
-          onPlaced={() => {
-            setPicking(null);
-            router.refresh();
+          onChoose={(items, mode) => {
+            addLocally(items, mode, picking, section.sectionId);
+            if (mode === "many") setPicking(null);
           }}
         />
       )}
