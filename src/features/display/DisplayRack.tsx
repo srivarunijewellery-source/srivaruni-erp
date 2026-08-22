@@ -99,7 +99,8 @@ export function DisplayRack({
    */
   const pending = useRef<
     | { placementId: string; blockId: string; code: string; photo: string | null;
-        name: string; x: number; y: number }
+        name: string; x: number; y: number;
+        el: HTMLElement; pointerId: number }
     | null
   >(null);
   /** Set for the instant after a drag so the trailing click cannot open
@@ -123,6 +124,16 @@ export function DisplayRack({
       const q = pending.current;
       if (!q || dragRef.current) return;
       if (Math.hypot(e.clientX - q.x, e.clientY - q.y) < 6) return;
+      // Now it is a drag, so hold the pointer: a fast move off the niche
+      // would otherwise lose it and drop the piece wherever the browser
+      // last saw it.
+      try {
+        q.el.setPointerCapture?.(q.pointerId);
+      } catch {
+        // Element already gone, or the pointer released mid-promotion.
+        // The window listeners still work; capture is an improvement,
+        // not a requirement.
+      }
       setDrag({
         placementId: q.placementId,
         fromBlockId: q.blockId,
@@ -392,13 +403,17 @@ export function DisplayRack({
                 key={p.placementId}
                 onPointerDown={(e) => {
                   if (!canEdit || e.button === 2) return;
-                  // Capture, so every move and the release come back to
-                  // this element even once the pointer has left it.
-                  // Without it a fast drag off the niche loses the
-                  // pointer and the piece is dropped wherever the
-                  // browser last saw it.
-                  (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+                  // Capture is deliberately NOT taken here.
+                  //
+                  // Capturing on every press suppressed the click that
+                  // follows, so tapping a photo stopped opening it --
+                  // the browser retargets the click to the capturing
+                  // element and, in Safari, often drops it. It is taken
+                  // in maybeStart instead, once the pointer has actually
+                  // travelled and the press is known to be a drag.
                   pending.current = {
+                    el: e.currentTarget as HTMLElement,
+                    pointerId: e.pointerId,
                     placementId: p.placementId,
                     blockId: block.blockId,
                     code: block.code,
@@ -429,7 +444,11 @@ export function DisplayRack({
                   src={itemPhotoUrl(p.photoPath, block.pieces.length > 1 ? 44 : 88)}
                   full={itemPhotoUrl(p.photoPath)}
                   alt={p.name}
-                  hoverPanel={false}
+                  // Magnify on hover as everywhere else, but not while
+                  // something is being dragged: a 340px panel opening
+                  // under the cursor covers the very niche being aimed
+                  // at.
+                  hoverPanel={!isDragging}
                   size={block.pieces.length > 1 ? 44 : 88}
                   caption={`${p.barcode} · ${p.name}${
                     p.sellingPricePaise ? ` · ${formatPaise(p.sellingPricePaise)}` : ""
@@ -689,6 +708,7 @@ export function DisplayRack({
               mannequin={mannequin}
               Niche={Niche}
               canEdit={canEdit}
+              isDragging={isDragging}
               onPick={setPicking}
             />
           ))}
@@ -726,6 +746,7 @@ function RowCells({
   mannequin,
   Niche,
   canEdit,
+  isDragging,
   onPick,
 }: {
   row: DisplayBlock[];
@@ -733,6 +754,9 @@ function RowCells({
   mannequin: DisplayBlock | undefined;
   Niche: (p: { block: DisplayBlock }) => React.JSX.Element;
   canEdit: boolean;
+  /** Hover magnification is suppressed mid-drag: the panel would cover
+   *  the niche being aimed at. */
+  isDragging: boolean;
   onPick: (b: DisplayBlock) => void;
 }) {
   const left = row.filter((b) => b.colNo <= 4);
@@ -757,7 +781,7 @@ function RowCells({
                   src={itemPhotoUrl(p.photoPath, 52)}
                   full={itemPhotoUrl(p.photoPath)}
                   alt={p.name}
-                  hoverPanel={false}
+                  hoverPanel={!isDragging}
                   size={52}
                   caption={`${p.barcode} · ${p.name}`}
                 />

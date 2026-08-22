@@ -548,3 +548,35 @@ is a `src/app/icon.tsx` that picks by size, ten minutes.
     npx tsc --noEmit   clean
     npx next build     ✓ 69/69 routes, exit 0
                        /manifest.webmanifest generated
+
+---
+
+# UPDATE 11 — I broke tapping a photo
+
+Two faults, both mine, both from the drag work.
+
+**Could not click.** I called `setPointerCapture` on every press. Once an
+element captures the pointer the browser retargets the click that
+follows, and Safari frequently drops it — so tapping a photo stopped
+opening it. Capture is now taken in `maybeStart`, once the pointer has
+travelled six pixels and the press is known to be a drag. A tap never
+captures anything and behaves as it always did.
+
+**No hover zoom.** I passed `hoverPanel={false}` on the rack to stop the
+340px magnifier opening mid-drag and covering the niche being aimed at.
+That was the right problem and too blunt a fix: it removed magnification
+entirely, including when nothing is being dragged. Now `hoverPanel` is
+on unless a drag is actually in progress.
+
+## On the favicon
+
+The purple tiara IS deployed. Verified twice: it is in the commit Vercel
+last built (`display add 8`, READY), and rendering the bytes out of the
+build output gives the tiara at 16, 32 and 48.
+
+So the "C" is the browser's own favicon store, which a normal reload
+does not clear. A private window is the quickest true test. If it shows
+purple there, everything is fine and the tab will catch up.
+
+    npx tsc --noEmit   clean
+    npx next build     ✓ 69/69, exit 0
